@@ -236,7 +236,7 @@ strong { font-weight: 650; font-variant-numeric: tabular-nums; }
 }
 .fila-tc:hover { background: var(--superficie-2); }
 .fila-tc .chip-tc { grid-area: chip; }
-.fila-tc-nombre { grid-area: nombre; min-width: 0; display: flex; gap: 6px; align-items: baseline; }
+.fila-tc-nombre { grid-area: nombre; min-width: 0; display: flex; flex-wrap: wrap; column-gap: 6px; align-items: baseline; }
 .fila-tc-nombre strong { white-space: nowrap; }
 .fila-tc-nombre span { color: var(--texto-suave); font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fila-tc-estado { grid-area: estado; }
