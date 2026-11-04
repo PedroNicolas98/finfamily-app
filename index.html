@@ -5,9 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>FinFamily</title>
   <meta name="description" content="Gastos, tarjetas y presupuesto de la familia.">
-  <meta name="theme-color" content="#F3F6F5" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#0E1714" media="(prefers-color-scheme: dark)">
-  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#F2F4F8">
+  <script>
+    // Aplica el modo y el color elegidos antes de pintar, para que no parpadee.
+    try {
+      document.documentElement.dataset.modo = localStorage.getItem('ff:modo') === 'oscuro' ? 'oscuro' : 'claro';
+      document.documentElement.dataset.color = localStorage.getItem('ff:color') || 'marino';
+    } catch (e) { document.documentElement.dataset.modo = 'claro'; }
+  </script>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="FinFamily">
   <link rel="manifest" href="manifest.webmanifest">
