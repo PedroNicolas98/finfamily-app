@@ -33,6 +33,11 @@ const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', '
 const ABREV = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
 const ICONOS = {
+  check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  sol: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  luna: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>',
+  salir: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>',
+  calendario: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
   inicio: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>',
   tarjetas: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M2.5 10h19M6 15h4"/></svg>',
   mas: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
@@ -118,11 +123,65 @@ function animarVista(raiz) {
   raiz.querySelectorAll('[data-contar]').forEach((el) => contar(el, Number(el.dataset.contar)));
   requestAnimationFrame(() => requestAnimationFrame(() => {
     raiz.querySelectorAll('[data-w]').forEach((el) => { el.style.width = el.dataset.w; });
+    raiz.querySelectorAll('[data-offset]').forEach((el) => { el.style.strokeDashoffset = el.dataset.offset; });
   }));
 }
 
-function chipTC(id) {
-  return h('span', { class: `chip-tc tc-${id}`, 'aria-hidden': 'true' });
+// ---------- Apariencia (modo claro/oscuro y color de la app) ----------
+
+const COLORES = [['marino', 'Marino'], ['esmeralda', 'Esmeralda'], ['turquesa', 'Turquesa'], ['coral', 'Coral']];
+
+function leerPref(clave, porDefecto) {
+  try { return localStorage.getItem(clave) || porDefecto; } catch { return porDefecto; }
+}
+
+function aplicarApariencia() {
+  const raiz = document.documentElement;
+  const modo = leerPref('ff:modo', 'claro') === 'oscuro' ? 'oscuro' : 'claro';
+  const color = COLORES.some(([id]) => id === leerPref('ff:color', 'marino')) ? leerPref('ff:color', 'marino') : 'marino';
+  raiz.dataset.modo = modo;
+  raiz.dataset.color = color;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', getComputedStyle(raiz).getPropertyValue('--fondo').trim() || '#F2F4F8');
+  document.querySelectorAll('[data-op-modo]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.opModo === modo)));
+  document.querySelectorAll('[data-op-color]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.opColor === color)));
+}
+
+function elegirApariencia(clave, valor) {
+  try { localStorage.setItem(clave, valor); } catch { /* sin almacenamiento: dura hasta recargar */ }
+  if (clave === 'ff:modo') document.documentElement.dataset.modo = valor; else document.documentElement.dataset.color = valor;
+  aplicarApariencia();
+}
+
+// Controles de modo y color (barra lateral en computadora, "Tu cuenta" en celular).
+function panelApariencia() {
+  const modo = document.documentElement.dataset.modo;
+  const color = document.documentElement.dataset.color;
+  return h('div', { class: 'apariencia' },
+    h('div', { class: 'segmentos', role: 'group', 'aria-label': 'Modo' },
+      [['claro', 'Claro', 'sol'], ['oscuro', 'Oscuro', 'luna']].map(([id, texto, ico]) => h('button', { type: 'button',
+        'data-op-modo': id, 'aria-pressed': String(modo === id), onclick: () => elegirApariencia('ff:modo', id) }, icono(ico), texto))),
+    h('div', { class: 'colores', role: 'group', 'aria-label': 'Color de la app' },
+      COLORES.map(([id, nombre]) => h('button', { type: 'button', class: `color-op op-${id}`, title: nombre, 'aria-label': `Color ${nombre}`,
+        'data-op-color': id, 'aria-pressed': String(color === id), onclick: () => elegirApariencia('ff:color', id) }))));
+}
+
+// ---------- Piezas visuales ----------
+
+function svg(tag, attrs, ...hijos) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [k, v] of Object.entries(attrs || {})) if (v != null) el.setAttribute(k, v);
+  for (const c of hijos.flat()) if (c != null) el.append(c);
+  return el;
+}
+
+function solesCorto(n) {
+  const v = Math.round(Number(n) || 0);
+  return (v < 0 ? '-' : '') + 'S/ ' + Math.abs(v).toLocaleString('en-US');
+}
+
+function chipTC(id, extra = '') {
+  return h('span', { class: `chip-tc tc-${id} ${extra}`.trim(), 'aria-hidden': 'true' });
 }
 
 function duenioTC(t) {
@@ -134,46 +193,165 @@ function nombreCortoTC(t) {
   return `${NOMBRE_TC[t.id] || t.nombre}${d ? ' · ' + d : ''}`;
 }
 
-// Estado del próximo vencimiento: texto + color de estado (nunca solo color).
-function estadoPill(vence, pendiente) {
-  if (!(pendiente > 0)) return h('span', { class: 'pill ok' }, 'Al día');
-  if (!vence) return h('span', { class: 'pill' }, 'Sin fecha');
-  const dias = diasEntre(hoyISO(), vence);
-  if (dias < 0) return h('span', { class: 'pill mal' }, `Vencida · ${fechaCorta(vence)}`);
-  if (dias === 0) return h('span', { class: 'pill aviso' }, 'Vence hoy');
-  if (dias <= 7) return h('span', { class: 'pill aviso' }, `Vence en ${dias} día${dias === 1 ? '' : 's'}`);
-  return h('span', { class: 'pill' }, `Vence ${fechaCorta(vence)}`);
+// Círculo con la inicial de la persona.
+function avatar(nombre, extra = '') {
+  const n = String(nombre || '').trim();
+  return h('span', { class: `avatar av-${normalizar(n).charAt(0) || 'x'} ${extra}`.trim(), title: n || null, 'aria-hidden': 'true' },
+    (n.charAt(0) || '?').toUpperCase());
 }
 
-// Fila de tarjeta (Inicio y Tarjetas).
-function filaTarjeta(t) {
-  const esH = t.id === 'HORMIGA';
-  return h('a', { class: 'fila-tc', href: `#tarjeta-${t.id}` },
-    chipTC(t.id),
-    h('span', { class: 'fila-tc-nombre' },
-      h('strong', {}, NOMBRE_TC[t.id] || t.nombre),
-      h('span', {}, esH ? 'Yape, Plin y efectivo' : duenioTC(t))),
-    h('span', { class: 'fila-tc-estado' }, esH ? h('span', { class: 'pill' }, 'Este mes') : estadoPill(t.proximoVence, t.pendiente)),
-    h('strong', { class: 'fila-tc-monto' }, soles(t.pendiente)),
+// Estado del próximo vencimiento: texto + clase de color (nunca solo color).
+function estadoVence(vence, pendiente) {
+  if (!(pendiente > 0)) return { clase: 'ok', texto: 'Al día' };
+  if (!vence) return { clase: '', texto: 'Sin fecha' };
+  const dias = diasEntre(hoyISO(), vence);
+  if (dias < 0) return { clase: 'mal', texto: `Venció el ${fechaCorta(vence)}` };
+  if (dias === 0) return { clase: 'aviso', texto: 'Vence hoy' };
+  if (dias === 1) return { clase: 'aviso', texto: 'Vence mañana' };
+  if (dias <= 7) return { clase: 'aviso', texto: `Vence en ${dias} días` };
+  return { clase: '', texto: `Faltan ${dias} días` };
+}
+
+function estadoPill(vence, pendiente) {
+  const e = estadoVence(vence, pendiente);
+  return h('span', { class: `pill ${e.clase}`.trim() }, e.texto);
+}
+
+// Fecha como hoja de calendario: día grande y mes abreviado.
+function fechaInsignia(vence, clase = '') {
+  const d = deISO(vence);
+  return h('span', { class: `insignia-fecha ${clase}`.trim(), 'aria-hidden': 'true' },
+    d ? [h('b', {}, String(d.getDate())), h('i', {}, ABREV[d.getMonth()])] : clase === 'ok' ? icono('check') : h('b', {}, '–'));
+}
+
+// Fila de "Próximos pagos" (Inicio).
+function filaPago(t) {
+  const e = estadoVence(t.proximoVence, t.pendiente);
+  const conFecha = t.pendiente > 0 && t.proximoVence;
+  return h('a', { class: 'fila-pago', href: `#tarjeta-${t.id}` },
+    fechaInsignia(conFecha ? t.proximoVence : null, e.clase),
+    h('span', { class: 'fila-pago-nombre' },
+      h('strong', {}, chipTC(t.id, 'mini'), NOMBRE_TC[t.id] || t.nombre),
+      duenioTC(t) ? h('span', {}, duenioTC(t)) : null),
+    h('span', { class: `pill ${e.clase}`.trim() }, e.texto),
+    h('strong', { class: 'fila-pago-monto' }, soles(t.pendiente)),
     icono('adelante'));
 }
 
-// Indicador compacto.
-function kpi(etiqueta, valor, sub, extra, destacado) {
-  return h('div', { class: 'kpi' + (destacado ? ' destacado' : '') },
-    h('p', { class: 'kpi-etq' }, etiqueta),
-    h('p', { class: 'kpi-valor' + (valor < 0 ? ' negativo' : ''), 'data-contar': String(valor) }, soles(0)),
-    extra || null,
-    sub ? h('p', { class: 'kpi-sub' }, sub) : null);
+// Tarjeta dibujada como plástico: marca, monto por pagar, titular y vencimiento.
+function tarjetaVisual(t, comoEnlace = true) {
+  const esH = t.id === 'HORMIGA';
+  const e = esH ? null : estadoVence(t.proximoVence, t.pendiente);
+  return h(comoEnlace ? 'a' : 'div', { class: `plastico tc-${t.id}`, href: comoEnlace ? `#tarjeta-${t.id}` : null },
+    h('span', { class: 'plastico-top' },
+      h('span', { class: 'plastico-marca' }, NOMBRE_TC[t.id] || t.nombre),
+      esH ? icono('billetera') : h('span', { class: 'plastico-chip', 'aria-hidden': 'true' })),
+    h('span', { class: 'plastico-monto' },
+      h('span', {}, esH ? 'Gastado este mes' : 'Por pagar'),
+      h('strong', { 'data-contar': String(t.pendiente || 0) }, soles(0))),
+    h('span', { class: 'plastico-pie' },
+      h('span', {}, esH ? 'Yape · Plin · Efectivo' : duenioTC(t)),
+      e ? h('span', { class: `plastico-estado ${e.clase}`.trim() }, e.clase === '' && t.proximoVence ? `Vence el ${fechaCorta(t.proximoVence)}` : e.texto) : null));
 }
 
-// Barras horizontales de una sola serie (deuda por tarjeta). La identidad va en el texto, no en el color.
-function barrasH(filas) {
-  const max = Math.max(...filas.map((f) => Math.abs(f.valor)), 1);
-  return h('ul', { class: 'barras' }, filas.map((f) => h('li', { title: `${f.etiqueta}: ${soles(f.valor)}` },
-    h('span', { class: 'barras-etq' }, f.chip || null, h('span', {}, f.etiqueta)),
-    h('span', { class: 'barras-pista' }, h('i', { 'data-w': `${Math.max(2, Math.round((Math.abs(f.valor) / max) * 100))}%` })),
-    h('strong', { class: 'barras-valor' }, soles(f.valor)))));
+// Anillo de avance (porcentaje de los ingresos ya comprometido).
+function anillo(pct) {
+  const r = 52;
+  const c = 2 * Math.PI * r;
+  const caja = h('div', { class: 'anillo', role: 'img', 'aria-label': `${pct}% de los ingresos comprometido` });
+  caja.append(
+    svg('svg', { viewBox: '0 0 120 120', 'aria-hidden': 'true' },
+      svg('circle', { class: 'anillo-pista', cx: 60, cy: 60, r }),
+      svg('circle', { class: 'anillo-valor', cx: 60, cy: 60, r, 'stroke-dasharray': c.toFixed(1), 'stroke-dashoffset': c.toFixed(1),
+        'data-offset': (c * (1 - Math.min(pct, 100) / 100)).toFixed(1) })),
+    h('div', { class: 'anillo-texto' }, h('strong', {}, `${pct}%`), h('span', {}, 'comprometido')));
+  return caja;
+}
+
+// Gráfico de dona con leyenda (cada parte lleva nombre, porcentaje y monto).
+function dona(partes, etiquetaCentro) {
+  const total = partes.reduce((s, p) => s + p.valor, 0) || 1;
+  const r = 54;
+  const c = 2 * Math.PI * r;
+  const hueco = partes.length > 1 ? 3 : 0;
+  let acum = 0;
+  const arcos = partes.map((p, i) => {
+    const largo = Math.max((p.valor / total) * c - hueco, 1);
+    const arco = svg('circle', { class: `dona-arco d${i}`, cx: 70, cy: 70, r,
+      'stroke-dasharray': `${largo.toFixed(2)} ${(c - largo).toFixed(2)}`, 'stroke-dashoffset': (-(acum / total) * c).toFixed(2) });
+    const titulo = svg('title', {});
+    titulo.textContent = `${p.etiqueta}: ${soles(p.valor)}`;
+    arco.append(titulo);
+    acum += p.valor;
+    return arco;
+  });
+  const grafico = h('div', { class: 'dona-grafico', role: 'img',
+    'aria-label': partes.map((p) => `${p.etiqueta}: ${soles(p.valor)}`).join(', ') });
+  grafico.append(svg('svg', { viewBox: '0 0 140 140', 'aria-hidden': 'true' }, arcos),
+    h('div', { class: 'dona-centro' }, h('span', {}, etiquetaCentro), h('strong', {}, solesCorto(total))));
+  return h('div', { class: 'dona' }, grafico,
+    h('ul', { class: 'dona-leyenda' }, partes.map((p, i) => h('li', { title: `${p.etiqueta}: ${soles(p.valor)}` },
+      h('i', { class: `punto d${i}`, 'aria-hidden': 'true' }),
+      h('span', { class: 'dona-nombre' }, p.etiqueta),
+      h('span', { class: 'suave' }, `${Math.round((p.valor / total) * 100)}%`),
+      h('strong', {}, soles(p.valor))))));
+}
+
+// Barra partida en proporciones (cada parte con su clase de color y su texto al pasar el cursor).
+function barraPartes(partes) {
+  const visibles = partes.filter((p) => p.valor > 0);
+  const total = visibles.reduce((s, p) => s + p.valor, 0) || 1;
+  return h('div', { class: 'partes', role: 'img', 'aria-label': visibles.map((p) => `${p.etiqueta}: ${soles(p.valor)}`).join(', ') },
+    visibles.map((p) => h('i', { class: p.clase, style: `flex: ${((p.valor / total) * 100).toFixed(2)} 1 0`, title: `${p.etiqueta}: ${soles(p.valor)}` })));
+}
+
+// Fila de un consumo en las listas de Inicio.
+function filaMov(c, derecha) {
+  return h('li', { class: 'mov', title: c.descripcion },
+    catIco(c.concepto),
+    h('span', { class: 'mov-texto' }, h('span', {}, limpiarComercio(c.descripcion)),
+      h('span', { class: 'suave' }, [fechaCorta(c.fecha), c.concepto].filter(Boolean).join(' · '))),
+    h('span', { class: 'mov-der' }, h('strong', {}, soles(c.monto)), derecha ? h('span', { class: 'suave' }, derecha) : null));
+}
+
+// Caja con título y, si hace falta, un enlace o dato a la derecha.
+function panel(clase, titulo, lado, ...hijos) {
+  return h('section', { class: `panel ${clase}`.trim() },
+    h('div', { class: 'panel-cab' }, h('h2', {}, titulo), lado || null),
+    hijos);
+}
+
+// Todos los consumos de las tarjetas que cumplan el filtro, con su tarjeta.
+function consumosDe(tarjetas, filtro) {
+  const salida = [];
+  for (const t of tarjetas || []) {
+    if (!filtro(t)) continue;
+    for (const g of t.estados || []) for (const c of g.consumos || []) salida.push({ ...c, tarjeta: t });
+  }
+  return salida;
+}
+
+// Zona con correo y "Cerrar sesión" (pide confirmación en el mismo lugar).
+function zonaSesion() {
+  const zona = h('div', { class: 'zona-sesion' });
+  zona.append(
+    h('span', { class: 'suave correo' }, api.emailGuardado()),
+    h('button', { type: 'button', class: 'boton enlace', onclick: () => {
+      const enEspera = estado.cola.length;
+      confirmarEnLinea(zona,
+        enEspera ? `Hay ${enEspera} movimiento(s) sin enviar en este equipo; se enviarán cuando vuelvas a entrar con esta misma cuenta.` : '¿Cerrar sesión en este equipo?',
+        'Cerrar sesión', async () => {
+          borrarCaches();
+          api.cerrarSesion();
+          estado.tsDatos = null;
+          estado.cola = [];
+          estado.filasEnEspera = new Set();
+          mostrar(pantallaLogin('Sesión cerrada.'));
+          construirNav();
+          pintarAvisos();
+        });
+    } }, icono('salir'), 'Cerrar sesión'));
+  return zona;
 }
 
 // ---------- Estado ----------
@@ -487,12 +665,20 @@ function confirmarEnLinea(zona, texto, etiquetaSi, alConfirmar) {
 
 function pantallaLogin(mensaje) {
   const boton = h('div', { class: 'boton-google' });
-  const raiz = h('div', { class: 'pantalla login' },
-    h('img', { src: 'iconos/icono.svg', alt: '', class: 'logo', width: '72', height: '72' }),
-    h('h1', {}, 'FinFamily'),
-    h('p', { class: 'suave' }, mensaje || 'Ingresa con tu cuenta de Google para ver y registrar tus gastos.'),
-    boton,
-    h('button', { type: 'button', class: 'boton enlace', onclick: () => navegar() }, 'Volver a intentar'));
+  const punto = (ico, texto) => h('li', {}, icono(ico), h('span', {}, texto));
+  const raiz = h('div', { class: 'pantalla login partida' },
+    h('div', { class: 'login-marca' },
+      h('div', { class: 'login-logo' }, h('img', { src: 'iconos/icono.svg', alt: '', width: '44', height: '44' }), h('strong', {}, 'FinFamily')),
+      h('h1', {}, 'Las cuentas de la casa, claras para los dos.'),
+      h('ul', { class: 'login-puntos' },
+        punto('mas', 'Registra un gasto en segundos, desde el celular o la computadora.'),
+        punto('tarjetas', 'Mira cuánto debes en cada tarjeta y cuándo vence.'),
+        punto('presupuesto', 'Sigue el presupuesto del mes, igual que en tu Sheets.'))),
+    h('div', { class: 'login-caja' },
+      h('h2', {}, 'Entrar'),
+      h('p', { class: 'suave' }, mensaje || 'Usa tu cuenta de Google. Solo entran las cuentas de la familia.'),
+      boton,
+      h('button', { type: 'button', class: 'boton enlace', onclick: () => navegar() }, 'Volver a intentar')));
   api.renderBoton(boton).then((ok) => {
     if (!ok) boton.replaceChildren(h('p', { class: 'suave' }, 'No se pudo cargar el inicio de sesión de Google. Revisa tu conexión.'));
   });
@@ -502,6 +688,12 @@ function pantallaLogin(mensaje) {
     api.renovar().then(async () => { estado.pideLogin = false; await procesarCola(); navegar(); }).catch(() => {});
   }
   return raiz;
+}
+
+// Pone una pantalla en la vista; la de ingreso oculta el menú.
+function mostrar(nodo) {
+  document.body.classList.toggle('sin-sesion', !!nodo.classList?.contains('login'));
+  vista.replaceChildren(nodo);
 }
 
 function pantallaSinConfig() {
@@ -582,22 +774,25 @@ function etiquetaMedio(id) {
 // ---------- Pantalla: Inicio ----------
 
 async function vistaInicio() {
-  const r = await cargar('inicio', { hoy: hoyISO() }, 'inicio');
+  const [r, rt] = await Promise.all([
+    cargar('inicio', { hoy: hoyISO() }, 'inicio'),
+    cargarRapido('tarjetas', { hoy: hoyISO(), incluirPagados: false }, 'tarjetas').catch(() => null),
+  ]);
   marcarDatos(r);
   const d = r.datos;
   const p = d.presupuesto;
-  const nombre = d.usuario?.nombre || '';
+  const nombre = (d.usuario?.nombre || '').split(' ')[0];
   const hoy = new Date();
   const fechaHoy = hoy.toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long' });
   const mesNombre = (nombreMesClave(d.mes) || '').split(' ')[0].toLowerCase();
-  const ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
+  const diasQuedan = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate() - hoy.getDate();
   const raiz = h('div', { class: 'pantalla inicio' });
 
   raiz.append(h('header', { class: 'cabecera-fila' },
     h('div', { class: 'cabecera' },
       h('p', { class: 'sobretitulo' }, fechaHoy),
-      h('h1', {}, `Hola, ${nombre.split(' ')[0]}`)),
-    h('a', { class: 'boton primario solo-pc', href: '#registrar' }, icono('mas'), 'Registrar gasto')));
+      h('h1', {}, nombre ? `Hola, ${nombre}` : 'Hola')),
+    h('span', { class: 'pill-mes solo-pc' }, icono('calendario'), nombreMesClave(d.mes) || d.etiquetaMes || '')));
 
   const alertas = d.alertas || [];
   if (alertas.length) {
@@ -616,60 +811,91 @@ async function vistaInicio() {
 
   const tarjetas = (d.tarjetas || []).filter((t) => t.id !== 'HORMIGA');
   const hormiga = (d.tarjetas || []).find((t) => t.id === 'HORMIGA');
-  const proxima = tarjetas.filter((t) => t.pendiente > 0 && t.proximoVence)
-    .sort((a, b) => a.proximoVence.localeCompare(b.proximoVence))[0];
+  const conDeuda = tarjetas.filter((t) => t.pendiente > 0).sort((a, b) => b.pendiente - a.pendiente);
+  const proxima = conDeuda.filter((t) => t.proximoVence).sort((a, b) => a.proximoVence.localeCompare(b.proximoVence))[0];
+  const rejilla = h('div', { class: 'rejilla-inicio' });
 
-  const kpis = h('section', { class: 'kpis' });
+  // Saldo del mes
+  const hero = h('section', { class: 'hero' });
   if (p) {
-    const pct = p.ingresos > 0 ? Math.min(100, Math.round((p.gastos / p.ingresos) * 100)) : 0;
-    kpis.append(
-      kpi(`Saldo de ${mesNombre}`, p.saldo, `${pct}% de los ingresos comprometido`,
-        h('div', { class: 'progreso', role: 'img', 'aria-label': `${pct}% comprometido` }, h('i', { 'data-w': `${pct}%` })), true),
-      kpi('Ingresos', p.ingresos, `Saldo personal ${soles(p.saldoPersonal)} c/u`),
-      kpi('Gastos del plan', p.gastos, `Quedan ${ultimoDia - hoy.getDate()} días del mes`));
+    const pct = p.ingresos > 0 ? Math.max(0, Math.min(100, Math.round((p.gastos / p.ingresos) * 100))) : 0;
+    hero.append(
+      h('div', { class: 'hero-principal' },
+        h('p', { class: 'hero-etq' }, `Saldo de ${mesNombre}`),
+        h('p', { class: 'hero-monto', 'data-contar': String(p.saldo) }, soles(0)),
+        h('p', { class: 'hero-personal' }, h('span', { class: 'avatares' }, avatar('Pedro'), avatar('Britney')),
+          h('span', {}, h('strong', {}, soles(p.saldoPersonal)), ' libres para cada uno'))),
+      anillo(pct),
+      h('dl', { class: 'hero-datos' },
+        h('div', {}, h('dt', {}, icono('sube'), 'Ingresos'), h('dd', {}, soles(p.ingresos))),
+        h('div', {}, h('dt', {}, icono('baja'), 'Gastos del plan'), h('dd', {}, soles(p.gastos))),
+        h('div', {}, h('dt', {}, icono('calendario'), 'Fin de mes'), h('dd', {}, diasQuedan === 0 ? 'Hoy' : `En ${diasQuedan} día${diasQuedan === 1 ? '' : 's'}`))));
   } else {
-    kpis.append(h('div', { class: 'kpi' }, h('p', { class: 'kpi-etq' }, 'Saldo'),
-      h('p', { class: 'kpi-sub' }, `${d.etiquetaMes || 'Este mes'} todavía no está en el presupuesto.`)));
+    hero.append(h('div', { class: 'hero-principal' },
+      h('p', { class: 'hero-etq' }, 'Saldo del mes'),
+      h('p', { class: 'hero-vacio' }, `${d.etiquetaMes || 'Este mes'} todavía no está en el presupuesto del Sheets.`)));
   }
-  kpis.append(kpi('Por pagar en tarjetas', d.totalPorPagar,
-    proxima ? `Próximo: ${nombreCortoTC(proxima)}, ${fechaCorta(proxima.proximoVence)}` : 'Sin vencimientos pendientes'));
-  raiz.append(kpis);
+  rejilla.append(hero);
 
+  // Total por pagar, repartido por tarjeta
+  rejilla.append(panel('tile-pagar', 'Por pagar en tarjetas', h('a', { href: '#tarjetas' }, 'Ver tarjetas'),
+    h('p', { class: 'cifra-grande', 'data-contar': String(d.totalPorPagar || 0) }, soles(0)),
+    conDeuda.length ? barraPartes(conDeuda.map((t) => ({ etiqueta: nombreCortoTC(t), valor: t.pendiente, clase: `tc-${t.id}` }))) : null,
+    conDeuda.length ? h('ul', { class: 'partes-leyenda' }, conDeuda.map((t) => h('li', {},
+      chipTC(t.id, 'mini'), h('span', {}, nombreCortoTC(t)),
+      h('span', { class: 'suave' }, `${Math.round((t.pendiente / (d.totalPorPagar || 1)) * 100)}%`)))) : null,
+    h('p', { class: 'panel-pie' }, icono('calendario'),
+      proxima ? `Próximo pago: ${fechaCorta(proxima.proximoVence)}, ${nombreCortoTC(proxima)}` : 'Sin vencimientos pendientes')));
+
+  // Próximos pagos, por fecha
   const ordenadas = [...tarjetas].sort((a, b) => (b.pendiente > 0) - (a.pendiente > 0)
     || String(a.proximoVence || '9').localeCompare(String(b.proximoVence || '9')));
-  const conDeuda = tarjetas.filter((t) => t.pendiente > 0).sort((a, b) => b.pendiente - a.pendiente);
+  const pagos = panel('panel-lista', 'Próximos pagos', h('span', { class: 'suave' }, `${conDeuda.length} con deuda`),
+    ordenadas.length ? h('div', { class: 'lista-filas' }, ordenadas.map(filaPago))
+      : h('p', { class: 'vacio' }, 'No hay tarjetas para mostrar.'));
+  rejilla.append(pagos);
 
-  raiz.append(h('div', { class: 'rejilla-2' },
-    h('section', { class: 'tarjeta panel' },
-      h('div', { class: 'panel-cab' }, h('h2', {}, 'Tarjetas y vencimientos'), h('a', { href: '#tarjetas' }, 'Ver todo')),
-      h('div', { class: 'lista-filas' }, ordenadas.map(filaTarjeta), hormiga ? filaTarjeta(hormiga) : null)),
-    h('section', { class: 'tarjeta panel' },
-      h('div', { class: 'panel-cab' }, h('h2', {}, 'Deuda por tarjeta'), h('span', { class: 'suave' }, soles(d.totalPorPagar))),
-      conDeuda.length
-        ? barrasH(conDeuda.map((t) => ({ etiqueta: nombreCortoTC(t), valor: t.pendiente, chip: chipTC(t.id) })))
-        : h('p', { class: 'vacio' }, 'No hay deuda pendiente en tarjetas.'),
-      hormiga ? h('p', { class: 'panel-nota' }, `Gastos hormiga de este mes: ${soles(hormiga.pendiente)}`) : null)));
+  if (rt?.datos?.tarjetas) {
+    const todas = rt.datos.tarjetas;
+    // En qué se fue: consumos por pagar + gastos hormiga, por concepto
+    const porConcepto = new Map();
+    for (const c of consumosDe(todas, () => true)) {
+      if (c.estado === 'Pagado' && c.tarjeta.id !== 'HORMIGA') continue;
+      const k = c.concepto || 'Sin concepto';
+      porConcepto.set(k, (porConcepto.get(k) || 0) + (Number(c.monto) || 0));
+    }
+    const orden = [...porConcepto].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+    const partes = orden.slice(0, 5).map(([etiqueta, valor]) => ({ etiqueta, valor }));
+    const resto = orden.slice(5).reduce((s, [, v]) => s + v, 0);
+    if (resto > 0) partes.push({ etiqueta: 'Otros conceptos', valor: resto });
+    rejilla.append(panel('panel-dona', '¿En qué se fue?', null,
+      h('p', { class: 'panel-sub' }, 'Consumos por pagar en tarjetas y gastos hormiga del mes'),
+      partes.length ? dona(partes, 'Total') : h('p', { class: 'vacio' }, 'Todavía no hay consumos este mes.')));
+
+    const recientes = consumosDe(todas, (t) => t.id !== 'HORMIGA').filter((c) => c.estado !== 'Pagado')
+      .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 6);
+    rejilla.append(panel('panel-lista', 'Últimos consumos con tarjeta', h('a', { href: '#tarjetas' }, 'Ver todos'),
+      recientes.length ? h('ul', { class: 'lista-mov' }, recientes.map((c) => filaMov(c, nombreCortoTC(c.tarjeta))))
+        : h('p', { class: 'vacio' }, 'No hay consumos pendientes.')));
+
+    const hormigas = consumosDe(todas, (t) => t.id === 'HORMIGA')
+      .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 6);
+    rejilla.append(panel('panel-lista', 'Gastos hormiga', h('a', { href: '#tarjeta-HORMIGA' }, 'Ver todos'),
+      h('p', { class: 'panel-sub' }, h('strong', {}, soles(hormiga?.pendiente || 0)), ' este mes en Yape, Plin y efectivo'),
+      hormigas.length ? h('ul', { class: 'lista-mov' }, hormigas.map((c) => filaMov(c, c.medio)))
+        : h('p', { class: 'vacio' }, 'Sin gastos hormiga este mes.')));
+  } else {
+    pagos.classList.add('ancho');
+  }
+  raiz.append(rejilla);
 
   const revisar = seccionRevisar();
   if (revisar) raiz.append(revisar);
 
-  raiz.append(h('div', { class: 'pie' },
-    h('span', { class: 'suave' }, api.emailGuardado()),
-    h('button', { type: 'button', class: 'boton enlace', onclick: (ev) => {
-      const zona = ev.currentTarget.parentElement;
-      const enEspera = estado.cola.length;
-      confirmarEnLinea(zona,
-        enEspera ? `Hay ${enEspera} movimiento(s) sin enviar en este equipo; se enviarán cuando vuelvas a entrar con esta misma cuenta.` : '¿Cerrar sesión en este equipo?',
-        'Cerrar sesión', async () => {
-          borrarCaches();
-          api.cerrarSesion();
-          estado.tsDatos = null;
-          estado.cola = [];
-          estado.filasEnEspera = new Set();
-          vista.replaceChildren(pantallaLogin('Sesión cerrada.'));
-          pintarAvisos();
-        });
-    } }, 'Cerrar sesión')));
+  // En celular la cuenta y la apariencia van al final de Inicio (en computadora están en la barra lateral).
+  raiz.append(h('section', { class: 'panel cuenta solo-movil' },
+    h('div', { class: 'panel-cab' }, h('h2', {}, 'Tu cuenta')),
+    h('div', { class: 'cuenta-cuerpo' }, panelApariencia(), zonaSesion())));
   return raiz;
 }
 
@@ -758,7 +984,7 @@ async function vistaRegistrar() {
       try { localStorage.setItem('ff:medio', m.id); } catch { /* nada */ }
       botonesMedio.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.id === m.id)));
       actualizarPrevia();
-    } }, h('span', { class: `punto tc-${m.id === 'TC_IBK' ? (idCicloDeMedio(m, usuario) || 'IBK_P') : (COLOR_MEDIO[m.id] || 'HORMIGA')}`, 'aria-hidden': 'true' }), m.etiqueta));
+    } }, h('span', { class: `chip-tc mini tc-${m.id === 'TC_IBK' ? (idCicloDeMedio(m, usuario) || 'IBK_P') : (COLOR_MEDIO[m.id] || 'HORMIGA')}`, 'aria-hidden': 'true' }), m.etiqueta));
 
   const inDesc = h('input', { id: 'descripcion', type: 'text', maxlength: '120', autocomplete: 'off',
     placeholder: 'Ej. Plaza Vea, almuerzo, taxi', value: f.descripcion, enterkeyhint: 'done' });
@@ -802,7 +1028,7 @@ async function vistaRegistrar() {
       : `Va a: ${m.hoja} · sin fecha de pago`;
   }
 
-  const btnGuardar = h('button', { type: 'submit', class: 'boton primario grande' }, 'Guardar');
+  const btnGuardar = h('button', { type: 'submit', class: 'boton primario grande' }, 'Guardar gasto');
 
   const form = h('form', { class: 'formulario', novalidate: true },
     h('label', { class: 'campo-monto-caja', for: 'monto' }, h('span', { class: 'moneda' }, 'S/'), inMonto),
@@ -812,9 +1038,7 @@ async function vistaRegistrar() {
     h('div', { class: 'fila-dos' },
       h('div', { class: 'campo' }, h('label', { for: 'fecha' }, 'Fecha'), inFecha),
       h('div', { class: 'campo' }, h('label', { for: 'nota' }, 'Nota'), inNota)),
-    vistaPrevia,
-    msg,
-    btnGuardar);
+    h('div', { class: 'f-cierre' }, vistaPrevia, msg, btnGuardar));
 
   // Muestra en 'msg' lo que pasó con el envío de un gasto (también tras 'Guardar igual').
   function mostrarResultado(datos, res) {
@@ -894,13 +1118,13 @@ async function vistaRegistrar() {
     } catch {
       msg.className = 'mensaje error';
       msg.replaceChildren('No se pudo guardar en este equipo. Intenta de nuevo.');
-      btnGuardar.disabled = false; btnGuardar.textContent = 'Guardar';
+      btnGuardar.disabled = false; btnGuardar.textContent = 'Guardar gasto';
       return;
     }
     // Ya está en la cola: se puede registrar el siguiente mientras se envía.
     Object.assign(f, { monto: '', descripcion: '', concepto: null, conceptoManual: false, nota: '' });
     inMonto.value = ''; inDesc.value = ''; inNota.value = ''; sugerencia.textContent = ''; pintarConceptos();
-    btnGuardar.disabled = false; btnGuardar.textContent = 'Guardar';
+    btnGuardar.disabled = false; btnGuardar.textContent = 'Guardar gasto';
     const miEnvio = ++ultimoEnvio;
     msg.className = 'mensaje';
     msg.replaceChildren(cola.persistente() ? 'Guardado en este equipo. Enviando al Sheets…' : 'Enviando al Sheets…');
@@ -913,9 +1137,9 @@ async function vistaRegistrar() {
 
   actualizarPrevia();
   pintarConceptos();
-  const raiz = h('div', { class: 'pantalla' },
-    h('header', { class: 'cabecera' }, h('h1', {}, 'Nuevo gasto'),
-      usuario?.nombre ? h('p', { class: 'suave' }, `Queda a nombre de ${usuario.nombre.split(' ')[0]} · automático por tu correo`) : null),
+  const raiz = h('div', { class: 'pantalla registrar' },
+    h('header', { class: 'cabecera' }, h('h1', {}, 'Registrar gasto'),
+      usuario?.nombre ? h('p', { class: 'suave quien' }, avatar(usuario.nombre, 'chico'), `Queda a nombre de ${usuario.nombre.split(' ')[0]}, según tu correo`) : null),
     form);
   requestAnimationFrame(() => { if (!f.monto) inMonto.focus({ preventScroll: true }); });
   return raiz;
@@ -931,11 +1155,14 @@ async function vistaTarjetas() {
   const r = await obtenerTarjetas();
   marcarDatos(r);
   const lista = r.datos.tarjetas || [];
-  const total = lista.filter((t) => t.id !== 'HORMIGA').reduce((s, t) => s + (t.pendiente || 0), 0);
+  const deCredito = lista.filter((t) => t.id !== 'HORMIGA');
+  const total = deCredito.reduce((s, t) => s + (t.pendiente || 0), 0);
+  const conDeuda = deCredito.filter((t) => t.pendiente > 0).length;
   return h('div', { class: 'pantalla' },
-    h('header', { class: 'cabecera' }, h('h1', {}, 'Tarjetas'),
-      h('p', { class: 'suave' }, `${soles(total)} por pagar entre todas`)),
-    lista.length ? h('section', { class: 'tarjeta panel' }, h('div', { class: 'lista-filas' }, lista.map(filaTarjeta)))
+    h('header', { class: 'cabecera-fila' },
+      h('div', { class: 'cabecera' }, h('h1', {}, 'Tarjetas'),
+        h('p', { class: 'suave' }, `${soles(total)} por pagar en ${conDeuda} tarjeta${conDeuda === 1 ? '' : 's'}`))),
+    lista.length ? h('div', { class: 'rejilla-plasticos' }, lista.map((t) => tarjetaVisual(t)))
       : h('p', { class: 'vacio' }, 'No hay tarjetas para mostrar.'));
 }
 
@@ -950,19 +1177,19 @@ async function vistaTarjeta(id) {
   const esHormiga = t.id === 'HORMIGA';
   const enEspera = (c) => estado.filasEnEspera.has(`${t.hoja}#${c.fila}`);
   const marcable = (c) => c.estado !== 'Pagado' && !enEspera(c);
+  const porPagar = (t.estados || []).reduce((s, g) => s + (g.consumos || []).filter((c) => c.estado !== 'Pagado').length, 0);
 
   // En computadora: tarjeta a la izquierda (fija) y consumos a la derecha.
   const col = h('div', { class: 'columna' });
   const raiz = h('div', { class: 'pantalla con-barra detalle' },
     h('aside', { class: 'lateral' }, volver,
-      h('section', { class: 'tarjeta cab-tc' },
-        h('div', { class: 'cab-tc-id' }, chipTC(t.id),
-          h('div', {}, h('h1', {}, NOMBRE_TC[t.id] || t.nombre),
-            h('p', { class: 'suave' }, esHormiga ? 'Yape, Plin y efectivo' : duenioTC(t)))),
-        h('div', { class: 'cab-tc-datos' },
-          h('div', {}, h('p', { class: 'kpi-etq' }, esHormiga ? 'Este mes' : 'Por pagar'),
-            h('p', { class: 'kpi-valor', 'data-contar': String(t.pendiente) }, soles(0))),
-          esHormiga ? null : estadoPill(t.proximoVence, t.pendiente)))), col);
+      h('h1', { class: 'solo-lector' }, NOMBRE_TC[t.id] || t.nombre),
+      tarjetaVisual(t, false),
+      esHormiga ? null : h('section', { class: 'panel resumen-tc' },
+        h('div', { class: 'linea' }, h('span', { class: 'suave' }, 'Próximo vencimiento'), estadoPill(t.proximoVence, t.pendiente)),
+        h('div', { class: 'linea' }, h('span', { class: 'suave' }, 'Consumos por pagar'), h('strong', {}, String(porPagar))),
+        duenioTC(t) ? h('div', { class: 'linea' }, h('span', { class: 'suave' }, 'Titular'),
+          h('span', { class: 'titular' }, avatar(duenioTC(t), 'chico'), duenioTC(t))) : null)), col);
 
   if (estado.mensajeTarjeta) {
     col.append(h('div', { class: 'mensaje ' + (estado.mensajeTarjeta.tipo || '') , role: 'status' }, estado.mensajeTarjeta.texto));
@@ -1148,8 +1375,8 @@ async function vistaPresupuesto() {
         if (cercano.clave !== mes) { estado.mesPres = cercano.clave; return vistaPresupuesto(); }
       }
       return h('div', { class: 'pantalla' },
-        h('header', { class: 'cabecera' }, h('h1', {}, 'Presupuesto')),
-        selectorMes(meses, mes, nombreMesClave(mes)),
+        h('header', { class: 'cabecera-fila' }, h('div', { class: 'cabecera' }, h('h1', {}, 'Presupuesto')),
+          selectorMes(meses, mes, nombreMesClave(mes))),
         h('div', { class: 'vacio' },
           h('p', {}, meses.length ? 'Este mes no está en el presupuesto.' : 'Este mes no está en el presupuesto y no se pudo leer la lista de meses.'),
           meses.length ? null : reintentar));
@@ -1158,8 +1385,8 @@ async function vistaPresupuesto() {
     // guardados y la próxima vez Presupuesto vuelve al mes actual.
     estado.mesPres = null;
     return h('div', { class: 'pantalla' },
-      h('header', { class: 'cabecera' }, h('h1', {}, 'Presupuesto')),
-      selectorMes(meses, mes, nombreMesClave(mes)),
+      h('header', { class: 'cabecera-fila' }, h('div', { class: 'cabecera' }, h('h1', {}, 'Presupuesto')),
+        selectorMes(meses, mes, nombreMesClave(mes))),
       h('div', { class: 'vacio' },
         h('p', {}, e.codigo === 'sin_conexion' ? 'Sin conexión: este mes no está guardado en el equipo.' : (e.message || 'Ocurrió un error.')),
         reintentar));
@@ -1173,24 +1400,52 @@ async function vistaPresupuesto() {
     if (!filas.length && !total) return null;
     const max = Math.max(...filas.map((f) => Math.abs(f.monto || 0)), 1);
     const ordenadas = clave === 'gastos' ? [...filas].sort((a, b) => (b.monto || 0) - (a.monto || 0)) : filas;
-    return h('section', { class: `bloque tarjeta seccion-pres seccion-${clave}` },
-      h('h2', {}, titulo),
+    return h('section', { class: `panel seccion-pres seccion-${clave}` },
+      h('div', { class: 'panel-cab' }, h('h2', {}, titulo), h('strong', { class: 'cifra-cab' }, soles(total))),
       h('ul', { class: 'filas-pres' }, ordenadas.map((f) => h('li', { class: f.monto ? '' : 'cero' },
         h('div', { class: 'fila-pres-top' }, h('span', {}, f.concepto), h('span', {}, soles(f.monto))),
         h('div', { class: 'barra-pres', 'aria-hidden': 'true' }, h('i', { 'data-w': `${Math.round((Math.abs(f.monto || 0) / max) * 100)}%` }))))),
       h('div', { class: 'linea total' }, h('span', {}, totalEtiqueta), h('strong', {}, soles(total))));
   };
+
+  // Cómo se reparte el ingreso: gastos, ahorros y lo que queda libre.
+  const gastos = Math.max(tot.gastos || 0, 0);
+  const ahorros = Math.max(tot.ahorros || 0, 0);
+  const libre = Math.max(tot.saldo || 0, 0);
+  const base = Math.max(tot.ingresos || 0, gastos + ahorros, 1);
+  const partes = [
+    { etiqueta: 'Gastos', valor: gastos, clase: 'd0' },
+    { etiqueta: 'Ahorros', valor: ahorros, clase: 'd2' },
+    { etiqueta: 'Saldo libre', valor: libre, clase: 'd1' },
+  ];
+  const reparto = h('section', { class: 'panel reparto' },
+    h('div', { class: 'reparto-cab' },
+      h('div', {},
+        h('p', { class: 'etq' }, 'Saldo final del mes'),
+        h('p', { class: 'cifra-grande' + (tot.saldo < 0 ? ' negativo' : ''), 'data-contar': String(tot.saldo || 0) }, soles(0)),
+        h('p', { class: 'hero-personal' }, h('span', { class: 'avatares' }, avatar('Pedro'), avatar('Britney')),
+          h('span', {}, h('strong', {}, soles(tot.saldoPersonal)), ' libres para cada uno'))),
+      h('div', { class: 'reparto-ingresos' },
+        h('p', { class: 'etq' }, 'Ingresos del mes'),
+        h('p', { class: 'cifra-media' }, soles(tot.ingresos)))),
+    barraPartes(partes),
+    h('ul', { class: 'reparto-leyenda' }, partes.map((p) => h('li', {},
+      h('i', { class: `punto ${p.clase}`, 'aria-hidden': 'true' }),
+      h('span', {}, p.etiqueta),
+      h('strong', {}, soles(p.valor)),
+      h('span', { class: 'suave' }, `${Math.round((p.valor / base) * 100)}% del ingreso`)))),
+    tot.saldo < 0 ? h('p', { class: 'mensaje error' }, `Los gastos y ahorros superan a los ingresos por ${soles(-tot.saldo)}.`) : null);
+
   return h('div', { class: 'pantalla presupuesto' },
-    h('header', { class: 'cabecera' }, h('h1', {}, 'Presupuesto')),
-    selectorMes(d.meses || meses, d.mes, nombreMesClave(d.mes) || d.etiquetaMes),
-    h('section', { class: 'kpis' },
-      kpi('Saldo / superávit final', tot.saldo, `Saldo personal ${soles(tot.saldoPersonal)} c/u`, null, true),
-      kpi('Ingresos', tot.ingresos),
-      kpi('Gastos', tot.gastos),
-      kpi('Ahorros', tot.ahorros)),
-    seccion('ingresos', 'Ingresos', 'Total ingresos', tot.ingresos),
-    seccion('gastos', 'Gastos', 'Total gastos', tot.gastos),
-    seccion('ahorros', 'Ahorros', 'Total ahorros', tot.ahorros));
+    h('header', { class: 'cabecera-fila' },
+      h('div', { class: 'cabecera' }, h('h1', {}, 'Presupuesto'), h('p', { class: 'suave' }, 'Tal como está en tu Sheets')),
+      selectorMes(d.meses || meses, d.mes, nombreMesClave(d.mes) || d.etiquetaMes)),
+    reparto,
+    h('div', { class: 'rejilla-pres' },
+      h('div', { class: 'col' },
+        seccion('ingresos', 'Ingresos', 'Total ingresos', tot.ingresos),
+        seccion('ahorros', 'Ahorros', 'Total ahorros', tot.ahorros)),
+      seccion('gastos', 'Gastos', 'Total gastos', tot.gastos)));
 }
 
 function cmpMes(a, b) {
@@ -1230,9 +1485,9 @@ async function navegar() {
   estado.tsDatos = null;
   estado.motivoDatos = null;
   marcarNav(ruta);
-  if (!api.configurado()) { vista.replaceChildren(pantallaSinConfig()); return; }
+  if (!api.configurado()) { mostrar(pantallaSinConfig()); return; }
   if (!api.emailGuardado() && !api.tokenVigente() && !leerCache('inicio')) {
-    vista.replaceChildren(pantallaLogin());
+    mostrar(pantallaLogin());
     pintarAvisos();
     return;
   }
@@ -1240,7 +1495,7 @@ async function navegar() {
   let arg;
   if (ruta.startsWith('tarjeta-')) { fn = vistaTarjeta; arg = ruta.slice('tarjeta-'.length); }
   if (!fn) fn = vistaInicio;
-  if (ruta !== 'registrar') vista.replaceChildren(cargando());
+  if (ruta !== 'registrar') mostrar(cargando());
   let nodo;
   try {
     nodo = await fn(arg);
@@ -1248,7 +1503,7 @@ async function navegar() {
     nodo = vistaError(e);
   }
   if (id !== estado.navId) return;
-  vista.replaceChildren(nodo);
+  mostrar(nodo);
   animarVista(vista);
   vista.classList.remove('entrada');
   void vista.offsetWidth;
@@ -1267,18 +1522,26 @@ async function navegar() {
 function construirNav() {
   const enlace = (ruta, texto, clase = '') => h('a', { href: `#${ruta}`, 'data-ruta': ruta, class: clase },
     icono(ruta === 'registrar' ? 'mas' : ruta), h('span', { class: clase ? 'texto-central' : '' }, texto));
+  const nombre = (usuarioActual()?.nombre || '').split(' ')[0];
   document.getElementById('nav').replaceChildren(
     h('div', { class: 'nav-marca' }, h('img', { src: 'iconos/icono.svg', alt: '' }),
       h('div', {}, h('strong', {}, 'FinFamily'), h('span', {}, 'Finanzas del hogar'))),
     enlace('inicio', 'Inicio'),
     enlace('tarjetas', 'Tarjetas'),
     enlace('registrar', 'Registrar gasto', 'central'),
-    enlace('presupuesto', 'Presupuesto'));
+    enlace('presupuesto', 'Presupuesto'),
+    h('div', { class: 'nav-pie' },
+      h('p', { class: 'nav-pie-titulo' }, 'Apariencia'),
+      panelApariencia(),
+      h('div', { class: 'nav-usuario' }, nombre ? avatar(nombre) : null,
+        h('div', {}, nombre ? h('strong', {}, nombre) : null, zonaSesion()))));
+  marcarNav(location.hash.slice(1) || 'inicio');
 }
 
 // ---------- Arranque ----------
 
 async function arrancar() {
+  aplicarApariencia();
   construirNav();
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
@@ -1297,7 +1560,8 @@ async function arrancar() {
       if (!conectado || !desdeBoton) return;
       estado.pideLogin = false;
       await procesarCola();
-      navegar();
+      await navegar();
+      construirNav();
     });
   }
   await refrescarCola();
