@@ -154,6 +154,8 @@ strong { font-weight: 650; font-variant-numeric: tabular-nums; }
   padding: 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; box-shadow: var(--sombra);
 }
 .kpi.destacado { grid-column: 1 / -1; }
+/* En celular, si el último indicador queda solo en su fila, ocupa todo el ancho. */
+.kpis > .kpi.destacado ~ .kpi:last-child:nth-child(even) { grid-column: 1 / -1; }
 .kpi-etq { color: var(--texto-suave); font-size: 0.8rem; font-weight: 550; }
 .kpi-valor { font-size: 1.3rem; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .kpi.destacado .kpi-valor { font-size: 2rem; }
@@ -541,12 +543,12 @@ legend, .campo label { font-size: 0.8rem; color: var(--texto-suave); font-weight
   h1 { font-size: 1.6rem; }
 
   .kpis { grid-template-columns: 1.4fr repeat(3, minmax(0, 1fr)); }
-  .kpi.destacado { grid-column: auto; }
+  .kpi.destacado, .kpis > .kpi.destacado ~ .kpi:last-child:nth-child(even) { grid-column: auto; }
   .kpi { padding: 16px 18px; }
   .kpi.destacado .kpi-valor { font-size: 1.9rem; }
 
   .rejilla-2 { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; align-items: start; }
-  .fila-tc { grid-template-columns: auto minmax(0, 1fr) 150px 120px auto; grid-template-areas: 'chip nombre estado monto flecha'; padding: 12px 18px; }
+  .fila-tc { grid-template-columns: auto minmax(0, 1fr) auto minmax(96px, auto) auto; grid-template-areas: 'chip nombre estado monto flecha'; padding: 12px 18px; }
 
   .pantalla.detalle { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 24px; align-items: start; }
   .detalle .lateral { position: sticky; top: 24px; }
