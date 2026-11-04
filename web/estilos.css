@@ -306,6 +306,8 @@ strong { font-weight: 700; }
 .aviso-revisar { display: block; border-color: var(--accion); font-weight: 600; }
 .aviso-sesion { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
 body.sin-sesion .aviso-sesion { display: none; }
+/* En la pantalla de ingreso los avisos flotan encima: no ocupan alto ni generan scroll. */
+body.sin-sesion .avisos { position: fixed; top: 0; left: 0; right: 0; }
 
 .avisos-inicio { display: flex; flex-direction: column; gap: 8px; }
 .aviso-fila {
