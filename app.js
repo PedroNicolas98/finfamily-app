@@ -554,7 +554,7 @@ async function vistaInicio() {
   marcarDatos(r);
   const d = r.datos;
   const p = d.presupuesto;
-  const raiz = h('div', { class: 'pantalla' });
+  const raiz = h('div', { class: 'pantalla inicio' });
   const nombre = d.usuario?.nombre || '';
   const hoy = new Date();
   const fechaHoy = hoy.toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -585,7 +585,7 @@ async function vistaInicio() {
 
   const alertas = d.alertas || [];
   if (alertas.length) {
-    raiz.append(h('section', { class: 'bloque' }, h('h2', {}, 'Para revisar'),
+    raiz.append(h('section', { class: 'bloque bloque-alertas' }, h('h2', {}, 'Para revisar'),
       h('ul', { class: 'lista' }, alertas.map((a) => {
         const dias = diasEntre(hoyISO(), a.vence);
         const texto = a.tipo === 'vencida'
@@ -603,7 +603,7 @@ async function vistaInicio() {
   const hormiga = (d.tarjetas || []).find((t) => t.id === 'HORMIGA');
   const ordenadas = [...tarjetas].sort((a, b) => (b.pendiente > 0) - (a.pendiente > 0)
     || String(a.proximoVence || '9').localeCompare(String(b.proximoVence || '9')));
-  raiz.append(h('section', { class: 'bloque' },
+  raiz.append(h('section', { class: 'bloque bloque-tarjetas' },
     h('div', { class: 'bloque-cab' },
       h('div', {}, h('h2', {}, 'Tus tarjetas'), h('p', { class: 'suave' }, `${soles(d.totalPorPagar)} por pagar en total`)),
       h('a', { href: '#tarjetas' }, 'Ver todas')),
@@ -770,7 +770,7 @@ async function vistaRegistrar() {
     h('label', { class: 'campo-monto-caja', for: 'monto' }, h('span', { class: 'moneda' }, 'S/'), inMonto),
     h('fieldset', {}, h('legend', {}, 'Medio de pago'), h('div', { class: 'opciones' }, botonesMedio)),
     h('div', { class: 'campo' }, h('label', { for: 'descripcion' }, 'Descripción'), inDesc, sugerencia),
-    h('fieldset', {}, h('legend', {}, 'Concepto'), h('div', { class: 'opciones chicas' }, botonesConcepto)),
+    h('fieldset', { class: 'f-conceptos' }, h('legend', {}, 'Concepto'), h('div', { class: 'opciones chicas' }, botonesConcepto)),
     h('div', { class: 'fila-dos' },
       h('div', { class: 'campo' }, h('label', { for: 'fecha' }, 'Fecha'), inFecha),
       h('div', { class: 'campo' }, h('label', { for: 'nota' }, 'Nota'), inNota)),
@@ -913,10 +913,13 @@ async function vistaTarjeta(id) {
   const enEspera = (c) => estado.filasEnEspera.has(`${t.hoja}#${c.fila}`);
   const marcable = (c) => c.estado !== 'Pagado' && !enEspera(c);
 
-  const raiz = h('div', { class: 'pantalla con-barra' }, volver, tarjetaVisual(t, false));
+  // En computadora: tarjeta a la izquierda (fija) y consumos a la derecha.
+  const col = h('div', { class: 'columna' });
+  const raiz = h('div', { class: 'pantalla con-barra detalle' },
+    h('aside', { class: 'lateral' }, volver, tarjetaVisual(t, false)), col);
 
   if (estado.mensajeTarjeta) {
-    raiz.append(h('div', { class: 'mensaje ' + (estado.mensajeTarjeta.tipo || '') , role: 'status' }, estado.mensajeTarjeta.texto));
+    col.append(h('div', { class: 'mensaje ' + (estado.mensajeTarjeta.tipo || '') , role: 'status' }, estado.mensajeTarjeta.texto));
     estado.mensajeTarjeta = null;
   }
 
@@ -937,7 +940,7 @@ async function vistaTarjeta(id) {
 
   const grupos = t.estados || [];
   if (!grupos.length || grupos.every((g) => !(g.consumos || []).length)) {
-    raiz.append(h('p', { class: 'vacio' }, esHormiga ? 'Sin gastos hormiga este mes.' : 'No hay consumos pendientes.'));
+    col.append(h('p', { class: 'vacio' }, esHormiga ? 'Sin gastos hormiga este mes.' : 'No hay consumos pendientes.'));
   }
 
   for (const g of grupos) {
@@ -959,7 +962,7 @@ async function vistaTarjeta(id) {
       : dias < 0 ? h('span', { class: 'estado-pill vencido' }, `Vencido hace ${-dias} día${dias === -1 ? '' : 's'}`)
         : dias <= 7 ? h('span', { class: 'estado-pill pronto' }, dias === 0 ? 'Vence hoy' : `Vence en ${dias} día${dias === 1 ? '' : 's'}`)
           : h('span', { class: 'estado-pill al-dia' }, `Faltan ${dias} días`);
-    raiz.append(h('section', { class: 'bloque grupo' + (dias != null && dias < 0 && pendientes.length ? ' vencido' : '') },
+    col.append(h('section', { class: 'bloque grupo' + (dias != null && dias < 0 && pendientes.length ? ' vencido' : '') },
       h('div', { class: 'grupo-cabecera' },
         h('div', {}, pill, h('h2', {}, titulo),
           !esHormiga && g.pago ? h('p', { class: 'suave' }, `Fecha de pago ${fechaLarga(g.pago)}`) : null),
@@ -1130,7 +1133,7 @@ async function vistaPresupuesto() {
         h('div', { class: 'barra-pres', 'aria-hidden': 'true' }, h('i', { 'data-w': `${Math.round((Math.abs(f.monto || 0) / max) * 100)}%` }))))),
       h('div', { class: 'linea total' }, h('span', {}, totalEtiqueta), h('strong', {}, soles(total))));
   };
-  return h('div', { class: 'pantalla' },
+  return h('div', { class: 'pantalla presupuesto' },
     h('header', { class: 'cabecera' }, h('h1', {}, 'Presupuesto')),
     selectorMes(d.meses || meses, d.mes, nombreMesClave(d.mes) || d.etiquetaMes),
     h('section', { class: 'hero' },
@@ -1218,7 +1221,7 @@ async function navegar() {
 
 function construirNav() {
   const enlace = (ruta, texto, clase = '') => h('a', { href: `#${ruta}`, 'data-ruta': ruta, class: clase },
-    icono(ruta === 'registrar' ? 'mas' : ruta), h('span', { class: clase ? 'solo-lector' : '' }, texto));
+    icono(ruta === 'registrar' ? 'mas' : ruta), h('span', { class: clase ? 'texto-central' : '' }, texto));
   document.getElementById('nav').replaceChildren(
     enlace('inicio', 'Inicio'),
     enlace('tarjetas', 'Tarjetas'),
