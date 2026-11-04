@@ -33,6 +33,7 @@ const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', '
 const ABREV = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
 const ICONOS = {
+  candado: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9.5" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
   sol: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
   luna: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>',
@@ -699,22 +700,76 @@ function confirmarEnLinea(zona, texto, etiquetaSi, alConfirmar) {
   si.focus();
 }
 
+// Logo dibujado con el color de la app (cambia con la apariencia elegida).
+function logoMarca(clase = '') {
+  return svg('svg', { class: `logo-marca ${clase}`.trim(), viewBox: '0 0 512 512', 'aria-hidden': 'true' },
+    svg('defs', {}, svg('linearGradient', { id: 'lm-degradado', x1: 0, y1: 0, x2: 1, y2: 1 },
+      svg('stop', { offset: '0', class: 'lm-g1' }), svg('stop', { offset: '1', class: 'lm-g2' }))),
+    svg('rect', { class: 'lm-fondo', width: 512, height: 512, rx: 116 }),
+    svg('path', { class: 'lm-techo', d: 'M116 238 256 126l140 112' }),
+    svg('rect', { class: 'lm-b lm-b1', x: 160, y: 312, width: 46, height: 76, rx: 14 }),
+    svg('rect', { class: 'lm-b lm-b2', x: 233, y: 274, width: 46, height: 114, rx: 14 }),
+    svg('rect', { class: 'lm-b lm-b3', x: 306, y: 240, width: 46, height: 148, rx: 14 }));
+}
+
 function pantallaLogin(mensaje) {
   const boton = h('div', { class: 'boton-google' });
   const punto = (ico, texto) => h('li', {}, icono(ico), h('span', {}, texto));
+  const titulo = h('h1', {});
+  'Las cuentas de la casa, claras para los dos.'.split(' ').forEach((palabra, i) => {
+    titulo.append(h('span', { class: 'palabra', style: `--i: ${i}` }, palabra), ' ');
+  });
+
+  // Vista de ejemplo de la app (montos inventados, solo decorativa).
+  const escena = h('div', { class: 'login-escena', 'aria-hidden': 'true' },
+    h('div', { class: 'esc-pieza esc-saldo' },
+      h('span', { class: 'esc-etq' }, 'Saldo del mes', h('em', {}, 'Ejemplo')),
+      h('strong', {}, 'S/ 1,250.00'),
+      h('span', { class: 'esc-barra' }, h('i')),
+      h('span', { class: 'esc-pie' }, '64% del ingreso comprometido')),
+    h('div', { class: 'esc-pieza esc-tarjeta' },
+      h('span', { class: 'esc-t-top' }, h('b', {}, 'Tarjeta'), h('i', { class: 'plastico-chip' })),
+      h('span', { class: 'esc-t-monto' }, h('small', {}, 'Por pagar'), h('strong', {}, 'S/ 480.00')),
+      h('span', { class: 'esc-t-pie' }, 'Vence el 20')),
+    h('div', { class: 'esc-pieza esc-chip' },
+      catIco('Supermercado'),
+      h('span', {}, h('b', {}, 'Supermercado'), h('small', {}, 'Hoy, con tarjeta')),
+      h('strong', {}, 'S/ 86.40')));
+
+  const marca = h('div', { class: 'login-marca' },
+    h('div', { class: 'hero-fondo', 'aria-hidden': 'true' }, h('i'), h('i'), h('i')),
+    h('div', { class: 'login-logo' }, logoMarca(), h('strong', {}, 'FinFamily')),
+    titulo,
+    h('ul', { class: 'login-puntos' },
+      punto('mas', 'Registra un gasto en segundos, desde el celular o la computadora.'),
+      punto('tarjetas', 'Mira cuánto debes en cada tarjeta y cuándo vence.'),
+      punto('presupuesto', 'Sigue el presupuesto del mes, igual que en tu Sheets.')),
+    escena);
+
+  // La luz y la vista de ejemplo siguen al cursor.
+  if (matchMedia('(hover: hover) and (pointer: fine)').matches && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    marca.addEventListener('pointermove', (ev) => {
+      const r = marca.getBoundingClientRect();
+      marca.style.setProperty('--mx', `${Math.round(ev.clientX - r.left)}px`);
+      marca.style.setProperty('--my', `${Math.round(ev.clientY - r.top)}px`);
+      marca.style.setProperty('--px', ((ev.clientX - r.left) / r.width - 0.5).toFixed(3));
+      marca.style.setProperty('--py', ((ev.clientY - r.top) / r.height - 0.5).toFixed(3));
+    });
+    marca.addEventListener('pointerleave', () => { marca.style.removeProperty('--px'); marca.style.removeProperty('--py'); });
+  }
+
+  const cerrada = mensaje === 'Sesión cerrada.';
   const raiz = h('div', { class: 'pantalla login partida' },
-    h('div', { class: 'login-marca' },
-      h('div', { class: 'login-logo' }, h('img', { src: 'iconos/icono.svg', alt: '', width: '44', height: '44' }), h('strong', {}, 'FinFamily')),
-      h('h1', {}, 'Las cuentas de la casa, claras para los dos.'),
-      h('ul', { class: 'login-puntos' },
-        punto('mas', 'Registra un gasto en segundos, desde el celular o la computadora.'),
-        punto('tarjetas', 'Mira cuánto debes en cada tarjeta y cuándo vence.'),
-        punto('presupuesto', 'Sigue el presupuesto del mes, igual que en tu Sheets.'))),
-    h('div', { class: 'login-caja' },
-      h('h2', {}, 'Entrar'),
-      h('p', { class: 'suave' }, mensaje || 'Usa tu cuenta de Google. Solo entran las cuentas de la familia.'),
-      boton,
-      h('button', { type: 'button', class: 'boton enlace', onclick: () => navegar() }, 'Volver a intentar')));
+    marca,
+    h('div', { class: 'login-lado' },
+      h('div', { class: 'login-caja' },
+        cerrada ? h('span', { class: 'pill ok' }, 'Sesión cerrada') : null,
+        h('h2', {}, cerrada ? 'Hasta pronto' : 'Hola de nuevo'),
+        h('p', { class: 'suave' }, 'Entra con tu cuenta de Google para ver las cuentas de la casa.'),
+        mensaje && !cerrada ? h('p', { class: 'mensaje error' }, mensaje) : null,
+        boton,
+        h('p', { class: 'login-nota' }, icono('candado'), 'Acceso privado: solo entran las cuentas de la familia.'),
+        h('button', { type: 'button', class: 'boton enlace', onclick: () => navegar() }, '¿No aparece el botón? Volver a intentar'))));
   api.renderBoton(boton).then((ok) => {
     if (!ok) boton.replaceChildren(h('p', { class: 'suave' }, 'No se pudo cargar el inicio de sesión de Google. Revisa tu conexión.'));
   });
@@ -1582,7 +1637,7 @@ function construirNav() {
     icono(ruta === 'registrar' ? 'mas' : ruta), h('span', { class: clase ? 'texto-central' : '' }, texto));
   const nombre = (usuarioActual()?.nombre || '').split(' ')[0];
   document.getElementById('nav').replaceChildren(
-    h('div', { class: 'nav-marca' }, h('img', { src: 'iconos/icono.svg', alt: '' }),
+    h('div', { class: 'nav-marca' }, logoMarca(),
       h('div', {}, h('strong', {}, 'FinFamily'), h('span', {}, 'Finanzas del hogar'))),
     enlace('inicio', 'Inicio'),
     enlace('tarjetas', 'Tarjetas'),
