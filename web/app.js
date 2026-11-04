@@ -577,7 +577,13 @@ async function vistaInicio() {
       h('div', { class: 'hero-pie' },
         h('div', { class: 'hero-dato' }, icono('sube'), h('div', {}, h('span', {}, 'Ingresos'), h('strong', {}, soles(p.ingresos)))),
         h('div', { class: 'hero-dato' }, icono('baja'), h('div', {}, h('span', {}, 'Gastos'), h('strong', {}, soles(p.gastos))))),
-      h('span', { class: 'hero-personal' }, `Saldo personal: ${soles(p.saldoPersonal)} c/u`)));
+      h('div', { class: 'hero-pastillas' },
+        h('span', { class: 'hero-personal' }, `Saldo personal: ${soles(p.saldoPersonal)} c/u`),
+        (() => {
+          const ultimo = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
+          const dia = hoy.getDate();
+          return h('span', { class: 'hero-dia' }, `Día ${dia} de ${ultimo} · quedan ${ultimo - dia} días`);
+        })())));
   } else {
     raiz.append(h('section', { class: 'tarjeta' },
       h('p', { class: 'suave' }, `${d.etiquetaMes || 'Este mes'} todavía no está en el presupuesto.`)));
@@ -607,6 +613,13 @@ async function vistaInicio() {
     h('div', { class: 'bloque-cab' },
       h('div', {}, h('h2', {}, 'Tus tarjetas'), h('p', { class: 'suave' }, `${soles(d.totalPorPagar)} por pagar en total`)),
       h('a', { href: '#tarjetas' }, 'Ver todas')),
+    ordenadas.some((t) => t.pendiente > 0)
+      ? h('div', { class: 'reparto', role: 'img', 'aria-label': 'Reparto de la deuda por tarjeta' },
+        ordenadas.filter((t) => t.pendiente > 0).map((t) => h('i', {
+          class: `tc-${t.id}`, style: `flex:${t.pendiente}`,
+          title: `${NOMBRE_TC[t.id] || t.nombre}${DUENIO_TC[t.id] ? ' · ' + DUENIO_TC[t.id] : ''}: ${soles(t.pendiente)}`,
+        })))
+      : null,
     h('div', { class: 'carrusel' }, ordenadas.map((t) => tarjetaVisual(t)), hormiga ? tarjetaVisual(hormiga) : null)));
 
   raiz.append(h('a', { class: 'cta-registrar', href: '#registrar' },
@@ -948,7 +961,7 @@ async function vistaTarjeta(id) {
     if (!consumos.length) continue;
     todos.push(...consumos);
     const pendientes = consumos.filter(marcable);
-    const titulo = esHormiga ? nombreMesClave(mesActual()) : g.vence ? `Vence ${fechaLarga(g.vence)}` : 'Sin fecha de vencimiento';
+    const titulo = esHormiga ? nombreMesClave(mesActual()) : g.vence ? `Vence ${fechaCorta(g.vence)}` : 'Sin fecha de vencimiento';
     const zona = h('div', { class: 'acciones' });
     if (pendientes.length && !esHormiga) {
       const totalPend = pendientes.reduce((s, c) => s + c.monto, 0);
@@ -965,7 +978,8 @@ async function vistaTarjeta(id) {
     col.append(h('section', { class: 'bloque grupo' + (dias != null && dias < 0 && pendientes.length ? ' vencido' : '') },
       h('div', { class: 'grupo-cabecera' },
         h('div', {}, pill, h('h2', {}, titulo),
-          !esHormiga && g.pago ? h('p', { class: 'suave' }, `Fecha de pago ${fechaLarga(g.pago)}`) : null),
+          h('p', { class: 'suave' }, [!esHormiga && g.pago ? `Pago ${fechaCorta(g.pago)}` : null,
+            `${consumos.length} consumo${consumos.length === 1 ? '' : 's'}`].filter(Boolean).join(' · '))),
         h('div', { class: 'derecha' }, h('strong', { class: 'monto-medio' }, soles(esHormiga ? g.total : g.pendiente)),
           !esHormiga && g.total !== g.pendiente ? h('p', { class: 'suave' }, `de ${soles(g.total)}`) : null)),
       h('ul', { class: 'lista consumos' }, consumos.map((c) => {
@@ -1223,6 +1237,8 @@ function construirNav() {
   const enlace = (ruta, texto, clase = '') => h('a', { href: `#${ruta}`, 'data-ruta': ruta, class: clase },
     icono(ruta === 'registrar' ? 'mas' : ruta), h('span', { class: clase ? 'texto-central' : '' }, texto));
   document.getElementById('nav').replaceChildren(
+    h('div', { class: 'nav-marca' }, h('img', { src: 'iconos/icono.svg', alt: '' }),
+      h('div', {}, h('strong', {}, 'FinFamily'), h('span', {}, 'Finanzas del hogar'))),
     enlace('inicio', 'Inicio'),
     enlace('tarjetas', 'Tarjetas'),
     enlace('registrar', 'Registrar gasto', 'central'),

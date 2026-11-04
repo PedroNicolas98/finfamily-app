@@ -276,12 +276,17 @@ a.tc:active { transform: scale(0.98); }
 .tc-pastilla.vencida { background: #fff; color: #B3261E; }
 .tc-pastilla.pronto { background: #FFE6A6; color: #6B4A00; }
 
-.tc-SIP { --c1: #FF6B57; --c2: #C2303C; }
-.tc-IBK_P { --c1: #1BB27A; --c2: #0A6B53; }
-.tc-IBK_B { --c1: #22B5A3; --c2: #0E6E73; }
-.tc-BCP { --c1: #3577C2; --c2: #1A3F72; }
-.tc-RIPLEY { --c1: #C7A43A; --c2: #6E5A1C; }
-.tc-HORMIGA { --c1: #F59E0B; --c2: #B4530C; }
+.tc-SIP { --c1: #EE6A5B; --c2: #A8303D; }
+.tc-IBK_P { --c1: #1A9E74; --c2: #0A5747; }
+.tc-IBK_B { --c1: #22A497; --c2: #0E5F68; }
+.tc-BCP { --c1: #3470B4; --c2: #183766; }
+.tc-RIPLEY { --c1: #B59434; --c2: #5E4C19; }
+.tc-HORMIGA { --c1: #E1912B; --c2: #9C4A12; }
+/* Textura sutil de tarjeta */
+.tc::after {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: repeating-linear-gradient(115deg, rgba(255, 255, 255, 0.035) 0 2px, transparent 2px 14px);
+}
 
 /* Carrusel en Inicio */
 .carrusel {
@@ -498,7 +503,15 @@ a.tarjeta.fila-tarjeta, .fila-tarjeta { display: flex; justify-content: space-be
 .consumo input[type="checkbox"]:disabled { opacity: 0.35; }
 .consumo-texto { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 1px; }
 .consumo-texto span:first-child { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.consumo-texto .suave { font-size: 0.8rem; }
+.consumo-texto .suave { font-size: 0.78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.consumo .derecha strong { font-size: 0.95rem; }
+@media (max-width: 480px) {
+  .consumo { gap: 10px; padding: 9px 0; min-height: 58px; }
+  .consumo .cat-ico { width: 36px; height: 36px; border-radius: 11px; }
+  .consumo .cat-ico svg { width: 18px; height: 18px; }
+  .consumo input[type="checkbox"] { width: 22px; height: 22px; }
+  .grupo { padding: 14px; }
+}
 .etiqueta-estado { font-size: 0.72rem; font-weight: 700; color: var(--texto-suave); background: var(--superficie-2); border-radius: 999px; padding: 1px 8px; }
 
 .con-barra { padding-bottom: 104px; }
@@ -604,6 +617,26 @@ a.tarjeta.fila-tarjeta, .fila-tarjeta { display: flex; justify-content: space-be
 .icono { display: inline-grid; place-items: center; width: 24px; height: 24px; }
 .icono svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
+/* Marca en el menú lateral (solo computadora) */
+.nav-marca { display: none; align-items: center; gap: 12px; padding: 0 10px 22px; }
+.nav-marca img { width: 38px; height: 38px; border-radius: 11px; }
+.nav-marca strong { display: block; font-size: 1.1rem; font-weight: 800; letter-spacing: -0.01em; color: var(--texto); }
+.nav-marca span { display: block; font-size: 0.76rem; color: var(--texto-suave); font-weight: 600; }
+
+/* Reparto de la deuda por tarjeta */
+.reparto { display: flex; gap: 3px; height: 10px; border-radius: 99px; overflow: hidden; }
+.reparto i { display: block; min-width: 6px; background: linear-gradient(90deg, var(--c1), var(--c2)); }
+
+/* Pastillas bajo el saldo */
+.hero-pastillas { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; position: relative; z-index: 1; }
+.hero-pastillas .hero-personal { margin-top: 0; }
+.hero-dia {
+  display: inline-flex; align-items: center; border-radius: 99px; padding: 5px 10px;
+  font-size: 0.8rem; font-weight: 700; color: rgba(255, 255, 255, 0.85); background: rgba(255, 255, 255, 0.12);
+}
+.hero-dato .icono { color: #fff; }
+.hero-dato .icono svg { stroke-width: 2.2; }
+
 /* Detalle de tarjeta: dos bloques que en celular van uno debajo del otro */
 .detalle .lateral, .detalle .columna { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 
@@ -622,12 +655,7 @@ a.tarjeta.fila-tarjeta, .fila-tarjeta { display: flex; justify-content: space-be
     grid-template-columns: 1fr; grid-auto-rows: min-content; align-content: start;
     gap: 6px; padding: 28px 16px;
   }
-  .barra-nav::before {
-    order: -2;
-    content: 'FinFamily'; font-weight: 800; font-size: 1.2rem; letter-spacing: -0.01em;
-    padding: 0 12px 18px 52px; min-height: 36px; display: flex; align-items: center;
-    background: url('iconos/icono.svg') left 12px top 0 / 34px 34px no-repeat;
-  }
+  .barra-nav .nav-marca { display: flex; order: -2; }
   .barra-nav a {
     flex-direction: row; justify-content: flex-start; gap: 12px;
     padding: 12px 14px; border-radius: 14px; font-size: 0.95rem;
@@ -653,7 +681,7 @@ a.tarjeta.fila-tarjeta, .fila-tarjeta { display: flex; justify-content: space-be
   /* Inicio en dos columnas */
   .pantalla.inicio { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; }
   .inicio > .barra-sup, .inicio > .saludo, .inicio > .bloque-tarjetas, .inicio > .pie, .inicio > .revisar, .inicio > #por-revisar { grid-column: 1 / -1; }
-  .inicio > .barra-sup .marca { visibility: hidden; }
+  .inicio > .barra-sup { display: none; }
   .inicio > .hero { grid-column: 1; }
   .inicio:not(:has(.bloque-alertas)) > .hero { grid-column: 1 / -1; }
   .inicio > .bloque-alertas { grid-column: 2; }
