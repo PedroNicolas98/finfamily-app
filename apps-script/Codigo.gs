@@ -40,6 +40,16 @@ var MENSAJES = {
 // Ese proyecto ya tiene su doGet (el dashboard, solo para el dueño), así que aquí
 // solo se define doPost, que es lo que usa la app del celular.
 
+/**
+ * Ejecutar una vez desde el editor (botón Ejecutar) para que Google pida el permiso
+ * "Conectarse a un servicio externo", que se usa para verificar el inicio de sesión.
+ * No lee ni escribe el Sheets.
+ */
+function finfamilyAutorizar() {
+  var r = UrlFetchApp.fetch('https://oauth2.googleapis.com/tokeninfo?id_token=prueba', { muteHttpExceptions: true });
+  console.log('FinFamily: verificación de sesiones disponible (respuesta ' + r.getResponseCode() + ').');
+}
+
 function doPost(e) {
   try {
     var cuerpo = leerCuerpo_(e);
