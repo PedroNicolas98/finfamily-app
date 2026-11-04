@@ -2,10 +2,11 @@
 import { API_URL, CLIENT_ID } from './config.js';
 
 const CLAVE_EMAIL = 'ff:email';
+const CLAVE_TOKEN = 'ff:token';
 const URL_GIS = 'https://accounts.google.com/gsi/client';
 const LIMITE_ENVIO_MS = 15000;
 
-// El token solo vive en memoria; el email se recuerda para el inicio automático.
+// El token se guarda mientras esté vigente; el email se recuerda para el inicio automático.
 let token = null;
 let expira = 0;
 let emailToken = ''; // email del token que está en memoria (sale del JWT)
@@ -61,7 +62,19 @@ export function fijarToken(t) {
   expira = (Number(datos.exp) || 0) * 1000;
   emailToken = normalizarEmail(datos.email);
   if (emailToken) guardarEmail(emailToken);
+  // Se guarda mientras siga vigente (máx. 1 hora) para no pedir sesión en cada recarga.
+  try { localStorage.setItem(CLAVE_TOKEN, t); } catch { /* sin almacenamiento */ }
   return datos;
+}
+
+// Recupera el token guardado si todavía no venció.
+function restaurarToken() {
+  try {
+    const t = localStorage.getItem(CLAVE_TOKEN);
+    const datos = t && decodificarJwt(t);
+    if (datos && Date.now() < (Number(datos.exp) || 0) * 1000 - 60 * 1000) fijarToken(t);
+    else localStorage.removeItem(CLAVE_TOKEN);
+  } catch { /* nada */ }
 }
 
 export function tokenVigente() {
@@ -72,7 +85,7 @@ export function cerrarSesion() {
   token = null;
   expira = 0;
   emailToken = '';
-  try { localStorage.removeItem(CLAVE_EMAIL); } catch { /* nada */ }
+  try { localStorage.removeItem(CLAVE_EMAIL); localStorage.removeItem(CLAVE_TOKEN); } catch { /* nada */ }
   try { window.google?.accounts?.id?.disableAutoSelect(); } catch { /* nada */ }
 }
 
@@ -141,6 +154,8 @@ export function iniciarGoogle(callbackCambio) {
   gisPromesa = promesa;
   return promesa;
 }
+
+if (typeof window !== 'undefined') restaurarToken();
 
 // Al volver la señal, intenta otra vez cargar Google si no había cargado.
 if (typeof window !== 'undefined') {
