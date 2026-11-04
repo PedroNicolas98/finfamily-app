@@ -112,7 +112,8 @@ strong { font-weight: 700; font-variant-numeric: tabular-nums; }
 }
 
 .cabecera { padding-top: 6px; display: flex; flex-direction: column; gap: 4px; }
-.sobretitulo { color: var(--texto-suave); font-size: 0.88rem; font-weight: 600; text-transform: capitalize; }
+.sobretitulo { color: var(--texto-suave); font-size: 0.88rem; font-weight: 600; }
+.sobretitulo::first-letter { text-transform: uppercase; }
 
 /* Barra superior de Inicio */
 .barra-sup { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 4px; }
@@ -265,9 +266,9 @@ a.tc:active { transform: scale(0.98); }
 .tc-nombre { font-weight: 800; font-size: 1.05rem; letter-spacing: -0.01em; }
 .tc-duenio { font-size: 0.78rem; opacity: 0.82; font-weight: 600; }
 .tc-chip { width: 34px; height: 25px; border-radius: 6px; background: linear-gradient(135deg, #F7DE8E, #C9A145); opacity: 0.92; flex-shrink: 0; }
-.tc-monto { font-size: 1.7rem; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.tc-monto { font-size: 1.7rem; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.1; white-space: nowrap; }
 .tc-etq { font-size: 0.74rem; opacity: 0.8; font-weight: 600; }
-.tc-abajo { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; }
+.tc-abajo { display: flex; justify-content: space-between; align-items: flex-end; gap: 8px 10px; flex-wrap: wrap; }
 .tc-pastilla {
   font-size: 0.74rem; font-weight: 700; border-radius: 99px; padding: 4px 10px;
   background: rgba(255, 255, 255, 0.2); white-space: nowrap;
@@ -284,7 +285,7 @@ a.tc:active { transform: scale(0.98); }
 
 /* Carrusel en Inicio */
 .carrusel {
-  display: grid; grid-auto-flow: column; grid-auto-columns: 74%;
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(230px, 74%);
   gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory;
   margin: 0 -16px; padding: 4px 16px 14px;
   scrollbar-width: none;
@@ -597,7 +598,7 @@ a.tarjeta.fila-tarjeta, .fila-tarjeta { display: flex; justify-content: space-be
 
 @media (min-width: 640px) {
   .barra-nav { left: 50%; transform: translateX(-50%); max-width: 560px; border: 1px solid var(--borde); border-bottom: none; border-radius: 22px 22px 0 0; }
-  .carrusel { grid-auto-columns: 46%; }
+  .carrusel { grid-auto-columns: minmax(240px, 48%); }
 }
 
 .icono { display: inline-grid; place-items: center; width: 24px; height: 24px; }
