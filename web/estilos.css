@@ -714,22 +714,25 @@ legend + * { clear: both; }
 .lm-b1 { fill-opacity: 0.82; }
 .lm-b3 { fill: var(--vivo); }
 
-.login.partida { max-width: none; padding: 0; gap: 0; align-items: stretch; text-align: left; min-height: 100dvh; }
-
-/* Lado de la marca: color en movimiento, luz que sigue al cursor y vista de ejemplo flotando */
-.login-marca {
+/* Toda la pantalla es el fondo de color en movimiento; el ingreso es una hoja que flota encima. */
+.login.partida {
+  max-width: none; padding: 0; gap: 0; align-items: stretch; text-align: left; min-height: 100dvh;
   position: relative; overflow: hidden; isolation: isolate; color: #FFFFFF;
   background: linear-gradient(135deg, color-mix(in srgb, var(--marca) 86%, white) 0%, var(--marca) 42%, var(--marca-2) 100%);
-  padding: calc(28px + env(safe-area-inset-top)) 24px 34px;
-  display: flex; flex-direction: column; gap: 20px;
 }
-.login-marca::after {
+.login.partida::after {
   content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
-  background: radial-gradient(460px circle at var(--mx, 30%) var(--my, 20%), rgba(255, 255, 255, 0.16), transparent 62%);
+  background: radial-gradient(520px circle at var(--mx, 30%) var(--my, 20%), rgba(255, 255, 255, 0.17), transparent 62%);
 }
-.login-marca .hero-fondo i:nth-child(1) { width: 460px; height: 460px; right: -140px; top: -200px; opacity: 0.4; }
-.login-marca .hero-fondo i:nth-child(2) { width: 420px; height: 420px; left: 30%; bottom: -260px; }
-.login-marca .hero-fondo i:nth-child(3) { width: 320px; height: 320px; left: -140px; bottom: -120px; top: auto; opacity: 0.12; }
+.login.partida > .hero-fondo i:nth-child(1) { width: 520px; height: 520px; right: 18%; top: -260px; opacity: 0.42; }
+.login.partida > .hero-fondo i:nth-child(2) { width: 460px; height: 460px; left: 26%; bottom: -280px; }
+.login.partida > .hero-fondo i:nth-child(3) { width: 340px; height: 340px; left: -150px; bottom: -130px; top: auto; opacity: 0.12; }
+
+.login-marca {
+  position: relative;
+  padding: calc(28px + env(safe-area-inset-top)) 24px 26px;
+  display: flex; flex-direction: column; gap: 20px; flex: 1 0 auto;
+}
 
 .login-logo { display: flex; align-items: center; gap: 12px; font-size: 1.2rem; letter-spacing: -0.01em; }
 .login-logo .logo-marca { width: 48px; height: 48px; filter: drop-shadow(0 10px 16px rgba(0, 0, 0, 0.28)); }
@@ -794,35 +797,71 @@ legend + * { clear: both; }
 @keyframes flotar { 50% { transform: translateY(-10px); } }
 @keyframes llenar { from { transform: scaleX(0); } }
 
-/* Lado del ingreso */
+/* Hoja del ingreso: flota sobre el fondo, con esquinas redondas y sombra */
 .login-lado {
-  position: relative; overflow: hidden; isolation: isolate;
-  display: grid; place-items: center; padding: 28px 20px 40px;
+  position: relative; isolation: isolate; color: var(--tinta);
+  display: grid; place-items: center; padding: 26px 22px 24px;
+  margin: 0 12px calc(12px + env(safe-area-inset-bottom)); border-radius: 30px;
   background: var(--fondo);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35), 0 -18px 50px -18px rgba(0, 0, 0, 0.5), 0 30px 60px -24px rgba(0, 0, 0, 0.55);
 }
 .login-lado::before, .login-lado::after { content: ''; position: absolute; z-index: -1; border-radius: 50%; filter: blur(60px); pointer-events: none; }
-.login-lado::before { width: 380px; height: 380px; right: -120px; top: -140px; background: color-mix(in srgb, var(--vivo) 38%, transparent); animation: flotar-b 18s ease-in-out infinite alternate; }
-.login-lado::after { width: 420px; height: 420px; left: -160px; bottom: -200px; background: color-mix(in srgb, var(--marca) 22%, transparent); animation: flotar-a 22s ease-in-out infinite alternate; }
+.login-lado::before { width: 46%; aspect-ratio: 1; right: 4%; top: 4%; background: color-mix(in srgb, var(--vivo) 38%, transparent); animation: flotar-b 18s ease-in-out infinite alternate; }
+.login-lado::after { width: 52%; aspect-ratio: 1; left: 2%; bottom: 2%; background: color-mix(in srgb, var(--marca) 22%, transparent); animation: flotar-a 22s ease-in-out infinite alternate; }
 .login-caja {
-  width: min(100%, 420px); padding: 30px 26px; border-radius: 28px;
+  position: relative; width: min(100%, 430px);
   display: flex; flex-direction: column; gap: 14px; align-items: flex-start;
-  background: var(--sup); border: 1px solid var(--borde);
-  box-shadow: var(--sombra-alta), 0 60px 80px -50px color-mix(in srgb, var(--marca) 55%, transparent);
-  transition: transform 400ms var(--suave), box-shadow 400ms var(--suave);
 }
-.login-caja:hover { transform: translateY(-4px); }
-.login-caja h2 { font-size: 1.6rem; letter-spacing: -0.025em; }
-.login-caja .boton-google { margin: 6px 0 2px; }
+.login-sello { display: none; position: absolute; left: 0; top: -78px; animation: flotar 6s ease-in-out infinite; }
+.login-sello .logo-marca { width: 64px; height: 64px; filter: drop-shadow(0 16px 18px color-mix(in srgb, var(--marca) 55%, transparent)); }
+.login-caja h2 { font-size: 1.7rem; letter-spacing: -0.03em; }
 .login-caja .mensaje { width: 100%; }
 .login-nota { display: flex; align-items: flex-start; gap: 8px; font-size: 0.8rem; color: var(--tinta-2); padding-top: 14px; border-top: 1px solid var(--borde); width: 100%; }
 .login-nota .icono, .login-nota .icono svg { width: 16px; height: 16px; }
 .login-nota .icono { color: var(--ok); margin-top: 1px; }
-.login-caja .boton.enlace { min-height: 32px; font-size: 0.82rem; font-weight: 600; color: var(--tinta-2); padding: 0; }
+.login-ayuda { display: flex; flex-wrap: wrap; gap: 4px 18px; }
+.login-ayuda .boton.enlace { min-height: 30px; font-size: 0.8rem; font-weight: 600; color: var(--tinta-2); padding: 0; }
+
+/* Botón de entrada con el diseño de la app (el botón real de Google va encima, invisible) */
+.google-envoltura { position: relative; width: 100%; height: 66px; margin: 6px 0 2px; border-radius: 22px; }
+.google-arte {
+  position: absolute; inset: 0; border-radius: 22px; overflow: hidden; isolation: isolate;
+  display: flex; align-items: center; gap: 14px; padding: 0 14px 0 12px; color: #FFFFFF;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--marca) 82%, white) 0%, var(--marca) 46%, var(--marca-2) 100%);
+  box-shadow: 0 18px 30px -14px var(--marca), 0 4px 10px -4px var(--marca-2), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transition: transform 260ms var(--suave), box-shadow 260ms var(--suave);
+}
+.google-arte::after {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  background: linear-gradient(115deg, transparent 38%, rgba(255, 255, 255, 0.32) 50%, transparent 62%);
+  transform: translateX(-120%); animation: destello 4.8s ease-in-out 1.6s infinite;
+}
+@keyframes destello { 0%, 55% { transform: translateX(-120%); } 85%, 100% { transform: translateX(120%); } }
+.google-g { width: 42px; height: 42px; border-radius: 14px; flex-shrink: 0; display: grid; place-items: center; background: #FFFFFF; box-shadow: 0 6px 12px -6px rgba(0, 0, 0, 0.45); transition: transform 300ms var(--suave); }
+.google-g svg { width: 22px; height: 22px; display: block; }
+.google-texto { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.google-texto b { font-size: 1rem; font-weight: 700; letter-spacing: -0.01em; white-space: nowrap; }
+.google-texto small { font-size: 0.74rem; opacity: 0.84; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.google-flecha { margin-left: auto; width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0; display: grid; place-items: center; background: rgba(255, 255, 255, 0.18); transition: transform 300ms var(--suave), background 300ms ease; }
+.google-flecha .icono, .google-flecha .icono svg { width: 16px; height: 16px; }
+.google-envoltura:hover .google-arte { transform: translateY(-3px); box-shadow: 0 26px 36px -16px var(--marca), 0 6px 12px -4px var(--marca-2), inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+.google-envoltura:hover .google-flecha { transform: translateX(4px); background: rgba(255, 255, 255, 0.3); }
+.google-envoltura:hover .google-g { transform: scale(1.06) rotate(-4deg); }
+.google-envoltura:active .google-arte { transform: translateY(0) scale(0.985); }
+.google-envoltura:focus-within .google-arte { outline: 3px solid color-mix(in srgb, var(--accion) 45%, transparent); outline-offset: 3px; }
+.google-envoltura .boton-google { position: absolute; inset: 0; z-index: 2; overflow: hidden; border-radius: 22px; opacity: 0.001; min-height: 0; cursor: pointer; }
+.google-envoltura .boton-google > div { transform: scale(calc(var(--sx, 1) * 1.08), calc(var(--sy, 1.65) * 1.12)); transform-origin: 0 0; }
+/* Botón clásico: el de Google a la vista */
+.google-envoltura.clasico { height: auto; }
+.google-envoltura.clasico .google-arte { display: none; }
+.google-envoltura.clasico .boton-google { position: static; opacity: 1; overflow: visible; border-radius: 0; min-height: 44px; }
+.google-envoltura.clasico .boton-google > div { transform: none; }
 
 /* Entrada de la pantalla de ingreso */
 @keyframes palabra { from { opacity: 0; transform: translateY(0.7em) rotate(4deg); } }
 @keyframes barra-logo { from { transform: scaleY(0); } }
-@keyframes caja-entra { from { opacity: 0; transform: translateY(26px) scale(0.96); } }
+@keyframes caja-entra { from { opacity: 0; transform: translateY(22px); } }
+@keyframes hoja-entra { from { opacity: 0; transform: translateY(50px) scale(0.97); } }
 .vista.entrada .palabra { animation: palabra 700ms var(--suave) both; animation-delay: calc(150ms + var(--i, 0) * 70ms); }
 .vista.entrada .login-puntos li { animation: subir 600ms var(--suave) both; animation-delay: calc(760ms + var(--n, 0) * 110ms); }
 .vista.entrada .login-puntos li:nth-child(2) { --n: 1; }
@@ -832,7 +871,11 @@ legend + * { clear: both; }
 .vista.entrada .login-logo .lm-b2 { animation-delay: 370ms; }
 .vista.entrada .login-logo .lm-b3 { animation-delay: 490ms; }
 .vista.entrada .login-escena { animation: subir 800ms var(--suave) 1000ms both; }
-.vista.entrada .login-caja { animation: caja-entra 800ms var(--suave) 250ms both; }
+.vista.entrada .pantalla.login > .login-lado { animation: hoja-entra 900ms var(--suave) 100ms both; }
+.vista.entrada .login-caja > * { animation: caja-entra 600ms var(--suave) both; animation-delay: calc(450ms + var(--n, 0) * 80ms); }
+.vista.entrada .login-caja > *:nth-child(2) { --n: 1; } .vista.entrada .login-caja > *:nth-child(3) { --n: 2; } .vista.entrada .login-caja > *:nth-child(4) { --n: 3; }
+.vista.entrada .login-caja > *:nth-child(5) { --n: 4; } .vista.entrada .login-caja > *:nth-child(n+6) { --n: 5; }
+.vista.entrada .login-caja > .login-sello { animation: caja-entra 600ms var(--suave) 450ms both, flotar 6s ease-in-out 1.1s infinite; }
 
 /* ---------- Carga ---------- */
 
@@ -987,8 +1030,11 @@ body.sin-sesion .barra-nav { display: none; }
 
   .login.partida { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
   .login-marca { padding: 48px 64px; justify-content: center; gap: 26px; }
-  .login-lado { padding: 48px; }
-  .login-caja { padding: 40px 38px; gap: 16px; }
+  .login-lado { padding: 48px; margin: 18px 18px 18px 0; border-radius: 40px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35), -40px 0 80px -34px rgba(0, 0, 0, 0.6), 0 30px 60px -30px rgba(0, 0, 0, 0.5); }
+  .login-caja { gap: 16px; }
+  .login-sello { display: block; top: -96px; }
+  .login-sello .logo-marca { width: 72px; height: 72px; }
+  .login-caja h2 { font-size: 2rem; }
 }
 
 /* Desde tablet la entrada va en dos columnas; en celulares bajos se ocultan los tres puntos para que entre sin scroll. */
@@ -996,7 +1042,8 @@ body.sin-sesion .barra-nav { display: none; }
   .login.partida { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .login-marca { padding: 36px 32px; justify-content: center; }
   .login-marca h1 { font-size: 2rem; }
-  .login-lado { padding: 24px; }
+  .login-lado { padding: 24px; margin: 14px 14px 14px 0; }
+  .login-sello { display: block; }
 }
 @media (max-width: 759px) and (max-height: 760px) {
   .login-puntos { display: none; }
@@ -1012,7 +1059,7 @@ body.sin-sesion .barra-nav { display: none; }
   .login-marca h1 { font-size: 2.3rem; }
   .login-puntos { gap: 9px; }
   .login-lado { padding-block: 24px; }
-  .login-caja { padding: 30px 34px; gap: 13px; }
+  .login-caja { gap: 13px; }
 }
 
 @media (min-width: 1360px) {

@@ -192,7 +192,7 @@ export async function renovar() {
   });
 }
 
-export async function renderBoton(elemento) {
+export async function renderBoton(elemento, ancho = 280) {
   const listo = await iniciarGoogle();
   if (!listo || !elemento) return false;
   window.google.accounts.id.renderButton(elemento, {
@@ -201,7 +201,7 @@ export async function renderBoton(elemento) {
     text: 'signin_with',
     shape: 'pill',
     locale: 'es',
-    width: 280,
+    width: ancho,
   });
   return true;
 }
