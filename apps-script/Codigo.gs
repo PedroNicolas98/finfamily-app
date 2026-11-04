@@ -36,9 +36,9 @@ var MENSAJES = {
 // Entrada
 // ---------------------------------------------------------------------------
 
-function doGet() {
-  return responderJSON_({ ok: true, datos: { servicio: 'FinFamily', version: VERSION } });
-}
+// Este archivo vive dentro del Apps Script del propio Sheets ("Registro de Gastos B&P").
+// Ese proyecto ya tiene su doGet (el dashboard, solo para el dueño), así que aquí
+// solo se define doPost, que es lo que usa la app del celular.
 
 function doPost(e) {
   try {
