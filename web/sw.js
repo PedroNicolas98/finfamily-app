@@ -2,7 +2,7 @@
 // La API (Apps Script) y Google están en otros dominios: esas peticiones no se tocan
 // y van directo a la red. Cambia VERSION al publicar cambios.
 
-const VERSION = 'finfamily-v13';
+const VERSION = 'finfamily-v14';
 const CASCARON = [
   './',
   './index.html',
@@ -20,7 +20,7 @@ const CASCARON = [
 ];
 
 self.addEventListener('install', (ev) => {
-  ev.waitUntil(caches.open(VERSION).then((c) => c.addAll(CASCARON)).then(() => self.skipWaiting()));
+  ev.waitUntil(caches.open(VERSION).then((c) => c.addAll(CASCARON.map((u) => new Request(u, { cache: 'no-cache' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (ev) => {
@@ -40,7 +40,7 @@ self.addEventListener('fetch', (ev) => {
   // Navegación: red primero y, si no hay señal, el index guardado.
   if (req.mode === 'navigate') {
     ev.respondWith(
-      fetch(req)
+      fetch(req, { cache: 'no-cache' })
         .then(async (r) => {
           // Solo una respuesta correcta reemplaza el cascarón: un 404/500 nunca se guarda.
           if (r.ok && r.type === 'basic') {
@@ -60,7 +60,8 @@ self.addEventListener('fetch', (ev) => {
   // señal o la red tarda más de 4 s, lo guardado en el equipo.
   ev.respondWith((async () => {
     const guardado = await caches.match(req, { ignoreSearch: true });
-    const deRed = fetch(req).then((r) => {
+    // 'no-cache': pregunta al servidor si cambió (GitHub guarda copias 10 min en el navegador).
+    const deRed = fetch(req, { cache: 'no-cache' }).then((r) => {
       if (r.ok && r.type === 'basic') {
         const copia = r.clone();
         caches.open(VERSION).then((c) => c.put(req, copia));
