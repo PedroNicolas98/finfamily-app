@@ -121,27 +121,59 @@ function animarVista(raiz) {
   }));
 }
 
-function pastillaVence(vence) {
-  if (!vence) return h('span', { class: 'tc-pastilla' }, 'Sin fecha');
-  const dias = diasEntre(hoyISO(), vence);
-  if (dias < 0) return h('span', { class: 'tc-pastilla vencida' }, `Vencida · ${fechaCorta(vence)}`);
-  if (dias === 0) return h('span', { class: 'tc-pastilla pronto' }, 'Vence hoy');
-  if (dias <= 7) return h('span', { class: 'tc-pastilla pronto' }, `Vence en ${dias} día${dias === 1 ? '' : 's'}`);
-  return h('span', { class: 'tc-pastilla' }, `Vence ${fechaCorta(vence)}`);
+function chipTC(id) {
+  return h('span', { class: `chip-tc tc-${id}`, 'aria-hidden': 'true' });
 }
 
-function tarjetaVisual(t, enlace = true) {
-  const esHormiga = t.id === 'HORMIGA';
-  const duenio = DUENIO_TC[t.id] || (t.responsable ? String(t.responsable).split(' ')[0] : '');
-  return h(enlace ? 'a' : 'div', { class: `tc tc-${t.id}`, href: enlace ? `#tarjeta-${t.id}` : null },
-    h('div', { class: 'tc-arriba' },
-      h('div', {}, h('div', { class: 'tc-nombre' }, NOMBRE_TC[t.id] || t.nombre),
-        duenio ? h('div', { class: 'tc-duenio' }, duenio) : esHormiga ? h('div', { class: 'tc-duenio' }, 'Yape, Plin y efectivo') : null),
-      esHormiga ? null : h('span', { class: 'tc-chip', 'aria-hidden': 'true' })),
-    h('div', { class: 'tc-abajo' },
-      h('div', {}, h('div', { class: 'tc-etq' }, esHormiga ? 'Este mes' : 'Por pagar'),
-        h('div', { class: 'tc-monto' }, soles(t.pendiente))),
-      esHormiga ? null : t.pendiente > 0 ? pastillaVence(t.proximoVence) : h('span', { class: 'tc-pastilla' }, 'Al día')));
+function duenioTC(t) {
+  return DUENIO_TC[t.id] || (t.responsable ? String(t.responsable).split(' ')[0] : '');
+}
+
+function nombreCortoTC(t) {
+  const d = DUENIO_TC[t.id];
+  return `${NOMBRE_TC[t.id] || t.nombre}${d ? ' · ' + d : ''}`;
+}
+
+// Estado del próximo vencimiento: texto + color de estado (nunca solo color).
+function estadoPill(vence, pendiente) {
+  if (!(pendiente > 0)) return h('span', { class: 'pill ok' }, 'Al día');
+  if (!vence) return h('span', { class: 'pill' }, 'Sin fecha');
+  const dias = diasEntre(hoyISO(), vence);
+  if (dias < 0) return h('span', { class: 'pill mal' }, `Vencida · ${fechaCorta(vence)}`);
+  if (dias === 0) return h('span', { class: 'pill aviso' }, 'Vence hoy');
+  if (dias <= 7) return h('span', { class: 'pill aviso' }, `Vence en ${dias} día${dias === 1 ? '' : 's'}`);
+  return h('span', { class: 'pill' }, `Vence ${fechaCorta(vence)}`);
+}
+
+// Fila de tarjeta (Inicio y Tarjetas).
+function filaTarjeta(t) {
+  const esH = t.id === 'HORMIGA';
+  return h('a', { class: 'fila-tc', href: `#tarjeta-${t.id}` },
+    chipTC(t.id),
+    h('span', { class: 'fila-tc-nombre' },
+      h('strong', {}, NOMBRE_TC[t.id] || t.nombre),
+      h('span', {}, esH ? 'Yape, Plin y efectivo' : duenioTC(t))),
+    h('span', { class: 'fila-tc-estado' }, esH ? h('span', { class: 'pill' }, 'Este mes') : estadoPill(t.proximoVence, t.pendiente)),
+    h('strong', { class: 'fila-tc-monto' }, soles(t.pendiente)),
+    icono('adelante'));
+}
+
+// Indicador compacto.
+function kpi(etiqueta, valor, sub, extra, destacado) {
+  return h('div', { class: 'kpi' + (destacado ? ' destacado' : '') },
+    h('p', { class: 'kpi-etq' }, etiqueta),
+    h('p', { class: 'kpi-valor' + (valor < 0 ? ' negativo' : ''), 'data-contar': String(valor) }, soles(0)),
+    extra || null,
+    sub ? h('p', { class: 'kpi-sub' }, sub) : null);
+}
+
+// Barras horizontales de una sola serie (deuda por tarjeta). La identidad va en el texto, no en el color.
+function barrasH(filas) {
+  const max = Math.max(...filas.map((f) => Math.abs(f.valor)), 1);
+  return h('ul', { class: 'barras' }, filas.map((f) => h('li', { title: `${f.etiqueta}: ${soles(f.valor)}` },
+    h('span', { class: 'barras-etq' }, f.chip || null, h('span', {}, f.etiqueta)),
+    h('span', { class: 'barras-pista' }, h('i', { 'data-w': `${Math.max(2, Math.round((Math.abs(f.valor) / max) * 100))}%` })),
+    h('strong', { class: 'barras-valor' }, soles(f.valor)))));
 }
 
 // ---------- Estado ----------
@@ -554,76 +586,69 @@ async function vistaInicio() {
   marcarDatos(r);
   const d = r.datos;
   const p = d.presupuesto;
-  const raiz = h('div', { class: 'pantalla inicio' });
   const nombre = d.usuario?.nombre || '';
   const hoy = new Date();
   const fechaHoy = hoy.toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long' });
+  const mesNombre = (nombreMesClave(d.mes) || '').split(' ')[0].toLowerCase();
+  const ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
+  const raiz = h('div', { class: 'pantalla inicio' });
 
-  raiz.append(h('div', { class: 'barra-sup' },
-    h('div', { class: 'marca' }, h('img', { src: 'iconos/icono.svg', alt: '' }), 'FinFamily'),
-    h('span', { class: 'avatar', title: api.emailGuardado() || '' }, (nombre[0] || '?').toUpperCase())));
-
-  raiz.append(h('header', { class: 'cabecera saludo' },
-    h('p', { class: 'sobretitulo' }, fechaHoy),
-    h('h1', {}, `Hola, ${nombre.split(' ')[0]}`)));
-
-  if (p) {
-    const pct = p.ingresos > 0 ? Math.min(100, Math.round((p.gastos / p.ingresos) * 100)) : 0;
-    raiz.append(h('section', { class: 'hero' },
-      h('p', { class: 'etiqueta' }, `Saldo de ${(nombreMesClave(d.mes) || '').split(' ')[0].toLowerCase()}`),
-      h('p', { class: 'monto-grande' + (p.saldo < 0 ? ' negativo' : ''), 'data-contar': String(p.saldo) }, soles(0)),
-      h('p', { class: 'hero-sub' }, `${pct}% de los ingresos ya está comprometido`),
-      h('div', { class: 'hero-barra', 'aria-hidden': 'true' }, h('i', { 'data-w': `${pct}%` })),
-      h('div', { class: 'hero-pie' },
-        h('div', { class: 'hero-dato' }, icono('sube'), h('div', {}, h('span', {}, 'Ingresos'), h('strong', {}, soles(p.ingresos)))),
-        h('div', { class: 'hero-dato' }, icono('baja'), h('div', {}, h('span', {}, 'Gastos'), h('strong', {}, soles(p.gastos))))),
-      h('div', { class: 'hero-pastillas' },
-        h('span', { class: 'hero-personal' }, `Saldo personal: ${soles(p.saldoPersonal)} c/u`),
-        (() => {
-          const ultimo = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
-          const dia = hoy.getDate();
-          return h('span', { class: 'hero-dia' }, `Día ${dia} de ${ultimo} · quedan ${ultimo - dia} días`);
-        })())));
-  } else {
-    raiz.append(h('section', { class: 'tarjeta' },
-      h('p', { class: 'suave' }, `${d.etiquetaMes || 'Este mes'} todavía no está en el presupuesto.`)));
-  }
+  raiz.append(h('header', { class: 'cabecera-fila' },
+    h('div', { class: 'cabecera' },
+      h('p', { class: 'sobretitulo' }, fechaHoy),
+      h('h1', {}, `Hola, ${nombre.split(' ')[0]}`)),
+    h('a', { class: 'boton primario solo-pc', href: '#registrar' }, icono('mas'), 'Registrar gasto')));
 
   const alertas = d.alertas || [];
   if (alertas.length) {
-    raiz.append(h('section', { class: 'bloque bloque-alertas' }, h('h2', {}, 'Para revisar'),
-      h('ul', { class: 'lista' }, alertas.map((a) => {
-        const dias = diasEntre(hoyISO(), a.vence);
-        const texto = a.tipo === 'vencida'
-          ? `Venció el ${fechaLarga(a.vence)}${dias < 0 ? ` · hace ${-dias} día${dias === -1 ? '' : 's'}` : ''}`
-          : dias === 0 ? 'Vence hoy' : dias === 1 ? 'Vence mañana' : `Vence en ${dias} días · ${fechaLarga(a.vence)}`;
-        return h('li', {}, h('a', { class: 'tarjeta alerta ' + a.tipo, href: `#tarjeta-${a.tarjeta}` },
-          h('span', { class: 'alerta-ico' }, icono('alerta')),
-          h('div', { class: 'alerta-txt' }, h('strong', {}, NOMBRE_TC[a.tarjeta] ? `${NOMBRE_TC[a.tarjeta]}${DUENIO_TC[a.tarjeta] ? ' · ' + DUENIO_TC[a.tarjeta] : ''}` : a.nombre),
-            h('p', { class: 'suave' }, texto)),
-          h('strong', {}, soles(a.monto))));
-      }))));
+    raiz.append(h('section', { class: 'avisos-inicio' }, alertas.map((a) => {
+      const dias = diasEntre(hoyISO(), a.vence);
+      const texto = a.tipo === 'vencida'
+        ? `venció el ${fechaLarga(a.vence)}`
+        : dias === 0 ? 'vence hoy' : dias === 1 ? 'vence mañana' : `vence en ${dias} días (${fechaCorta(a.vence)})`;
+      return h('a', { class: 'aviso-fila ' + a.tipo, href: `#tarjeta-${a.tarjeta}` },
+        icono('alerta'),
+        h('span', {}, h('strong', {}, NOMBRE_TC[a.tarjeta] ? nombreCortoTC({ id: a.tarjeta }) : a.nombre), ` ${texto}`),
+        h('strong', { class: 'aviso-monto' }, soles(a.monto)),
+        icono('adelante'));
+    })));
   }
 
   const tarjetas = (d.tarjetas || []).filter((t) => t.id !== 'HORMIGA');
   const hormiga = (d.tarjetas || []).find((t) => t.id === 'HORMIGA');
+  const proxima = tarjetas.filter((t) => t.pendiente > 0 && t.proximoVence)
+    .sort((a, b) => a.proximoVence.localeCompare(b.proximoVence))[0];
+
+  const kpis = h('section', { class: 'kpis' });
+  if (p) {
+    const pct = p.ingresos > 0 ? Math.min(100, Math.round((p.gastos / p.ingresos) * 100)) : 0;
+    kpis.append(
+      kpi(`Saldo de ${mesNombre}`, p.saldo, `${pct}% de los ingresos comprometido`,
+        h('div', { class: 'progreso', role: 'img', 'aria-label': `${pct}% comprometido` }, h('i', { 'data-w': `${pct}%` })), true),
+      kpi('Ingresos', p.ingresos, `Saldo personal ${soles(p.saldoPersonal)} c/u`),
+      kpi('Gastos del plan', p.gastos, `Quedan ${ultimoDia - hoy.getDate()} días del mes`));
+  } else {
+    kpis.append(h('div', { class: 'kpi' }, h('p', { class: 'kpi-etq' }, 'Saldo'),
+      h('p', { class: 'kpi-sub' }, `${d.etiquetaMes || 'Este mes'} todavía no está en el presupuesto.`)));
+  }
+  kpis.append(kpi('Por pagar en tarjetas', d.totalPorPagar,
+    proxima ? `Próximo: ${nombreCortoTC(proxima)}, ${fechaCorta(proxima.proximoVence)}` : 'Sin vencimientos pendientes'));
+  raiz.append(kpis);
+
   const ordenadas = [...tarjetas].sort((a, b) => (b.pendiente > 0) - (a.pendiente > 0)
     || String(a.proximoVence || '9').localeCompare(String(b.proximoVence || '9')));
-  raiz.append(h('section', { class: 'bloque bloque-tarjetas' },
-    h('div', { class: 'bloque-cab' },
-      h('div', {}, h('h2', {}, 'Tus tarjetas'), h('p', { class: 'suave' }, `${soles(d.totalPorPagar)} por pagar en total`)),
-      h('a', { href: '#tarjetas' }, 'Ver todas')),
-    ordenadas.some((t) => t.pendiente > 0)
-      ? h('div', { class: 'reparto', role: 'img', 'aria-label': 'Reparto de la deuda por tarjeta' },
-        ordenadas.filter((t) => t.pendiente > 0).map((t) => h('i', {
-          class: `tc-${t.id}`, style: `flex:${t.pendiente}`,
-          title: `${NOMBRE_TC[t.id] || t.nombre}${DUENIO_TC[t.id] ? ' · ' + DUENIO_TC[t.id] : ''}: ${soles(t.pendiente)}`,
-        })))
-      : null,
-    h('div', { class: 'carrusel' }, ordenadas.map((t) => tarjetaVisual(t)), hormiga ? tarjetaVisual(hormiga) : null)));
+  const conDeuda = tarjetas.filter((t) => t.pendiente > 0).sort((a, b) => b.pendiente - a.pendiente);
 
-  raiz.append(h('a', { class: 'cta-registrar', href: '#registrar' },
-    icono('mas'), h('span', {}, 'Registrar un gasto'), h('span', {}, 'Tarjeta, Yape o efectivo')));
+  raiz.append(h('div', { class: 'rejilla-2' },
+    h('section', { class: 'tarjeta panel' },
+      h('div', { class: 'panel-cab' }, h('h2', {}, 'Tarjetas y vencimientos'), h('a', { href: '#tarjetas' }, 'Ver todo')),
+      h('div', { class: 'lista-filas' }, ordenadas.map(filaTarjeta), hormiga ? filaTarjeta(hormiga) : null)),
+    h('section', { class: 'tarjeta panel' },
+      h('div', { class: 'panel-cab' }, h('h2', {}, 'Deuda por tarjeta'), h('span', { class: 'suave' }, soles(d.totalPorPagar))),
+      conDeuda.length
+        ? barrasH(conDeuda.map((t) => ({ etiqueta: nombreCortoTC(t), valor: t.pendiente, chip: chipTC(t.id) })))
+        : h('p', { class: 'vacio' }, 'No hay deuda pendiente en tarjetas.'),
+      hormiga ? h('p', { class: 'panel-nota' }, `Gastos hormiga de este mes: ${soles(hormiga.pendiente)}`) : null)));
 
   const revisar = seccionRevisar();
   if (revisar) raiz.append(revisar);
@@ -910,7 +935,7 @@ async function vistaTarjetas() {
   return h('div', { class: 'pantalla' },
     h('header', { class: 'cabecera' }, h('h1', {}, 'Tarjetas'),
       h('p', { class: 'suave' }, `${soles(total)} por pagar entre todas`)),
-    lista.length ? h('div', { class: 'lista-tc' }, lista.map((t) => tarjetaVisual(t)))
+    lista.length ? h('section', { class: 'tarjeta panel' }, h('div', { class: 'lista-filas' }, lista.map(filaTarjeta)))
       : h('p', { class: 'vacio' }, 'No hay tarjetas para mostrar.'));
 }
 
@@ -929,7 +954,15 @@ async function vistaTarjeta(id) {
   // En computadora: tarjeta a la izquierda (fija) y consumos a la derecha.
   const col = h('div', { class: 'columna' });
   const raiz = h('div', { class: 'pantalla con-barra detalle' },
-    h('aside', { class: 'lateral' }, volver, tarjetaVisual(t, false)), col);
+    h('aside', { class: 'lateral' }, volver,
+      h('section', { class: 'tarjeta cab-tc' },
+        h('div', { class: 'cab-tc-id' }, chipTC(t.id),
+          h('div', {}, h('h1', {}, NOMBRE_TC[t.id] || t.nombre),
+            h('p', { class: 'suave' }, esHormiga ? 'Yape, Plin y efectivo' : duenioTC(t)))),
+        h('div', { class: 'cab-tc-datos' },
+          h('div', {}, h('p', { class: 'kpi-etq' }, esHormiga ? 'Este mes' : 'Por pagar'),
+            h('p', { class: 'kpi-valor', 'data-contar': String(t.pendiente) }, soles(0))),
+          esHormiga ? null : estadoPill(t.proximoVence, t.pendiente)))), col);
 
   if (estado.mensajeTarjeta) {
     col.append(h('div', { class: 'mensaje ' + (estado.mensajeTarjeta.tipo || '') , role: 'status' }, estado.mensajeTarjeta.texto));
@@ -1150,13 +1183,11 @@ async function vistaPresupuesto() {
   return h('div', { class: 'pantalla presupuesto' },
     h('header', { class: 'cabecera' }, h('h1', {}, 'Presupuesto')),
     selectorMes(d.meses || meses, d.mes, nombreMesClave(d.mes) || d.etiquetaMes),
-    h('section', { class: 'hero' },
-      h('p', { class: 'etiqueta' }, 'Saldo / superávit final'),
-      h('p', { class: 'monto-grande' + (tot.saldo < 0 ? ' negativo' : ''), 'data-contar': String(tot.saldo) }, soles(0)),
-      h('div', { class: 'hero-pie' },
-        h('div', { class: 'hero-dato' }, icono('sube'), h('div', {}, h('span', {}, 'Ingresos'), h('strong', {}, soles(tot.ingresos)))),
-        h('div', { class: 'hero-dato' }, icono('baja'), h('div', {}, h('span', {}, 'Gastos'), h('strong', {}, soles(tot.gastos))))),
-      h('span', { class: 'hero-personal' }, `Saldo personal: ${soles(tot.saldoPersonal)} c/u`)),
+    h('section', { class: 'kpis' },
+      kpi('Saldo / superávit final', tot.saldo, `Saldo personal ${soles(tot.saldoPersonal)} c/u`, null, true),
+      kpi('Ingresos', tot.ingresos),
+      kpi('Gastos', tot.gastos),
+      kpi('Ahorros', tot.ahorros)),
     seccion('ingresos', 'Ingresos', 'Total ingresos', tot.ingresos),
     seccion('gastos', 'Gastos', 'Total gastos', tot.gastos),
     seccion('ahorros', 'Ahorros', 'Total ahorros', tot.ahorros));
