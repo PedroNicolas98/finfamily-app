@@ -2,7 +2,7 @@
 // La API (Apps Script) y Google están en otros dominios: esas peticiones no se tocan
 // y van directo a la red. Cambia VERSION al publicar cambios.
 
-const VERSION = 'finfamily-v8';
+const VERSION = 'finfamily-v9';
 const CASCARON = [
   './',
   './index.html',
@@ -15,6 +15,7 @@ const CASCARON = [
   './iconos/icono.svg',
   './iconos/icono-192.png',
   './iconos/icono-512.png',
+  './iconos/icono-maskable.svg',
   './fuentes/plus-jakarta-sans.woff2',
 ];
 
@@ -55,19 +56,24 @@ self.addEventListener('fetch', (ev) => {
     return;
   }
 
-  // Archivos del cascarón: lo guardado al instante y se actualiza por detrás.
-  ev.respondWith(
-    caches.match(req, { ignoreSearch: true }).then((guardado) => {
-      const deRed = fetch(req)
-        .then((r) => {
-          if (r.ok) {
-            const copia = r.clone();
-            caches.open(VERSION).then((c) => c.put(req, copia));
-          }
-          return r;
-        })
-        .catch(() => guardado);
-      return guardado || deRed;
-    }),
-  );
+  // Archivos de la app: red primero (así siempre se ve la versión nueva) y, si no hay
+  // señal o la red tarda más de 4 s, lo guardado en el equipo.
+  ev.respondWith((async () => {
+    const guardado = await caches.match(req, { ignoreSearch: true });
+    const deRed = fetch(req).then((r) => {
+      if (r.ok && r.type === 'basic') {
+        const copia = r.clone();
+        caches.open(VERSION).then((c) => c.put(req, copia));
+      }
+      return r;
+    });
+    if (!guardado) return deRed;
+    const espera = new Promise((res) => setTimeout(() => res(null), 4000));
+    try {
+      const r = await Promise.race([deRed, espera]);
+      return r && r.ok ? r : guardado;
+    } catch {
+      return guardado;
+    }
+  })());
 });
