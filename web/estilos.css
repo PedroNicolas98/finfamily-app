@@ -991,9 +991,28 @@ body.sin-sesion .barra-nav { display: none; }
   .login-caja { padding: 40px 38px; gap: 16px; }
 }
 
+/* Desde tablet la entrada va en dos columnas; en celulares bajos se ocultan los tres puntos para que entre sin scroll. */
+@media (min-width: 760px) and (max-width: 1023px) {
+  .login.partida { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .login-marca { padding: 36px 32px; justify-content: center; }
+  .login-marca h1 { font-size: 2rem; }
+  .login-lado { padding: 24px; }
+}
+@media (max-width: 759px) and (max-height: 760px) {
+  .login-puntos { display: none; }
+}
+
 /* La vista de ejemplo solo aparece si hay espacio (así la pantalla nunca necesita scroll). */
-@media (min-width: 1180px) and (min-height: 740px) {
+@media (min-width: 1180px) and (min-height: 620px) {
   .login-escena { display: block; }
+}
+/* En ventanas bajas se aprietan los espacios para que todo entre sin scroll. */
+@media (min-width: 1024px) and (max-height: 760px) {
+  .login-marca { padding-block: 28px; gap: 18px; }
+  .login-marca h1 { font-size: 2.3rem; }
+  .login-puntos { gap: 9px; }
+  .login-lado { padding-block: 24px; }
+  .login-caja { padding: 30px 34px; gap: 13px; }
 }
 
 @media (min-width: 1360px) {
