@@ -1,0 +1,8 @@
+# Dependencias
+node_modules/
+
+# Configuración local de clasp (contiene el ID del proyecto de Apps Script)
+.clasp.json
+
+# Archivos solo para tu computadora (ej. config.local.js)
+*.local.*
