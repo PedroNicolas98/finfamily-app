@@ -68,7 +68,16 @@ Esto sirve para el botón "Iniciar sesión con Google". Háganlo con la cuenta d
 
 ## 3. Crear el proyecto de Apps Script (el puente)
 
-**Importante:** creen un proyecto **nuevo e independiente**. No peguen nada en el Apps Script que ya tienen (el de su formulario web), para no romperlo. Los dos pueden convivir sin problema.
+> **Cómo quedó instalado hoy (4 nov 2026):** el puente vive **dentro del Apps Script del propio Sheets**, el proyecto "Registro de Gastos B&P" (Extensiones › Apps Script), en dos archivos: `FinFamily_Puente.gs` (= `Codigo.gs` de esta carpeta) y `FinFamily_Logica.gs` (= `Logica.gs`). No se usa `appsscript.json` de esta carpeta: el proyecto del Sheets mantiene su propio manifiesto.
+>
+> - Ese proyecto ya tenía su `doGet` (el dashboard). Se le agregó al inicio una verificación (`bpEsDuenioDashboard_`) para que el dashboard **solo se muestre al dueño**; cualquier otra visita recibe `{"servicio":"FinFamily"}`.
+> - FinFamily tiene su propia implementación: **"FinFamily - app del celular"** (Ejecutar como: Yo · Acceso: Cualquier usuario). Las implementaciones anteriores del dashboard y formulario siguen igual.
+> - Para autorizar permisos nuevos: en el editor elijan la función `finfamilyAutorizar` y toquen **Ejecutar**.
+> - Al cambiar el código de FinFamily: Implementar › Gestionar implementaciones › "FinFamily - app del celular" › lápiz › Versión: **Nueva versión** › Implementar. La URL no cambia.
+>
+> Los pasos de abajo describen la alternativa de un proyecto independiente, por si algún día lo necesitan.
+
+**Alternativa:** un proyecto **nuevo e independiente**, separado del Apps Script del Sheets.
 
 ### 3.1 Crear el proyecto y pegar los archivos
 
