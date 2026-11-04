@@ -722,6 +722,9 @@ body.sin-sesion .barra-nav { display: none; }
 .vista.entrada .pantalla > *:nth-child(4), .vista.entrada .rejilla-inicio > *:nth-child(4), .vista.entrada .rejilla-plasticos > *:nth-child(4) { animation-delay: 180ms; }
 .vista.entrada .pantalla > *:nth-child(5), .vista.entrada .rejilla-inicio > *:nth-child(5), .vista.entrada .rejilla-plasticos > *:nth-child(5) { animation-delay: 240ms; }
 .vista.entrada .pantalla > *:nth-child(n+6), .vista.entrada .rejilla-inicio > *:nth-child(n+6), .vista.entrada .rejilla-plasticos > *:nth-child(n+6) { animation-delay: 300ms; }
+/* La pantalla de ingreso solo aparece (sin desplazarse), para que no asome la barra de scroll. */
+@keyframes aparecer { from { opacity: 0; } to { opacity: 1; } }
+.vista.entrada .pantalla.login > * { animation-name: aparecer; }
 .vista.entrada .partes { animation: crecer 900ms var(--suave) 200ms both; }
 .vista.entrada .dona-grafico svg { animation: girar 900ms var(--suave) 150ms both; }
 
