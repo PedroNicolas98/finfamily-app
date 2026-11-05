@@ -2617,14 +2617,22 @@ function alternarMenu() {
   try { localStorage.setItem('ff:menu', chico ? 'chico' : 'ancho'); } catch { /* dura hasta recargar */ }
   cerrarMenusCuenta();
   // Una sola animación del navegador: el menú se pliega, el botón viaja con el borde,
-  // "Registrar gasto" se encoge hasta quedar en el "+" y la página se desliza a su lugar.
+  // "Registrar gasto" se encoge hasta quedar en el "+" y el contenido se desplaza a su nuevo centro.
+  // En pantallas anchas el contenido ya está en su ancho máximo: al cambiar el menú solo se desplaza, y eso se
+  // anima moviendo su foto. En pantallas más angostas el ancho sí cambia: ahí el contenido se funde rápido al
+  // nuevo tamaño, porque mover dos fotos distintas se vería doble.
+  const pantalla = vista.querySelector('.pantalla');
+  const tope = pantalla ? parseFloat(getComputedStyle(pantalla).maxWidth) : NaN;
+  const anchoVista = vista.getBoundingClientRect().width;
+  const soloSeDesplaza = Number.isFinite(tope) && Math.min(anchoVista, anchoVista + (chico ? 188 : -188)) >= tope;
+  document.documentElement.dataset.vtAncho = soloSeDesplaza ? 'igual' : 'cambia';
   const nombrar = () => {
     limpiarNombres();
     const nav = document.getElementById('nav');
     nav.style.viewTransitionName = 'menu';
     nav.querySelector('.nav-plegar')?.style.setProperty('view-transition-name', 'plegar');
     nav.querySelector('a.central')?.style.setProperty('view-transition-name', 'central');
-    vista.style.viewTransitionName = 'contenido';
+    if (soloSeDesplaza) vista.style.viewTransitionName = 'contenido';
   };
   conTransicion('menu', () => {
     document.body.classList.toggle('menu-chico', chico);
