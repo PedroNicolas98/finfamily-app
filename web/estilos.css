@@ -1553,23 +1553,6 @@ body.cargando-datos .barra-carga { opacity: 1; }
 .barra-carga i { display: block; height: 100%; width: 42%; border-radius: 3px; background: linear-gradient(90deg, transparent, var(--accion), var(--vivo), transparent); animation: avanza 1100ms ease-in-out infinite; }
 @keyframes avanza { from { transform: translateX(-110%); } to { transform: translateX(260%); } }
 
-/* Silueta de la pantalla que viene */
-.pantalla.cargando { animation: aparecer 220ms ease both; }
-.esq { border-radius: 18px; background: linear-gradient(100deg, var(--borde) 30%, var(--sup-2) 50%, var(--borde) 70%); background-size: 300% 100%; animation: brillo 1.4s ease-in-out infinite; }
-.esq-titulo { height: 40px; width: min(60%, 320px); border-radius: 12px; }
-.esq-hero { height: 250px; border-radius: 28px; }
-.esq-hero.chico { height: 190px; }
-.esq-panel { height: 240px; }
-.esq-panel.chico { height: 130px; }
-.esq-tarjeta { aspect-ratio: 1.68; border-radius: 22px; }
-.esq-fila { height: 58px; border-radius: 14px; }
-.esq-linea { height: 48px; border-radius: 16px; }
-.esq-rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: 16px; }
-.esq-dos { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
-.esq-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.cargando .esq:nth-child(2) { animation-delay: 120ms; }
-.cargando .esq:nth-child(3) { animation-delay: 240ms; }
-
 /* La pantalla anterior se va antes de que entre la nueva */
 .pantalla.saliendo { opacity: 0; transform: translateY(-10px) scale(0.995); transition: opacity 150ms ease, transform 150ms ease; pointer-events: none; }
 
@@ -1626,9 +1609,6 @@ body.cargando-datos .barra-carga { opacity: 1; }
 .confirmacion { animation: subir 260ms var(--suave) both; }
 
 @media (min-width: 1024px) {
-  .esq-dos { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
-  .esq-dos.lateral-izq { grid-template-columns: 340px minmax(0, 1fr); gap: 28px; }
-  .esq-rejilla { gap: 20px; }
 
   /* Nuevo gasto en computadora: todo entra en la ventana, sin scroll */
   body:not(.solo-gasto) .pantalla.registrar { gap: 16px; padding-top: 22px; padding-bottom: 12px; }
@@ -1662,7 +1642,10 @@ body.cargando-datos .barra-carga { opacity: 1; }
 /* Pantalla de arranque: el logo se arma mientras abre la app */
 .pantalla.arranque { min-height: calc(100vh - 150px); min-height: calc(100dvh - 150px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px; animation: aparecer 300ms ease both; }
 .arranque .logo-marca { width: 92px; height: 92px; filter: drop-shadow(0 22px 26px color-mix(in srgb, var(--marca) 45%, transparent)); }
-.arranque .logo-marca.vivo .lm-fondo, .arranque .logo-marca.vivo .lm-techo, .arranque .logo-marca.vivo .lm-b { animation-duration: 2.8s; }
+.arranque .logo-marca.vivo .lm-fondo, .arranque .logo-marca.vivo .lm-techo, .arranque .logo-marca.vivo .lm-b { animation-duration: 2.4s; }
+/* Entre páginas la casa va un poco más chica que al abrir la app */
+.pantalla.cargando.arranque .logo-marca { width: 76px; height: 76px; }
+.pantalla.cargando.arranque { animation: aparecer 220ms ease both; }
 .arranque-barra { display: block; width: 132px; height: 4px; border-radius: 4px; background: var(--borde); overflow: hidden; }
 .arranque-barra b { display: block; height: 100%; width: 42%; border-radius: 4px; background: linear-gradient(90deg, var(--accion), var(--vivo)); animation: avanza 1100ms ease-in-out infinite; }
 
