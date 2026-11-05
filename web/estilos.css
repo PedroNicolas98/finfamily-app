@@ -1312,9 +1312,119 @@ a.ruta-paso:hover .ruta-fecha { transform: scale(1.08) rotate(-4deg); }
   .pantalla, .avisos { max-width: 760px; }
 }
 
+/* El foco que pone la app al cambiar de pantalla no necesita marco visible. */
+.vista:focus, #por-revisar:focus { outline: none; }
+
+/* ---------- Menos texto, más movimiento ---------- */
+
+/* Títulos de sección con ícono (dicen de qué va sin más texto) */
+.panel-cab h2, .seccion-cab h2 { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.titulo-ico { width: 30px; height: 30px; border-radius: 10px; flex-shrink: 0; display: inline-grid; place-items: center; background: var(--marca-suave); color: var(--marca-tinta); transition: transform 300ms var(--suave); }
+.titulo-ico .icono, .titulo-ico .icono svg { width: 16px; height: 16px; }
+.panel:hover .titulo-ico, .tarjetas-inicio:hover .titulo-ico { transform: rotate(-8deg) scale(1.08); }
+.seccion-cab { align-items: center; }
+.ruta-texto span:empty, .vista-previa:empty { display: none; }
+
+/* El fondo de la página se mueve despacio */
+body::before { transform-origin: 50% 0; animation: fondo-vivo 24s ease-in-out infinite alternate; }
+@keyframes fondo-vivo { to { transform: translate3d(-4%, 3%, 0) scale(1.14); } }
+
+/* Indicador del menú: se desliza de una sección a otra */
+.barra-nav a { z-index: 1; }
+.nav-indicador {
+  position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none; opacity: 0;
+  transition: transform 460ms var(--suave), width 460ms var(--suave), height 460ms var(--suave), opacity 220ms ease;
+}
+.nav-indicador::before { content: ''; position: absolute; top: 0; left: 50%; width: 30px; height: 3px; margin-left: -15px; border-radius: 0 0 4px 4px; background: var(--accion); }
+.barra-nav a[aria-current="page"]:not(.central)::before { display: none; }
+.barra-nav a[aria-current="page"]:not(.central) .icono { animation: brinco 520ms var(--suave); }
+/* Botón central del celular: late para invitar a registrar */
+@media (max-width: 1023px) {
+  .barra-nav a.central .icono { position: relative; }
+  .barra-nav a.central .icono::after { content: ''; position: absolute; inset: 0; border-radius: inherit; border: 2px solid var(--accion); animation: pulso-fab 2.6s ease-out infinite; pointer-events: none; }
+}
+@keyframes pulso-fab { from { transform: scale(1); opacity: 0.7; } 70%, to { transform: scale(1.45); opacity: 0; } }
+
+/* Onda al tocar un botón */
+.boton, .opcion, .cuenta-boton { position: relative; overflow: hidden; }
+.onda { position: absolute; width: var(--t); height: var(--t); margin: calc(var(--t) / -2) 0 0 calc(var(--t) / -2); border-radius: 50%; background: currentColor; opacity: 0.22; transform: scale(0); animation: onda 620ms ease-out forwards; pointer-events: none; }
+@keyframes onda { to { transform: scale(1); opacity: 0; } }
+
+/* Tarjetas: flotan y les cruza un destello cada cierto tiempo */
+@keyframes flotar-t { 50% { translate: 0 -7px; } }
+.vista.entrada .carrusel > * { animation: de-lado 700ms var(--suave) both, flotar-t 6s ease-in-out infinite; animation-delay: calc(240ms + var(--i, 0) * 80ms), calc(1200ms + var(--i, 0) * 450ms); }
+.plastico-brillo { animation: destello 7.5s ease-in-out infinite; animation-delay: calc(2s + var(--i, 0) * 0.8s); }
+a.plastico:hover .plastico-brillo { transition: none; }
+.hero-fondo::after { content: ''; position: absolute; inset: 0; background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.13) 50%, transparent 60%); transform: translateX(-120%); animation: destello 9s ease-in-out 3s infinite; }
+
+/* Confirmación al guardar un gasto */
+.celebra { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; pointer-events: none; background: color-mix(in srgb, var(--fondo) 62%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); animation: aparecer 180ms ease both; transition: opacity 380ms ease; }
+.celebra.fuera { opacity: 0; }
+.celebra-centro { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 26px 34px; border-radius: 28px; background: var(--sup); border: 1px solid var(--borde); box-shadow: var(--sombra-alta); animation: celebra-entra 520ms var(--suave) both; }
+.celebra-centro strong { font-size: 1.3rem; letter-spacing: -0.02em; }
+.celebra-centro > span:last-child { color: var(--tinta-2); font-weight: 650; }
+.celebra-check { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; margin-bottom: 6px; color: #FFFFFF; background: linear-gradient(135deg, color-mix(in srgb, var(--ok) 70%, white), var(--ok)); box-shadow: 0 16px 26px -12px var(--ok); animation: celebra-check 600ms var(--suave) 120ms both; }
+.celebra-check .icono, .celebra-check .icono svg { width: 32px; height: 32px; }
+.celebra-check .icono svg { stroke-width: 3; stroke-dasharray: 26; stroke-dashoffset: 26; animation: celebra-trazo 420ms ease-out 380ms forwards; }
+@keyframes celebra-entra { from { opacity: 0; transform: scale(0.8) translateY(16px); } }
+@keyframes celebra-check { from { transform: scale(0); } 60% { transform: scale(1.15); } }
+@keyframes celebra-trazo { to { stroke-dashoffset: 0; } }
+.confeti { position: absolute; left: 50%; top: 50%; width: 9px; height: 14px; margin: -7px 0 0 -4px; border-radius: 3px; background: var(--c); opacity: 0; animation: confeti 1000ms cubic-bezier(.15, .7, .3, 1) 180ms both; }
+@keyframes confeti {
+  0% { opacity: 1; transform: rotate(var(--a)) translateY(0) rotate(0deg) scale(0.6); }
+  100% { opacity: 0; transform: rotate(var(--a)) translateY(calc(var(--d) * -1.6)) rotate(calc(var(--r) * 260deg)) scale(1); }
+}
+
+/* Menú de cuenta: accesos */
+.cuenta-enlaces { display: flex; flex-direction: column; gap: 4px; padding-top: 12px; border-top: 1px solid var(--borde); }
+.cuenta-enlace { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 10px; margin: 0 -10px; border: 0; border-radius: 12px; background: none; cursor: pointer; text-align: left; font-weight: 600; font-size: 0.88rem; color: var(--tinta); transition: background 200ms ease, transform 260ms var(--suave); }
+.cuenta-enlace:hover { background: var(--sup-2); transform: translateX(3px); }
+.cuenta-enlace .icono, .cuenta-enlace .icono svg { width: 17px; height: 17px; color: var(--marca-tinta); }
+.cuenta-enlace.instalar { display: none; }
+body.instalable .cuenta-enlace.instalar { display: flex; }
+.cuenta-pista { font-size: 0.78rem; color: var(--tinta-2); padding: 4px 0 0; }
+
+/* ---------- App aparte: solo registrar gastos ---------- */
+body.solo-gasto { padding-left: 0; padding-bottom: 0; }
+body.solo-gasto .barra-nav { display: none; }
+body.solo-gasto .pantalla { max-width: 560px; padding-bottom: 28px; }
+.cabecera-gasto { display: flex; align-items: center; gap: 10px; padding-right: 54px; min-height: 44px; }
+.cabecera-gasto .logo-marca { width: 40px; height: 40px; filter: drop-shadow(0 8px 12px color-mix(in srgb, var(--marca) 40%, transparent)); }
+.cabecera-gasto h1 { flex: 1; font-size: 1.35rem; white-space: nowrap; }
+.cabecera-gasto .boton { min-height: 38px; padding: 0 12px; border-radius: 99px; font-size: 0.82rem; box-shadow: var(--sombra); }
+.cabecera-gasto .boton .icono, .cabecera-gasto .boton .icono svg { width: 15px; height: 15px; }
+.boton.instalar { display: none; }
+body.instalable .boton.instalar { display: inline-flex; background: var(--accion); color: var(--sobre-accion); border-color: transparent; }
+body.solo-gasto .formulario { display: flex; flex-direction: column; gap: 18px; }
+body.solo-gasto .formulario > .f-conceptos { background: none; border: 0; box-shadow: none; padding: 0; border-radius: 0; }
+body.solo-gasto .opciones.chicas { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+body.solo-gasto .opcion.chica { flex-direction: column; justify-content: center; align-items: center; text-align: center; gap: 6px; min-height: 84px; padding: 10px 6px; font-size: 0.76rem; border-radius: 16px; }
+body.solo-gasto .opcion.chica .cat-ico { width: 38px; height: 38px; border-radius: 12px; }
+body.solo-gasto .opcion.chica .cat-ico svg { width: 19px; height: 19px; }
+body.solo-gasto .opciones:not(.chicas) { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 4px 16px 10px; }
+body.solo-gasto .opciones:not(.chicas)::-webkit-scrollbar { display: none; }
+body.solo-gasto .opcion.medio { flex-shrink: 0; }
+body.solo-gasto .hero.monto-caja { padding: 24px 22px; border-radius: 30px; }
+body.solo-gasto .monto-caja .campo-monto { font-size: clamp(3rem, 14vw, 4rem); }
+body.solo-gasto .f-cierre { position: sticky; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 4; }
+body.solo-gasto .f-cierre .mensaje { box-shadow: var(--sombra-alta); }
+
+/* La entrada, sin la lista de puntos, deja más aire a la vista de ejemplo */
+.google-texto b { font-size: 1.02rem; }
+@media (min-width: 1180px) and (min-height: 560px) { .login-escena { display: block; } }
+
+@media (min-width: 1024px) {
+  .nav-indicador { background: var(--marca-suave); border-radius: 12px; }
+  .nav-indicador::before { top: 50%; left: -16px; width: 4px; height: 22px; margin: -11px 0 0; border-radius: 0 4px 4px 0; }
+  .barra-nav a[aria-current="page"]:not(.central) { background: none; }
+  body.solo-gasto { padding-left: 0; padding-bottom: 0; }
+  body.solo-gasto .pantalla { padding-top: 26px; }
+  body.solo-gasto .formulario { display: flex; }
+  body.solo-gasto .opciones:not(.chicas) { margin: 0; padding: 4px 0 10px; flex-wrap: wrap; overflow: visible; }
+  body.solo-gasto .cuenta-menu.movil { right: 40px; top: 26px; }
+  body.solo-gasto .cabecera-gasto { padding-right: 54px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
-
-/* El foco que pone la app al cambiar de pantalla no necesita marco visible. */
-.vista:focus, #por-revisar:focus { outline: none; }

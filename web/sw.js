@@ -2,10 +2,15 @@
 // La API (Apps Script) y Google están en otros dominios: esas peticiones no se tocan
 // y van directo a la red. Cambia VERSION al publicar cambios.
 
-const VERSION = 'finfamily-v26';
+const VERSION = 'finfamily-v27';
 const CASCARON = [
   './',
   './index.html',
+  './gasto.html',
+  './gasto.webmanifest',
+  './iconos/gasto.svg',
+  './iconos/gasto-192.png',
+  './iconos/gasto-512.png',
   './estilos.css',
   './config.js',
   './api.js',
@@ -37,21 +42,22 @@ self.addEventListener('fetch', (ev) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // API y Google: sin intervenir
 
-  // Navegación: red primero y, si no hay señal, el index guardado.
+  // Navegación: red primero y, si no hay señal, la página guardada (la app completa o la de gastos).
   if (req.mode === 'navigate') {
+    const pagina = url.pathname.endsWith('/gasto.html') ? './gasto.html' : './index.html';
     ev.respondWith(
       fetch(req, { cache: 'no-cache' })
         .then(async (r) => {
           // Solo una respuesta correcta reemplaza el cascarón: un 404/500 nunca se guarda.
           if (r.ok && r.type === 'basic') {
             const copia = r.clone();
-            caches.open(VERSION).then((c) => c.put('./index.html', copia));
+            caches.open(VERSION).then((c) => c.put(pagina, copia));
             return r;
           }
-          const guardado = await caches.match('./index.html');
+          const guardado = await caches.match(pagina);
           return guardado || r;
         })
-        .catch(() => caches.match('./index.html')),
+        .catch(() => caches.match(pagina)),
     );
     return;
   }
