@@ -1826,11 +1826,17 @@ body[data-ruta="presupuesto"] { --luz-x: 22%; --luz-2x: 80%; --luz-y: -4%; }
   .nav-proximo .pill { align-self: flex-start; }
 }
 
-/* El mes de Inicio es un botón que lleva a Presupuesto, donde se cambia de mes */
-a.pill-mes { color: inherit; cursor: pointer; transition: transform 280ms var(--suave), box-shadow 280ms var(--suave), border-color 200ms ease; }
-a.pill-mes:hover { transform: translateY(-2px); border-color: var(--borde-fuerte); box-shadow: var(--sombra-alta); }
-a.pill-mes .icono:last-child { transition: transform 280ms var(--suave); }
-a.pill-mes:hover .icono:last-child { transform: translateX(3px); color: var(--marca-tinta); }
+/* Inicio por mes: selector de mes y botón para volver al mes en curso */
+.mes-inicio { display: flex; align-items: center; gap: 10px; }
+@media (max-width: 759px) { .mes-inicio { width: 100%; } .mes-inicio .selector-mes { flex: 1; max-width: none; justify-content: space-between; } }
+.boton-hoy { flex-shrink: 0; white-space: nowrap; min-height: 38px; padding: 0 14px; border-radius: 12px; gap: 8px; font-size: 0.86rem; color: var(--marca-tinta); border-color: color-mix(in srgb, var(--accion) 35%, var(--borde)); background: var(--marca-suave); animation: subir 360ms var(--suave) both; }
+.boton-hoy .icono, .boton-hoy .icono svg { width: 15px; height: 15px; }
+/* En otro mes, "¿En qué se fue?" ocupa todo el ancho: el gráfico a un lado y la lista al otro */
+@media (min-width: 760px) {
+  .panel-dona.ancho .dona { flex-direction: row; align-items: center; gap: 44px; padding: 6px 12px 10px; }
+  .panel-dona.ancho .dona-grafico { width: 210px; height: 210px; }
+  .panel-dona.ancho .dona-leyenda { flex: 1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 36px; row-gap: 3px; align-content: center; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
