@@ -1981,23 +1981,40 @@ html[data-vt] .carrusel-pista > .plastico[style*="view-transition-name"] { anima
 
 /* Presupuesto: barras con el saldo de cada mes */
 .hero.hero-meses { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'principal' 'meses' 'datos'; }
-.meses-barras { grid-area: meses; display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 14px 16px 10px; border-radius: var(--radio-chico); background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.13); }
-.mb-titulo { font-size: 0.76rem; font-weight: 650; opacity: 0.82; }
-.mb-fila { display: flex; align-items: flex-end; gap: clamp(3px, 0.8vw, 10px); height: 112px; }
-.mb-col { position: relative; flex: 1 1 0; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 5px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
-.mb-barra { flex: 1; width: 100%; max-width: 30px; display: flex; align-items: flex-end; }
-.mb-barra i { display: block; width: 100%; height: 5%; border-radius: 6px 6px 3px 3px; background: rgba(255, 255, 255, 0.34); transition: height 700ms var(--suave), background 220ms ease; }
-.mb-col:hover .mb-barra i { background: rgba(255, 255, 255, 0.6); }
-.mb-col.actual .mb-barra i { background: linear-gradient(180deg, #FFFFFF, var(--vivo)); box-shadow: 0 0 18px -2px var(--vivo); }
-.mb-col.negativo .mb-barra i { background: #FF9C8F; }
-.mb-col.cargando .mb-barra i { height: 18% !important; background: rgba(255, 255, 255, 0.16); animation: latido 1.1s ease-in-out infinite; }
-.mb-letra { font-size: 0.68rem; font-weight: 700; opacity: 0.7; line-height: 1; display: flex; flex-direction: column; align-items: center; gap: 1px; }
-.mb-letra small { font-size: 0.56rem; opacity: 0.8; }
-.mb-col.actual .mb-letra { opacity: 1; color: var(--vivo); }
-.mb-col.hoy .mb-letra::after { content: ''; width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
-.mb-col::before { content: attr(data-valor); position: absolute; top: -4px; left: 50%; translate: -50% 4px; padding: 3px 7px; border-radius: 7px; background: rgba(11, 18, 32, 0.82); color: #FFFFFF; font-size: 0.68rem; font-weight: 700; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 180ms ease, translate 220ms var(--suave); z-index: 2; }
-.mb-col:hover::before, .mb-col:focus-visible::before { opacity: 1; translate: -50% 0; }
-.mb-col:not([data-valor])::before { display: none; }
+.meses-barras { grid-area: meses; display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 14px 16px 12px; border-radius: var(--radio-chico); background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.13); }
+.mb-cab { display: flex; align-items: center; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; }
+.mb-titulo { font-size: 0.86rem; font-weight: 700; }
+.mb-leyenda { list-style: none; margin: 0; padding: 0; display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.74rem; font-weight: 600; opacity: 0.92; }
+.mb-leyenda li { display: inline-flex; align-items: center; gap: 6px; }
+.mb-punto { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.mb-punto.sobra { background: #FFFFFF; }
+.mb-punto.falta { background: #FF9C8F; }
+.mb-punto.nodato { background: none; border: 1.5px dashed rgba(255, 255, 255, 0.75); }
+/* El plano: cada columna tiene una zona con la barra y, debajo, el nombre del mes. --cero es la altura de la línea de cero. */
+.mb-plano { position: relative; display: flex; align-items: stretch; gap: clamp(6px, 1.2vw, 16px); height: 156px; --cero: 0%; }
+.mb-col { position: relative; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; border-radius: 10px; transition: background 200ms ease; }
+.mb-col:hover { background: rgba(255, 255, 255, 0.08); }
+.mb-col.actual { background: rgba(255, 255, 255, 0.12); }
+.mb-zona { position: relative; flex: 1; margin: 22px 0 4px; border-bottom: 0; }
+/* Línea de cero, dibujada en cada columna para que quede continua de lado a lado */
+.mb-zona::before { content: ''; position: absolute; left: -9px; right: -9px; bottom: var(--cero); height: 1.5px; background: rgba(255, 255, 255, 0.5); }
+.mb-barra { position: absolute; left: 18%; right: 18%; height: var(--h); border-radius: 7px 7px 2px 2px; background: rgba(255, 255, 255, 0.62); transition: height 700ms var(--suave), bottom 700ms var(--suave), top 700ms var(--suave); }
+.mb-col.sobra .mb-barra { bottom: var(--cero); }
+.mb-col.falta .mb-barra { top: calc(100% - var(--cero)); border-radius: 2px 2px 7px 7px; background: #FF9C8F; }
+.mb-col.actual.sobra .mb-barra { background: linear-gradient(180deg, #FFFFFF, var(--vivo)); box-shadow: 0 0 18px -4px var(--vivo); }
+.mb-col.actual.falta .mb-barra { background: linear-gradient(180deg, #FF8576, #FFB4A9); box-shadow: 0 0 18px -4px #FF8576; }
+/* Mes sin ingresos cargados: un recuadro punteado, no una barra */
+.mb-col.nodato .mb-barra, .mb-col.cargando .mb-barra { bottom: var(--cero); height: 26px; background: none; border: 1.5px dashed rgba(255, 255, 255, 0.5); border-bottom: 0; border-radius: 7px 7px 0 0; }
+.mb-col.cargando .mb-barra { animation: latido 1.1s ease-in-out infinite; }
+/* El monto, escrito junto a la punta de la barra */
+.mb-valor { position: absolute; left: 50%; translate: -50% 0; font-size: 0.74rem; font-weight: 750; white-space: nowrap; line-height: 1; }
+.mb-col.sobra .mb-valor { bottom: calc(var(--cero) + var(--h) + 5px); }
+.mb-col.falta .mb-valor { bottom: calc(var(--cero) + 6px); color: #FFD3CC; }
+.mb-col.nodato .mb-valor, .mb-col.cargando .mb-valor { bottom: calc(var(--cero) + 32px); font-size: 0.64rem; font-weight: 600; opacity: 0.75; }
+.mb-mes { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; height: 38px; flex-shrink: 0; padding: 4px 0 0; font-size: 0.78rem; font-weight: 650; line-height: 1; text-transform: capitalize; opacity: 0.85; }
+.mb-mes small { font-size: 0.62rem; font-weight: 600; opacity: 0.75; }
+.mb-mes em { font-style: normal; font-size: 0.58rem; font-weight: 750; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 6px; border-radius: 99px; background: var(--vivo); color: #0B1220; }
+.mb-col.actual .mb-mes { opacity: 1; font-weight: 800; }
 
 /* Nuevo gasto: últimos registrados */
 .f-recientes { display: none; }
@@ -2048,7 +2065,7 @@ html[data-vt] .carrusel-pista > .plastico[style*="view-transition-name"] { anima
   .rejilla-billetera .hero.simple { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'principal' 'extra' 'datos'; padding: 24px 26px; gap: 18px; }
   .rejilla-billetera .billetera { padding-top: 0; }
   .hero.hero-meses { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr); grid-template-areas: 'principal meses' 'datos datos'; align-items: center; }
-  .mb-fila { height: 124px; }
+  .mb-plano { height: 168px; }
 
   /* Nuevo gasto: el monto en una sola fila y, abajo, los últimos registrados */
   body:not(.solo-gasto) .hero.monto-caja { flex-direction: row; align-items: center; padding: 14px 22px; gap: 16px; }
@@ -2083,6 +2100,13 @@ html[data-vt] .carrusel-pista > .plastico[style*="view-transition-name"] { anima
   .pantalla.tarjetas .hero-datos li { padding: 9px 12px; }
   .pantalla.tarjetas .col-pila { gap: 10px; }
 }
+
+/* ---------- Gráficos que se entienden de un vistazo ---------- */
+/* Inicio, "Por pagar": leyenda corta de la barra de colores */
+.hero-leyenda.compacta { gap: 4px 12px; font-size: 0.74rem; }
+.hero-leyenda.compacta li { gap: 5px; }
+/* Detalle de tarjeta: se quita la franja detrás de cada monto. No decía qué medía, y el monto ya está escrito. */
+.consumo::before { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
