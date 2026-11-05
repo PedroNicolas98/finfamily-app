@@ -1826,6 +1826,12 @@ body[data-ruta="presupuesto"] { --luz-x: 22%; --luz-2x: 80%; --luz-y: -4%; }
   .nav-proximo .pill { align-self: flex-start; }
 }
 
+/* El mes de Inicio es un botón que lleva a Presupuesto, donde se cambia de mes */
+a.pill-mes { color: inherit; cursor: pointer; transition: transform 280ms var(--suave), box-shadow 280ms var(--suave), border-color 200ms ease; }
+a.pill-mes:hover { transform: translateY(-2px); border-color: var(--borde-fuerte); box-shadow: var(--sombra-alta); }
+a.pill-mes .icono:last-child { transition: transform 280ms var(--suave); }
+a.pill-mes:hover .icono:last-child { transform: translateX(3px); color: var(--marca-tinta); }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }

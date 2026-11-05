@@ -1449,7 +1449,9 @@ async function vistaInicio() {
     h('div', { class: 'cabecera' },
       h('p', { class: 'sobretitulo' }, fechaHoy),
       h('h1', {}, nombre ? `${saludo}, ${nombre}` : saludo)),
-    h('span', { class: 'pill-mes solo-pc' }, icono('calendario'), nombreMesClave(d.mes) || d.etiquetaMes || '')));
+    // Inicio siempre muestra el mes en curso; los demás meses se ven en Presupuesto, y este botón lleva allá.
+    h('a', { class: 'pill-mes solo-pc', href: '#presupuesto', title: 'Ver otros meses' },
+      icono('calendario'), h('span', {}, nombreMesClave(d.mes) || d.etiquetaMes || ''), icono('adelante'))));
 
   const alertas = d.alertas || [];
   if (alertas.length) {
