@@ -339,7 +339,8 @@ function redondear_(n) {
 function consumoPublico_(c) {
   return {
     fila: c.fila, idForm: c.idForm, fecha: c.fecha, concepto: c.concepto,
-    descripcion: c.descripcion, monto: c.monto, estado: c.estado, nota: c.nota, medio: c.medio
+    descripcion: c.descripcion, monto: c.monto, estado: c.estado, nota: c.nota, medio: c.medio,
+    responsable: c.responsable
   };
 }
 
@@ -485,9 +486,11 @@ function tipoFilaTotal_(n) {
  * Lee la hoja PRESUPUESTO FAMILIAR para un mes ('YYYY-MM').
  * display2D (getDisplayValues) sirve para encabezados y conceptos;
  * valores2D (getValues) para los números. Los totales se leen de sus filas.
+ * notas2D (getNotes, opcional) trae las notas: una línea de gastos está pagada
+ * si la nota de su celda del mes tiene un renglón que empieza con "Pagado".
  * Devuelve null si el mes no está en los encabezados.
  */
-function leerPresupuesto(display2D, valores2D, claveMes) {
+function leerPresupuesto(display2D, valores2D, claveMes, notas2D) {
   if (!display2D || !display2D.length) return null;
   var idxEnc = buscarFilaEncabezado(display2D, 'Concepto / Categoría');
   if (idxEnc === -1) idxEnc = buscarFilaEncabezado(display2D, 'Concepto');
@@ -539,16 +542,95 @@ function leerPresupuesto(display2D, valores2D, claveMes) {
     var seccion = fase === 'ingresos' ? 'ingresos'
       : ((n.indexOf('ahorro') === 0 || n.indexOf('fondo') === 0) ? 'ahorros' : 'gastos');
     var monto = parsearMonto(celda_(filaValores, col));
-    filas.push({ concepto: concepto, seccion: seccion, monto: monto === null ? 0 : monto });
+    var linea = { concepto: concepto, seccion: seccion, monto: monto === null ? 0 : monto, fila: i + 1 };
+    if (seccion === 'gastos') {
+      var marca = notaPagado(celda_((notas2D && notas2D[i]) || [], col));
+      linea.pagado = !!marca;
+      linea.pagadoNota = marca;
+      linea.esTarjeta = n.indexOf('tc ') === 0;
+    }
+    filas.push(linea);
   }
 
   return {
     meses: meses,
     mes: claveMes,
     etiquetaMes: claveAEtiqueta(claveMes),
+    columna: col + 1,
     filas: filas,
     totales: totales
   };
+}
+
+// ---------------------------------------------------------------------------
+// Gastos fijos pagados (nota en la celda del mes)
+// ---------------------------------------------------------------------------
+
+/** Renglón de la nota que empieza con "Pagado", o '' si no hay. */
+function notaPagado(nota) {
+  var lineas = String(nota === null || nota === undefined ? '' : nota).split(/\r?\n/);
+  for (var i = 0; i < lineas.length; i++) {
+    if (normalizar(lineas[i]).indexOf('pagado') === 0) return lineas[i].trim();
+  }
+  return '';
+}
+
+/** Nota sin los renglones que empiezan con "Pagado" (lo demás se conserva). */
+function quitarNotaPagado(nota) {
+  return String(nota === null || nota === undefined ? '' : nota).split(/\r?\n/)
+    .filter(function (l) { return normalizar(l).indexOf('pagado') !== 0; })
+    .join('\n').replace(/^\n+|\n+$/g, '');
+}
+
+/** Nota con un único renglón "Pagado…" (reemplaza el anterior y conserva lo demás). */
+function ponerNotaPagado(nota, texto) {
+  var resto = quitarNotaPagado(nota);
+  return resto ? texto + '\n' + resto : texto;
+}
+
+// ---------------------------------------------------------------------------
+// Gasto por persona
+// ---------------------------------------------------------------------------
+
+function nombreTarjeta_(id) {
+  for (var i = 0; i < TARJETAS.length; i++) if (TARJETAS[i].id === id) return TARJETAS[i].nombre;
+  return 'Otros';
+}
+
+function ordenadoPorMonto_(mapa, clave) {
+  return Object.keys(mapa).map(function (k) {
+    var o = { monto: redondear_(mapa[k]) };
+    o[clave] = k;
+    return o;
+  }).sort(function (a, b) { return b.monto - a.monto; });
+}
+
+/**
+ * Cuánto gastó cada responsable en un mes ('YYYY-MM'), según la fecha de cada consumo
+ * (pagado o no). Devuelve, de mayor a menor: {nombre, total, consumos, conceptos[], medios[]}.
+ */
+function gastoPorPersona(consumos, claveMes) {
+  var porNombre = {};
+  (consumos || []).forEach(function (c) {
+    if (!c.fecha || c.fecha.slice(0, 7) !== claveMes) return;
+    var nombre = c.responsable || 'Sin responsable';
+    if (!porNombre[nombre]) porNombre[nombre] = { nombre: nombre, total: 0, consumos: 0, conceptos: {}, medios: {} };
+    var p = porNombre[nombre];
+    p.total += c.monto;
+    p.consumos += 1;
+    var concepto = c.concepto || 'Sin concepto';
+    p.conceptos[concepto] = (p.conceptos[concepto] || 0) + c.monto;
+    var medio = nombreTarjeta_(c.tarjeta);
+    p.medios[medio] = (p.medios[medio] || 0) + c.monto;
+  });
+  return Object.keys(porNombre).map(function (k) {
+    var p = porNombre[k];
+    return {
+      nombre: p.nombre, total: redondear_(p.total), consumos: p.consumos,
+      conceptos: ordenadoPorMonto_(p.conceptos, 'concepto'),
+      medios: ordenadoPorMonto_(p.medios, 'medio')
+    };
+  }).sort(function (a, b) { return b.total - a.total; });
 }
 
 // ---------------------------------------------------------------------------
@@ -631,6 +713,10 @@ if (typeof module !== 'undefined') {
     resumenTarjetas: resumenTarjetas,
     alertas: alertas,
     leerPresupuesto: leerPresupuesto,
+    notaPagado: notaPagado,
+    quitarNotaPagado: quitarNotaPagado,
+    ponerNotaPagado: ponerNotaPagado,
+    gastoPorPersona: gastoPorPersona,
     firmaGasto: firmaGasto,
     construirFila: construirFila
   };

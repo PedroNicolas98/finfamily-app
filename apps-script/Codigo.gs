@@ -7,6 +7,7 @@
  *   {ok:true, datos:{...}}  o  {ok:false, codigo, error}
  *
  * Solo lee y escribe en las hojas que ya existen. No crea hojas ni cambia fórmulas.
+ * Un gasto fijo "pagado" se guarda como nota en su celda del mes en PRESUPUESTO FAMILIAR.
  *
  * Propiedades del script (Configuración del proyecto > Propiedades del script):
  *   SHEET_ID   ID del Google Sheets (si falta, se usa SHEET_ID_DEFECTO).
@@ -14,7 +15,7 @@
  *   USUARIOS   JSON {"correo@gmail.com":{"nombre":"Pedro Nicolás","clave":"P"}, ...}
  */
 
-var VERSION = '1.0.0';
+var VERSION = '1.1.0';
 var SHEET_ID_DEFECTO = '1KEHSUJXu9lJ1HjnYgF-mKBpOQq0V2qPOlEXSnUgRyp4';
 var ZONA_HORARIA = 'America/Lima';
 var DIAS_AVISO = 3;
@@ -63,6 +64,10 @@ function doPost(e) {
       case 'config': resultado = accionConfig_(usuario, datos); break;
       case 'registrar': resultado = accionRegistrar_(usuario, datos); break;
       case 'marcarPagado': resultado = accionMarcarPagado_(usuario, datos); break;
+      case 'marcarFijo': resultado = accionMarcarFijo_(usuario, datos); break;
+      case 'editarGasto': resultado = accionEditarGasto_(usuario, datos); break;
+      case 'borrarGasto': resultado = accionBorrarGasto_(usuario, datos); break;
+      case 'personas': resultado = accionPersonas_(usuario, datos); break;
       default: throw errorApp_('datos_invalidos', 'Acción no reconocida.');
     }
     return responderJSON_({ ok: true, datos: resultado });
@@ -224,7 +229,7 @@ function leerTodosLosConsumos_() {
 
 function leerPresupuestoDelMes_(claveMes) {
   var rango = obtenerHoja_(HOJA_PRESUPUESTO).getDataRange();
-  return leerPresupuesto(rango.getDisplayValues(), rango.getValues(), claveMes);
+  return leerPresupuesto(rango.getDisplayValues(), rango.getValues(), claveMes, rango.getNotes());
 }
 
 /** Fila y columna (0-based) de la primera celda de encabezado que coincide, en las primeras 8 filas. */
@@ -339,14 +344,24 @@ function accionTarjetas_(usuario, datos) {
 }
 
 function accionPresupuesto_(usuario, datos) {
-  var mes = datos.mes;
+  var mes = mesValido_(datos.mes);
+  var p = leerPresupuestoDelMes_(mes);
+  if (!p) throw errorApp_('datos_invalidos', 'Ese mes no está en el presupuesto.');
+  return p;
+}
+
+function mesValido_(mes) {
   if (mes === undefined || mes === null || mes === '') mes = hoyServidor_().slice(0, 7);
   if (typeof mes !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) {
     throw errorApp_('datos_invalidos', 'El mes no es válido.');
   }
-  var p = leerPresupuestoDelMes_(mes);
-  if (!p) throw errorApp_('datos_invalidos', 'Ese mes no está en el presupuesto.');
-  return p;
+  return mes;
+}
+
+/** Cuánto gastó cada persona en el mes (por fecha del consumo, pagado o no). */
+function accionPersonas_(usuario, datos) {
+  var mes = mesValido_(datos.mes);
+  return { mes: mes, personas: gastoPorPersona(leerTodosLosConsumos_(), mes) };
 }
 
 function accionConfig_(usuario) {
@@ -549,6 +564,160 @@ function accionMarcarPagado_(usuario, datos) {
       SpreadsheetApp.flush();
     }
     return { actualizadas: actualizadas, omitidas: omitidas };
+  } finally {
+    candado.releaseLock();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Gastos fijos pagados, editar y borrar gastos
+// ---------------------------------------------------------------------------
+
+/** Marca o desmarca un gasto fijo del presupuesto como pagado (nota en la celda del mes). */
+function accionMarcarFijo_(usuario, datos) {
+  validarIdCliente_(datos.idCliente);
+  var mes = mesValido_(datos.mes);
+  var fila = datos.fila;
+  if (!Number.isInteger(fila) || fila < 1) throw errorApp_('datos_invalidos', 'No se indicó la línea del presupuesto.');
+  var pagado = datos.pagado === true;
+
+  var hoja = obtenerHoja_(HOJA_PRESUPUESTO);
+  var candado = tomarCandado_();
+  try {
+    var rango = hoja.getDataRange();
+    var p = leerPresupuesto(rango.getDisplayValues(), rango.getValues(), mes, rango.getNotes());
+    if (!p) throw errorApp_('datos_invalidos', 'Ese mes no está en el presupuesto.');
+    var linea = null;
+    p.filas.forEach(function (f) { if (f.fila === fila) linea = f; });
+    if (!linea || linea.seccion !== 'gastos' || normalizar(linea.concepto) !== normalizar(datos.concepto)) {
+      throw errorApp_('datos_invalidos', 'Esa línea del presupuesto cambió. Actualiza y vuelve a intentar.');
+    }
+    var celda = hoja.getRange(fila, p.columna);
+    var actual = celda.getNote();
+    var hoy = hoyServidor_();
+    var texto = 'Pagado el ' + hoy.slice(8, 10) + '/' + hoy.slice(5, 7) + '/' + hoy.slice(0, 4) +
+      ' · ' + String(usuario.nombre || '').split(' ')[0];
+    var nueva = pagado ? ponerNotaPagado(actual, texto) : quitarNotaPagado(actual);
+    if (nueva !== actual) {
+      celda.setNote(nueva);
+      SpreadsheetApp.flush();
+    }
+    return { mes: mes, fila: fila, pagado: pagado, pagadoNota: notaPagado(nueva) };
+  } finally {
+    candado.releaseLock();
+  }
+}
+
+/** Devuelve el motivo por el que la fila no coincide con lo que vio la app, o '' si coincide. */
+function filaNoCoincide_(valores, cols, idxEnc, fila, verificar) {
+  if (!Number.isInteger(fila) || fila <= idxEnc + 1 || fila > valores.length) return 'fila no válida';
+  var v = verificar || {};
+  var f = valores[fila - 1];
+  var montoFila = parsearMonto(f[cols.monto]);
+  var montoEsperado = typeof v.monto === 'number' ? v.monto : parsearMonto(String(v.monto || ''));
+  if (montoFila === null || montoEsperado === null || centavos_(montoFila) !== centavos_(montoEsperado) ||
+      normalizar(f[cols.descripcion]) !== normalizar(v.descripcion)) {
+    return 'la fila cambió';
+  }
+  return '';
+}
+
+/** Corrige un gasto ya registrado: monto, concepto, descripción, nota o fecha. */
+function accionEditarGasto_(usuario, datos) {
+  validarIdCliente_(datos.idCliente);
+  var nombreHoja = hojaConsumosCanonica_(datos.hoja);
+  if (!nombreHoja) throw errorApp_('datos_invalidos', 'Esa hoja no admite cambios.');
+  var cambios = (datos.cambios && typeof datos.cambios === 'object') ? datos.cambios : {};
+  var nuevo = {};
+
+  if (cambios.monto !== undefined) {
+    var monto = typeof cambios.monto === 'number' ? cambios.monto : parsearMonto(String(cambios.monto || ''));
+    if (monto === null || !isFinite(monto) || monto <= 0 || monto > 1000000) {
+      throw errorApp_('datos_invalidos', 'El monto debe ser mayor a cero.');
+    }
+    nuevo.monto = Math.round(monto * 100) / 100;
+  }
+  if (cambios.descripcion !== undefined) nuevo.descripcion = textoLimpio_(cambios.descripcion, 120, 'la descripción', true);
+  if (cambios.nota !== undefined) nuevo.nota = textoLimpio_(cambios.nota, 200, 'la nota', false);
+  if (cambios.concepto !== undefined) {
+    var conf = leerConfiguracion_();
+    var buscado = normalizar(cambios.concepto);
+    for (var i = 0; i < conf.conceptos.length; i++) {
+      if (normalizar(conf.conceptos[i]) === buscado) { nuevo.concepto = conf.conceptos[i]; break; }
+    }
+    if (!nuevo.concepto) throw errorApp_('datos_invalidos', 'El concepto no está en la lista de Configuración.');
+  }
+  if (cambios.fecha !== undefined) {
+    var fecha = typeof cambios.fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(cambios.fecha) ? fechaISO(parsearFecha(cambios.fecha)) : '';
+    if (!fecha) throw errorApp_('datos_invalidos', 'La fecha no es válida.');
+    if (diasEntre_(hoyServidor_(), fecha) > 1) throw errorApp_('datos_invalidos', 'La fecha no puede ser futura.');
+    nuevo.fecha = fecha;
+  }
+  if (!Object.keys(nuevo).length) throw errorApp_('datos_invalidos', 'No hay cambios para guardar.');
+
+  var hoja = obtenerHoja_(nombreHoja);
+  var candado = tomarCandado_();
+  try {
+    var h = leerHojaConEncabezado_(hoja);
+    var valores = h.valores, cols = h.cols;
+    if (cols.monto === -1 || cols.descripcion === -1 || cols.fecha === -1) {
+      throw errorApp_('error_interno', 'La hoja "' + nombreHoja + '" no tiene el formato esperado.');
+    }
+    var motivo = filaNoCoincide_(valores, cols, h.idxEnc, datos.fila, datos.verificar);
+    if (motivo) throw errorApp_('datos_invalidos', 'Ese gasto cambió en el Sheets. Actualiza y vuelve a intentar.');
+    var fila = datos.fila;
+    var f = valores[fila - 1];
+    var formulas = hoja.getRange(fila, 1, 1, f.length).getFormulas()[0];
+    var escribir = function (col, valor) {
+      if (col >= 0 && col < f.length && !formulas[col]) hoja.getRange(fila, col + 1).setValue(valor);
+    };
+
+    if (nuevo.monto !== undefined) escribir(cols.monto, nuevo.monto);
+    if (nuevo.descripcion !== undefined) escribir(cols.descripcion, neutralizarTexto(nuevo.descripcion));
+    if (nuevo.concepto !== undefined) escribir(cols.concepto, neutralizarTexto(nuevo.concepto));
+    if (nuevo.nota !== undefined) escribir(cols.nota, neutralizarTexto(nuevo.nota));
+    if (nuevo.fecha !== undefined) {
+      escribir(cols.fecha, parsearFecha(nuevo.fecha));
+      escribir(cols.mes, nombreMes(nuevo.fecha));
+      var idCiclo = idTarjeta(nombreHoja, f[cols.responsable]);
+      var ciclo = idCiclo === 'HORMIGA' ? { pago: '', vence: '' } : calcularCiclo(idCiclo, nuevo.fecha);
+      if (ciclo.pago && ciclo.vence) {
+        escribir(cols.fechaPago, parsearFecha(ciclo.pago));
+        escribir(cols.fechaVencimiento, parsearFecha(ciclo.vence));
+      }
+    }
+    // La huella (para detectar duplicados) se rehace con los datos finales.
+    if (cols.huella !== -1 && String(f[cols.huella] || '').trim()) {
+      escribir(cols.huella, firmaGasto({
+        fecha: nuevo.fecha !== undefined ? nuevo.fecha : f[cols.fecha],
+        monto: nuevo.monto !== undefined ? nuevo.monto : parsearMonto(f[cols.monto]),
+        descripcion: nuevo.descripcion !== undefined ? nuevo.descripcion : f[cols.descripcion]
+      }));
+    }
+    SpreadsheetApp.flush();
+    return { actualizado: true, hoja: nombreHoja, fila: fila };
+  } finally {
+    candado.releaseLock();
+  }
+}
+
+/** Borra la fila de un gasto (queda en el historial de versiones del Sheets). */
+function accionBorrarGasto_(usuario, datos) {
+  validarIdCliente_(datos.idCliente);
+  var nombreHoja = hojaConsumosCanonica_(datos.hoja);
+  if (!nombreHoja) throw errorApp_('datos_invalidos', 'Esa hoja no admite cambios.');
+  var hoja = obtenerHoja_(nombreHoja);
+  var candado = tomarCandado_();
+  try {
+    var h = leerHojaConEncabezado_(hoja);
+    if (h.cols.monto === -1 || h.cols.descripcion === -1) {
+      throw errorApp_('error_interno', 'La hoja "' + nombreHoja + '" no tiene el formato esperado.');
+    }
+    var motivo = filaNoCoincide_(h.valores, h.cols, h.idxEnc, datos.fila, datos.verificar);
+    if (motivo) throw errorApp_('datos_invalidos', 'Ese gasto cambió en el Sheets. Actualiza y vuelve a intentar.');
+    hoja.deleteRow(datos.fila);
+    SpreadsheetApp.flush();
+    return { borrado: true, hoja: nombreHoja };
   } finally {
     candado.releaseLock();
   }

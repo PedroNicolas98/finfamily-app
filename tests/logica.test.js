@@ -738,3 +738,64 @@ test('construirFila Gastos Hormiga: Plin y Efectivo', () => {
   assert.equal(efectivo[columnas.medio], 'Efectivo');
   assert.equal(plin[columnas.estado], 'Pagado');
 });
+
+// ---------- Gastos fijos pagados y gasto por persona ----------
+
+test('notaPagado, ponerNotaPagado y quitarNotaPagado conservan lo demás de la nota', () => {
+  assert.equal(L.notaPagado(''), '');
+  assert.equal(L.notaPagado('Recordar factura'), '');
+  assert.equal(L.notaPagado('Recordar factura\nPagado el 05/11/2026 · Pedro'), 'Pagado el 05/11/2026 · Pedro');
+  assert.equal(L.ponerNotaPagado('', 'Pagado el 05/11/2026 · Pedro'), 'Pagado el 05/11/2026 · Pedro');
+  assert.equal(L.ponerNotaPagado('Recordar factura', 'Pagado el 05/11/2026 · Pedro'),
+    'Pagado el 05/11/2026 · Pedro\nRecordar factura');
+  // Volver a marcar no duplica el renglón.
+  assert.equal(L.ponerNotaPagado('Pagado el 01/11/2026 · Britney\nRecordar factura', 'Pagado el 05/11/2026 · Pedro'),
+    'Pagado el 05/11/2026 · Pedro\nRecordar factura');
+  assert.equal(L.quitarNotaPagado('Pagado el 05/11/2026 · Pedro\nRecordar factura'), 'Recordar factura');
+  assert.equal(L.quitarNotaPagado('Pagado el 05/11/2026 · Pedro'), '');
+});
+
+test('leerPresupuesto marca como pagadas las líneas de gastos con nota "Pagado"', () => {
+  const display = [
+    ['PRESUPUESTO', '', ''],
+    ['Concepto / Categoría', 'oct-26', 'nov-26'],
+    ['Ingresos - Uno', '1000', '1000'],
+    ['TOTAL INGRESOS', '1000', '1000'],
+    ['Luz', '80', '90'],
+    ['TC Interbank', '300', '310'],
+    ['Internet', '100', '100'],
+    ['TOTAL GASTOS', '480', '500'],
+    ['SALDO / SUPERÁVIT FINAL', '520', '500'],
+  ];
+  const valores = display.map((f) => f.map((v) => (/^\d+$/.test(v) ? Number(v) : v)));
+  const notas = display.map((f) => f.map(() => ''));
+  notas[4][2] = 'Pagado el 05/11/2026 · Pedro';
+  notas[6][1] = 'Pagado el 03/10/2026 · Britney'; // otro mes: no cuenta para noviembre
+  const p = L.leerPresupuesto(display, valores, '2026-11', notas);
+  assert.equal(p.columna, 3);
+  const luz = p.filas.find((f) => f.concepto === 'Luz');
+  assert.deepEqual({ fila: luz.fila, pagado: luz.pagado, nota: luz.pagadoNota, tc: luz.esTarjeta },
+    { fila: 5, pagado: true, nota: 'Pagado el 05/11/2026 · Pedro', tc: false });
+  const internet = p.filas.find((f) => f.concepto === 'Internet');
+  assert.equal(internet.pagado, false);
+  assert.equal(p.filas.find((f) => f.concepto === 'TC Interbank').esTarjeta, true);
+  // Sin notas (llamadas antiguas) nada queda como pagado.
+  assert.equal(L.leerPresupuesto(display, valores, '2026-11').filas.find((f) => f.concepto === 'Luz').pagado, false);
+});
+
+test('gastoPorPersona suma por responsable solo los consumos del mes', () => {
+  const consumos = [
+    { responsable: 'Ana', fecha: '2026-11-02', monto: 50, concepto: 'Supermercado', tarjeta: 'SIP' },
+    { responsable: 'Ana', fecha: '2026-11-10', monto: 20.5, concepto: 'Delivery', tarjeta: 'HORMIGA' },
+    { responsable: 'Ana', fecha: '2026-11-11', monto: 30, concepto: 'Supermercado', tarjeta: 'SIP' },
+    { responsable: 'Luis', fecha: '2026-11-03', monto: 200, concepto: 'Ropa y Calzado', tarjeta: 'BCP' },
+    { responsable: 'Luis', fecha: '2026-10-30', monto: 999, concepto: 'Otro mes', tarjeta: 'BCP' },
+    { responsable: '', fecha: '', monto: 5, concepto: 'Sin fecha', tarjeta: 'HORMIGA' },
+  ];
+  const r = L.gastoPorPersona(consumos, '2026-11');
+  assert.deepEqual(r.map((x) => [x.nombre, x.total, x.consumos]), [['Luis', 200, 1], ['Ana', 100.5, 3]]);
+  const ana = r.find((x) => x.nombre === 'Ana');
+  assert.deepEqual(ana.conceptos, [{ monto: 80, concepto: 'Supermercado' }, { monto: 20.5, concepto: 'Delivery' }]);
+  assert.deepEqual(ana.medios.map((m) => m.medio), ['TC SIP', 'Gastos hormiga']);
+  assert.deepEqual(L.gastoPorPersona(consumos, '2026-09'), []);
+});
