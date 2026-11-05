@@ -2708,32 +2708,41 @@ function aplicarMenu() {
   try { chico = localStorage.getItem('ff:menu') === 'chico'; } catch { /* sin almacenamiento */ }
   document.body.classList.toggle('menu-chico', chico);
 }
+const MENU_MS = 520; // igual que --menu-dur en estilos.css
 function alternarMenu() {
-  const chico = !document.body.classList.contains('menu-chico');
+  const cuerpo = document.body;
+  const chico = !cuerpo.classList.contains('menu-chico');
   try { localStorage.setItem('ff:menu', chico ? 'chico' : 'ancho'); } catch { /* dura hasta recargar */ }
   cerrarMenusCuenta();
-  // Una sola animación del navegador: el menú se pliega, el botón viaja con el borde,
-  // "Registrar gasto" se encoge hasta quedar en el "+" y el contenido se desplaza a su nuevo centro.
-  // En pantallas anchas el contenido ya está en su ancho máximo: al cambiar el menú solo se desplaza, y eso se
-  // anima moviendo su foto. En pantallas más angostas el ancho sí cambia: ahí el contenido se funde rápido al
-  // nuevo tamaño, porque mover dos fotos distintas se vería doble.
-  const pantalla = vista.querySelector('.pantalla');
-  const tope = pantalla ? parseFloat(getComputedStyle(pantalla).maxWidth) : NaN;
-  const anchoVista = vista.getBoundingClientRect().width;
-  const soloSeDesplaza = Number.isFinite(tope) && Math.min(anchoVista, anchoVista + (chico ? 188 : -188)) >= tope;
-  document.documentElement.dataset.vtAncho = soloSeDesplaza ? 'igual' : 'cambia';
-  const nombrar = () => {
-    limpiarNombres();
-    const nav = document.getElementById('nav');
-    nav.style.viewTransitionName = 'menu';
-    nav.querySelector('.nav-plegar')?.style.setProperty('view-transition-name', 'plegar');
-    nav.querySelector('a.central')?.style.setProperty('view-transition-name', 'central');
-    if (soloSeDesplaza) vista.style.viewTransitionName = 'contenido';
-  };
-  conTransicion('menu', () => {
-    document.body.classList.toggle('menu-chico', chico);
+  // El menú cambia de ancho con una transición normal: es chico y está fijo, así que no obliga a recalcular
+  // la página en cada cuadro. El contenido cambia de lugar de una sola vez y enseguida se le aplica un
+  // desplazamiento que lo deja donde estaba; ese desplazamiento se anima hasta cero. Así la página sigue viva
+  // (el carrusel no se detiene) y el movimiento lo hace la tarjeta gráfica.
+  const piezas = [vista, document.getElementById('avisos')].filter(Boolean);
+  const donde = (el) => (el.firstElementChild || el).getBoundingClientRect().left;
+  const antes = piezas.map(donde);
+  cuerpo.classList.add('menu-moviendo');
+  cuerpo.classList.toggle('menu-chico', chico);
+  if (!sinMovimiento()) {
+    piezas.forEach((el, k) => {
+      el.style.transition = 'none';
+      el.style.transform = '';
+      const dx = antes[k] - donde(el);
+      if (Math.abs(dx) > 0.5) el.style.transform = `translate3d(${dx.toFixed(2)}px, 0, 0)`;
+    });
+    void cuerpo.offsetWidth; // fija el punto de partida antes de animar
+    piezas.forEach((el) => {
+      if (!el.style.transform) { el.style.transition = ''; return; }
+      el.style.transition = `transform ${MENU_MS}ms cubic-bezier(0.5, 0, 0.2, 1)`; // arranca y termina despacio
+      el.style.transform = 'translate3d(0, 0, 0)';
+    });
+  }
+  clearTimeout(alternarMenu.reloj);
+  alternarMenu.reloj = setTimeout(() => {
+    piezas.forEach((el) => { el.style.transition = ''; el.style.transform = ''; });
+    cuerpo.classList.remove('menu-moviendo');
     moverIndicador();
-  }, null, nombrar);
+  }, MENU_MS + 60);
 }
 
 function construirNav() {
