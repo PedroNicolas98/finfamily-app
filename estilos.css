@@ -703,54 +703,47 @@ legend + * { clear: both; }
 .logo { border-radius: 18px; }
 .boton-google { min-height: 44px; }
 
-/* Logo con el color de la app, sin recuadro: una casa sólida y adentro tres barras que suben */
+/* Logo con el color de la app, hecho solo de trazos y sin fondo: una casa de una sola línea y una flecha que sale hacia arriba */
 .logo-marca { display: block; flex-shrink: 0; overflow: visible; }
-.lm-g1 { stop-color: color-mix(in srgb, var(--marca) 62%, white); }
-.lm-gm { stop-color: var(--marca); }
+.lm-g1 { stop-color: color-mix(in srgb, var(--marca) 66%, white); }
 .lm-g2 { stop-color: var(--marca-2); }
-:root[data-modo="oscuro"] .lm-g1 { stop-color: color-mix(in srgb, var(--accion) 70%, white); }
-:root[data-modo="oscuro"] .lm-gm { stop-color: var(--accion); }
-:root[data-modo="oscuro"] .lm-g2 { stop-color: var(--marca); }
-.lm-casa { transform-box: fill-box; transform-origin: 50% 100%; }
-.lm-base { fill: url(#lm-degradado) var(--marca); stroke: url(#lm-degradado) var(--marca); stroke-width: 30; stroke-linejoin: round; }
-.lm-luz { fill: url(#lm-luz) transparent; }
-.lm-b { fill: #FFFFFF; transform-box: fill-box; transform-origin: 50% 100%; }
-.lm-b1 { fill-opacity: 0.6; }
-.lm-b3 { fill: var(--vivo); }
-.lm-brillo { fill: url(#lm-rayo) transparent; opacity: 0; }
+:root[data-modo="oscuro"] .lm-g1 { stop-color: color-mix(in srgb, var(--accion) 55%, white); }
+:root[data-modo="oscuro"] .lm-g2 { stop-color: var(--accion); }
+/* Cada trazo mide 100 (pathLength), así que se dibuja moviendo stroke-dashoffset de 101 a 0 */
+.lm-t { fill: none; stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 100 120; stroke-dashoffset: 0; }
+.lm-casa { stroke: url(#lm-degradado) var(--marca); }
+.lm-flecha, .lm-punta { stroke: var(--lm-acento, #1FB894); }
+/* Un destello corto que recorre la flecha */
+.lm-pulso { stroke: #FFFFFF; stroke-opacity: 0.8; stroke-dasharray: 18 220; stroke-dashoffset: 19; }
 :root { --lm-acento: #1FB894; }
 :root[data-color="esmeralda"] { --lm-acento: #8FC42B; }
 :root[data-color="turquesa"] { --lm-acento: #F0A323; }
 :root[data-color="coral"] { --lm-acento: #F2A93B; }
+:root[data-modo="oscuro"] { --lm-acento: var(--vivo); }
 
 /* Nombre de la app */
 .marca-texto { font-weight: 800; letter-spacing: -0.025em; }
 .marca-texto span, .nav-marca .marca-texto span { display: inline; font-size: inherit; font-weight: 500; color: inherit; opacity: 0.72; }
 
-/* El logo se arma: la casa se asienta, crecen las barras y pasa un brillo. En la entrada y en la carga se repite. */
-@keyframes lm-casa { 0% { transform: scale(0.84); } 9% { transform: scale(1.06); } 15%, 90% { transform: scale(1); } 97%, 100% { transform: scale(0.84); } }
-@keyframes lm-barra { 0%, 12% { transform: scaleY(0); } 22% { transform: scaleY(1.16); } 27%, 88% { transform: scaleY(1); } 94%, 100% { transform: scaleY(0); } }
-@keyframes lm-brillo { 0%, 36% { transform: translateX(0); opacity: 0; } 38% { opacity: 1; } 54% { transform: translateX(640px); opacity: 1; } 56%, 100% { transform: translateX(640px); opacity: 0; } }
+/* Bucle completo (entrada y carga): se dibuja la casa, sale la flecha, pasa el destello dos veces y se borra para volver a empezar */
+@keyframes lm-casa { 0%, 4% { stroke-dashoffset: 101; } 28%, 90% { stroke-dashoffset: 0; } 98%, 100% { stroke-dashoffset: -101; } }
+@keyframes lm-flecha { 0%, 24% { stroke-dashoffset: 101; } 40%, 90% { stroke-dashoffset: 0; } 97%, 100% { stroke-dashoffset: -101; } }
+@keyframes lm-punta { 0%, 38% { stroke-dashoffset: 101; } 46%, 90% { stroke-dashoffset: 0; } 96%, 100% { stroke-dashoffset: -101; } }
+@keyframes lm-pulso { 0%, 48% { stroke-dashoffset: 19; } 60% { stroke-dashoffset: -101; } 60.01%, 70% { stroke-dashoffset: 19; } 82%, 100% { stroke-dashoffset: -101; } }
 .logo-marca.vivo .lm-casa { animation: lm-casa 6.5s var(--suave) infinite both; }
-.logo-marca.vivo .lm-b { animation: lm-barra 6.5s var(--suave) infinite both; }
-.logo-marca.vivo .lm-b2 { animation-delay: 110ms; }
-.logo-marca.vivo .lm-b3 { animation-delay: 220ms; }
-.logo-marca.vivo .lm-brillo { animation: lm-brillo 6.5s ease-in-out infinite both; }
+.logo-marca.vivo .lm-flecha { animation: lm-flecha 6.5s var(--suave) infinite both; }
+.logo-marca.vivo .lm-punta { animation: lm-punta 6.5s var(--suave) infinite both; }
+.logo-marca.vivo .lm-pulso { animation: lm-pulso 6.5s linear infinite both; }
 
-/* En el menú se arma una vez al abrir y otra vez al pasar o quitar el cursor. */
-@keyframes lm-casa-a { from { transform: translateY(16%) scale(0.62); opacity: 0; } 70% { transform: scale(1.05); opacity: 1; } }
-@keyframes lm-casa-b { from { transform: translateY(16%) scale(0.62); opacity: 0; } 70% { transform: scale(1.05); opacity: 1; } }
-@keyframes lm-barra-a { 0% { transform: scaleY(0); } 70% { transform: scaleY(1.16); } }
-@keyframes lm-barra-b { 0% { transform: scaleY(0); } 70% { transform: scaleY(1.16); } }
-@keyframes lm-brillo-a { from { transform: translateX(0); opacity: 1; } to { transform: translateX(640px); opacity: 1; } }
-@keyframes lm-brillo-b { from { transform: translateX(0); opacity: 1; } to { transform: translateX(640px); opacity: 1; } }
-.nav-marca .lm-casa { animation: lm-casa-a 620ms var(--suave) 120ms both; }
-.nav-marca .lm-b { animation: lm-barra-a 560ms var(--suave) both; }
-.nav-marca .lm-brillo { animation: lm-brillo-a 900ms ease-in-out 1100ms backwards; }
-.nav-marca:hover .lm-casa { animation-name: lm-casa-b; }
-.nav-marca:hover .lm-b { animation-name: lm-barra-b; }
-.nav-marca:hover .lm-brillo { animation-name: lm-brillo-b; }
-.nav-marca .lm-b1 { animation-delay: 480ms; } .nav-marca .lm-b2 { animation-delay: 590ms; } .nav-marca .lm-b3 { animation-delay: 700ms; }
+/* En el menú se dibuja una vez al abrir, otra vez al pasar o quitar el cursor, y el destello sigue pasando cada pocos segundos */
+@keyframes lm-dibuja-a { from { stroke-dashoffset: 101; } to { stroke-dashoffset: 0; } }
+@keyframes lm-dibuja-b { from { stroke-dashoffset: 101; } to { stroke-dashoffset: 0; } }
+@keyframes lm-pulso-lento { 0%, 70% { stroke-dashoffset: 19; } 100% { stroke-dashoffset: -101; } }
+.nav-marca .lm-casa { animation: lm-dibuja-a 900ms var(--suave) 150ms both; }
+.nav-marca .lm-flecha { animation: lm-dibuja-a 520ms var(--suave) 850ms both; }
+.nav-marca .lm-punta { animation: lm-dibuja-a 320ms var(--suave) 1250ms both; }
+.nav-marca .lm-pulso { animation: lm-pulso-lento 4.6s linear 2.2s infinite both; }
+.nav-marca:hover .lm-casa, .nav-marca:hover .lm-flecha, .nav-marca:hover .lm-punta { animation-name: lm-dibuja-b; }
 
 
 /* Toda la pantalla es el fondo de color en movimiento; el ingreso es una hoja que flota encima. */
@@ -776,10 +769,8 @@ legend + * { clear: both; }
 .login-logo { display: flex; align-items: center; gap: 12px; font-size: 1.2rem; letter-spacing: -0.01em; }
 .login-logo .logo-marca { width: 48px; height: 48px; filter: drop-shadow(0 10px 16px rgba(0, 0, 0, 0.28)); }
 /* Sobre el panel de color la casa va en blanco y las barras en el color de la app */
-.login-marca .lm-base { fill: #FFFFFF; stroke: #FFFFFF; }
-.login-marca .lm-luz { display: none; }
-.login-marca .lm-b { fill: var(--marca-2); }
-.login-marca .lm-b3 { fill: var(--lm-acento, #1FB894); }
+.login-marca .lm-casa { stroke: #FFFFFF; }
+.login-marca .lm-flecha, .login-marca .lm-punta { stroke: var(--vivo); }
 .login-marca h1 { font-size: clamp(1.7rem, 5.4vw, 2.7rem); max-width: 15ch; line-height: 1.1; text-shadow: 0 2px 18px rgba(0, 0, 0, 0.2); }
 .palabra { display: inline-block; }
 .login-puntos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; font-size: 0.92rem; color: rgba(255, 255, 255, 0.9); max-width: 46ch; }
@@ -1663,7 +1654,7 @@ body.cargando-datos .barra-carga { opacity: 1; }
 /* Pantalla de arranque: el logo se arma mientras abre la app */
 .pantalla.arranque { min-height: calc(100vh - 150px); min-height: calc(100dvh - 150px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px; animation: aparecer 300ms ease both; }
 .arranque .logo-marca { width: 92px; height: 92px; filter: drop-shadow(0 22px 26px color-mix(in srgb, var(--marca) 45%, transparent)); }
-.arranque .logo-marca.vivo .lm-casa, .arranque .logo-marca.vivo .lm-b, .arranque .logo-marca.vivo .lm-brillo { animation-duration: 2.6s; }
+.arranque .logo-marca.vivo .lm-t { animation-duration: 3s; }
 /* Entre páginas la casa va un poco más chica que al abrir la app */
 .pantalla.cargando.arranque .logo-marca { width: 76px; height: 76px; }
 .pantalla.cargando.arranque { animation: aparecer 220ms ease both; }
@@ -1836,6 +1827,86 @@ body[data-ruta="presupuesto"] { --luz-x: 22%; --luz-2x: 80%; --luz-y: -4%; }
   .panel-dona.ancho .dona { flex-direction: row; align-items: center; gap: 44px; padding: 6px 12px 10px; }
   .panel-dona.ancho .dona-grafico { width: 210px; height: 210px; }
   .panel-dona.ancho .dona-leyenda { flex: 1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 36px; row-gap: 3px; align-content: center; }
+}
+
+/* ---------- Menú que se oculta, tarjetas reales, carrusel infinito y "Quién gastó" compacto ---------- */
+
+/* Tarjetas con aspecto de tarjeta real: proporción de tarjeta, emisor, pago sin contacto, chip y titular */
+.plastico {
+  container-type: inline-size; aspect-ratio: 1.586; padding: 16px 18px; border-radius: 18px; gap: 0;
+  background: radial-gradient(120% 95% at 0% 0%, rgba(255, 255, 255, 0.24), transparent 56%), linear-gradient(135deg, var(--c1), var(--c2));
+  box-shadow: 0 18px 30px -18px var(--c2), inset 0 0 0 1px rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+.plastico::before { inset: 0; width: auto; aspect-ratio: auto; border-radius: 0; background: repeating-linear-gradient(118deg, rgba(255, 255, 255, 0.035) 0 2px, transparent 2px 10px); }
+.plastico::after { width: 72%; left: auto; right: -26%; bottom: -74%; background: rgba(0, 0, 0, 0.13); }
+.plastico-top .icono, .plastico-top .icono svg { width: clamp(22px, 9.6cqw, 34px); height: clamp(22px, 9.6cqw, 34px); }
+.plastico-top .icono svg { stroke-width: 2.2; }
+.plastico-marca { font-size: clamp(0.8rem, 5.2cqw, 1.1rem); font-weight: 800; letter-spacing: 0.05em; }
+.plastico-medio { display: flex; align-items: center; gap: 4.5cqw; }
+.plastico-chip { position: relative; overflow: hidden; width: clamp(34px, 13cqw, 48px); height: auto; aspect-ratio: 1.34; border-radius: 22%; background: linear-gradient(135deg, #FBEFC4, #D9B45A 55%, #B98E36); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.22); }
+.plastico-chip i { position: absolute; display: block; }
+.plastico-chip i:first-child { inset: 30% 0; border-block: 1px solid rgba(60, 40, 0, 0.3); }
+.plastico-chip i:last-child { inset: 0 34%; border-inline: 1px solid rgba(60, 40, 0, 0.3); }
+.plastico-puntos { font-size: clamp(0.72rem, 4.6cqw, 1rem); letter-spacing: 0.14em; opacity: 0.6; white-space: pre; }
+.plastico-monto { gap: 0; }
+.plastico-monto > span { font-size: clamp(0.6rem, 3.5cqw, 0.78rem); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 650; opacity: 0.8; }
+.plastico-monto strong { font-size: clamp(1.4rem, 11cqw, 2.6rem); text-shadow: 0 1px 1px rgba(0, 0, 0, 0.25); }
+.plastico-titular { font-size: clamp(0.66rem, 4cqw, 0.9rem); letter-spacing: 0.12em; text-transform: uppercase; font-weight: 650; opacity: 0.92; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plastico-estado { font-size: clamp(0.66rem, 3.9cqw, 0.8rem); padding: 3px 9px; flex-shrink: 0; }
+
+/* "Quién gastó": una fila por persona */
+.gp-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.gp-fila { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.gp-texto { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.gp-linea { display: flex; align-items: baseline; gap: 8px; }
+.gp-linea strong:first-child { font-size: 0.95rem; }
+.gp-pct { font-size: 0.78rem; color: var(--tinta-2); font-weight: 600; }
+.gp-total { margin-left: auto; white-space: nowrap; font-size: 0.98rem; }
+.gp-barra { height: 6px; border-radius: 99px; background: var(--sup-2); overflow: hidden; }
+.gp-barra i { display: block; height: 100%; width: 0; border-radius: 99px; background: var(--dc, var(--accion)); transition: width 900ms var(--suave); }
+.gp-texto .suave { font-size: 0.76rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Columna derecha de Inicio: quién gastó arriba y otro panel debajo, que ocupa el resto del alto */
+.col-pila { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.col-pila > .panel { display: flex; flex-direction: column; }
+.col-pila > .panel:last-child { flex: 1; }
+
+/* Botón para ocultar el menú: solo en computadora */
+.nav-plegar { display: none; }
+body { --ancho-menu: 264px; }
+body.menu-chico { --ancho-menu: 76px; }
+@media (min-width: 1024px) {
+  .col-pila { gap: 20px; }
+  .rejilla-3.dos { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); }
+
+  body { padding-left: var(--ancho-menu); transition: background-color 240ms ease, color 240ms ease, --luz-x 1100ms var(--suave), --luz-2x 1100ms var(--suave), --luz-y 1100ms var(--suave), padding-left 320ms var(--suave); }
+  .barra-nav { width: var(--ancho-menu); transition: width 320ms var(--suave), padding 320ms var(--suave); }
+  .barra-seleccion, .tostada { left: calc(50% + var(--ancho-menu) / 2); }
+  .nav-plegar {
+    display: grid; place-items: center; position: fixed; z-index: 45; top: 30px; left: calc(var(--ancho-menu) - 13px);
+    width: 26px; height: 26px; padding: 0; border-radius: 50%; cursor: pointer;
+    border: 1px solid var(--borde); background: var(--sup); color: var(--tinta-2); box-shadow: var(--sombra);
+    transition: left 320ms var(--suave), color 200ms ease, border-color 200ms ease, transform 200ms var(--suave);
+  }
+  .nav-plegar:hover { color: var(--marca-tinta); border-color: var(--borde-fuerte); transform: scale(1.12); }
+  .nav-plegar .icono, .nav-plegar .icono svg { width: 14px; height: 14px; }
+  .nav-plegar .icono { transition: transform 320ms var(--suave); }
+  body.menu-chico .nav-plegar .icono { transform: rotate(180deg); }
+
+  /* Menú oculto: queda una columna de íconos */
+  body.menu-chico .barra-nav { padding-inline: 14px; overflow: visible; }
+  body.menu-chico .barra-nav .nav-marca { padding: 2px 0 22px; justify-content: center; }
+  body.menu-chico .nav-marca .marca-texto,
+  body.menu-chico .barra-nav a > span:not(.icono),
+  body.menu-chico .barra-nav a.nav-proximo,
+  body.menu-chico .cuenta-boton-texto,
+  body.menu-chico .cuenta-menu.nav .cuenta-boton > .icono { display: none; }
+  body.menu-chico .barra-nav a { justify-content: center; padding: 12px 0; }
+  body.menu-chico .barra-nav a[aria-current="page"]:not(.central)::before { left: -14px; }
+  body.menu-chico .barra-nav a.central { padding: 13px 0; border-radius: 16px; }
+  body.menu-chico .cuenta-menu.nav .cuenta-boton { justify-content: center; padding: 5px; border-radius: 50%; width: 48px; }
+  body.menu-chico .cuenta-menu.nav .cuenta-panel { right: auto; left: 0; width: 290px; }
+  body.menu-chico .nav-pie { margin-top: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {
