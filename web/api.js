@@ -40,6 +40,27 @@ export function emailActual() {
   return tokenVigente() ? emailToken : '';
 }
 
+// Foto de perfil de Google de quien inició sesión. Viene dentro del mismo pase (token) que trae el correo;
+// se guarda solo en este equipo y solo se acepta si es una dirección de imágenes de Google.
+const CLAVE_FOTO = 'ff:foto';
+function fotoValida(u) {
+  try {
+    const x = new URL(String(u || ''));
+    return x.protocol === 'https:' && /(^|\.)googleusercontent\.com$/.test(x.hostname) ? x.href : '';
+  } catch { return ''; }
+}
+export function fotoGuardada() {
+  try {
+    const v = JSON.parse(localStorage.getItem(CLAVE_FOTO) || 'null');
+    return v && v.email === emailGuardado() ? fotoValida(v.foto) : '';
+  } catch { return ''; }
+}
+function guardarFoto(email, foto) {
+  const antes = fotoGuardada();
+  try { localStorage.setItem(CLAVE_FOTO, JSON.stringify({ email, foto })); } catch { return; }
+  if (antes !== foto) { try { window.dispatchEvent(new Event('foto-cambio')); } catch { /* nada */ } }
+}
+
 function guardarEmail(email) {
   try { localStorage.setItem(CLAVE_EMAIL, email); } catch { /* sin almacenamiento */ }
 }
@@ -62,6 +83,8 @@ export function fijarToken(t) {
   expira = (Number(datos.exp) || 0) * 1000;
   emailToken = normalizarEmail(datos.email);
   if (emailToken) guardarEmail(emailToken);
+  const foto = fotoValida(datos.picture);
+  if (emailToken && foto) guardarFoto(emailToken, foto);
   // Se guarda mientras siga vigente (máx. 1 hora) para no pedir sesión en cada recarga.
   try { localStorage.setItem(CLAVE_TOKEN, t); } catch { /* sin almacenamiento */ }
   return datos;
@@ -85,7 +108,7 @@ export function cerrarSesion() {
   token = null;
   expira = 0;
   emailToken = '';
-  try { localStorage.removeItem(CLAVE_EMAIL); localStorage.removeItem(CLAVE_TOKEN); } catch { /* nada */ }
+  try { localStorage.removeItem(CLAVE_EMAIL); localStorage.removeItem(CLAVE_TOKEN); localStorage.removeItem(CLAVE_FOTO); } catch { /* nada */ }
   try { window.google?.accounts?.id?.disableAutoSelect(); } catch { /* nada */ }
 }
 

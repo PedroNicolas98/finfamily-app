@@ -200,8 +200,7 @@ function botonCuenta(variante) {
   const correo = api.emailGuardado();
   const panel = h('div', { class: 'cuenta-panel', hidden: true, role: 'dialog', 'aria-label': 'Tu cuenta' },
     h('div', { class: 'cuenta-quien' }, avatar(nombre || correo, 'grande'),
-      h('div', {}, h('strong', {}, nombre || 'Tu cuenta'), h('span', { class: 'suave' }, correo))),
-    h('p', { class: 'cuenta-titulo' }, 'Apariencia'),
+      h('div', {}, h('strong', {}, nombre || 'Tu cuenta'), h('span', { class: 'suave', title: correo }, correo))),
     panelApariencia(),
     h('div', { class: 'cuenta-enlaces' },
       SOLO_GASTO
@@ -341,8 +340,8 @@ function panelApariencia() {
   const color = document.documentElement.dataset.color;
   return h('div', { class: 'apariencia' },
     h('div', { class: 'segmentos', role: 'group', 'aria-label': 'Modo' },
-      [['claro', 'Claro', 'sol'], ['oscuro', 'Oscuro', 'luna']].map(([id, texto, ico]) => h('button', { type: 'button',
-        'data-op-modo': id, 'aria-pressed': String(modo === id), onclick: () => elegirApariencia('ff:modo', id) }, icono(ico), texto))),
+      [['claro', 'Claro', 'sol'], ['oscuro', 'Oscuro', 'luna']].map(([id, texto, ico]) => h('button', { type: 'button', title: `Modo ${texto.toLowerCase()}`,
+        'aria-label': `Modo ${texto.toLowerCase()}`, 'data-op-modo': id, 'aria-pressed': String(modo === id), onclick: () => elegirApariencia('ff:modo', id) }, icono(ico)))),
     h('div', { class: 'colores', role: 'group', 'aria-label': 'Color de la app' },
       COLORES.map(([id, nombre]) => h('button', { type: 'button', class: `color-op op-${id}`, title: nombre, 'aria-label': `Color ${nombre}`,
         'data-op-color': id, 'aria-pressed': String(color === id), onclick: () => elegirApariencia('ff:color', id) }))));
@@ -376,10 +375,28 @@ function nombreCortoTC(t) {
 }
 
 // Círculo con la inicial de la persona.
+// Foto de Google de quien inició sesión, si el nombre (o el correo) es el suyo. De la otra persona no hay foto:
+// Google solo entrega la de quien entra.
+function fotoDe(nombre) {
+  const foto = api.fotoGuardada();
+  if (!foto) return '';
+  const n = normalizar(String(nombre || '').trim().split(' ')[0]);
+  const yo = normalizar((usuarioActual()?.nombre || '').trim().split(' ')[0]);
+  return n && (n === yo || n === normalizar(api.emailGuardado())) ? foto : '';
+}
+function ponerFoto(el, foto) {
+  if (!foto || el.querySelector('img')) return;
+  const img = h('img', { src: foto, alt: '', referrerpolicy: 'no-referrer', decoding: 'async', draggable: 'false' });
+  img.addEventListener('load', () => el.classList.add('con-foto'));
+  img.addEventListener('error', () => img.remove()); // si no carga, queda la inicial
+  el.append(img);
+}
 function avatar(nombre, extra = '') {
   const n = String(nombre || '').trim();
-  return h('span', { class: `avatar av-${normalizar(n).charAt(0) || 'x'} ${extra}`.trim(), title: n || null, 'aria-hidden': 'true' },
+  const el = h('span', { class: `avatar av-${normalizar(n).charAt(0) || 'x'} ${extra}`.trim(), title: n || null, 'aria-hidden': 'true' },
     (n.charAt(0) || '?').toUpperCase());
+  ponerFoto(el, fotoDe(n));
+  return el;
 }
 
 // Estado del próximo vencimiento: texto + clase de color (nunca solo color).
@@ -2968,6 +2985,7 @@ async function arrancar() {
     });
   }
   window.addEventListener('hashchange', navegar);
+  window.addEventListener('foto-cambio', () => document.querySelectorAll('.avatar').forEach((el) => ponerFoto(el, fotoDe(el.title))));
   window.addEventListener('online', async () => {
     avisar('Conexión recuperada', 'ok');
     estado.tsDatos = null; estado.motivoDatos = null;
