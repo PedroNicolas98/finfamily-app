@@ -78,6 +78,7 @@ const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', '
 const ABREV = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
 const ICONOS = {
+  novedad: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9z"/><path d="M18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>',
   'sin-senal': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9a13 13 0 0 1 4.5-3M21 9a13 13 0 0 0-8-3.9M6 12.5a8.5 8.5 0 0 1 3-1.9M18 12.5a8.5 8.5 0 0 0-3.6-2.2M9 16a4 4 0 0 1 6 0M4 4l16 16"/><circle cx="12" cy="19" r=".8"/></svg>',
   recargar: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v5h-5"/></svg>',
   lapiz: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="m13.5 6.5 4 4"/></svg>',
@@ -324,7 +325,11 @@ function aplicarApariencia() {
 
 function elegirApariencia(clave, valor) {
   try { localStorage.setItem(clave, valor); } catch { /* sin almacenamiento: dura hasta recargar */ }
-  if (clave === 'ff:modo') document.documentElement.dataset.modo = valor; else document.documentElement.dataset.color = valor;
+  const raiz = document.documentElement;
+  raiz.classList.add('cambiando');
+  clearTimeout(elegirApariencia.reloj);
+  elegirApariencia.reloj = setTimeout(() => raiz.classList.remove('cambiando'), 520);
+  if (clave === 'ff:modo') raiz.dataset.modo = valor; else raiz.dataset.color = valor;
   aplicarApariencia();
 }
 
@@ -585,6 +590,7 @@ const estado = {
   mensajeTarjeta: null,
   form: null,
   oneTapIntentado: false,
+  registroSW: null, // registro del service worker, para buscar versión nueva
   enviando: false, // hay un envío de la cola en curso
 };
 
@@ -1134,13 +1140,18 @@ function etiquetaMedio(id) {
 
 // ---------- Avisos breves ----------
 
-function avisar(texto, tipo = '') {
+// opciones: { ico, accion, alAccion, fijo }. Con "fijo" se queda hasta que se toque el botón o la X.
+function avisar(texto, tipo = '', opciones = {}) {
   document.querySelectorAll('.tostada').forEach((t) => t.remove());
-  const t = h('div', { class: `tostada ${tipo}`.trim(), role: 'status' }, icono(tipo === 'error' ? 'alerta' : 'check'),
-    h('span', {}, texto), h('i', { class: 'tostada-tiempo', 'aria-hidden': 'true' }));
+  const cerrar = () => { t.classList.add('fuera'); setTimeout(() => t.remove(), 400); };
+  const t = h('div', { class: `tostada ${tipo} ${opciones.fijo ? 'fija' : ''}`.replace(/\s+/g, ' ').trim(), role: 'status' },
+    icono(opciones.ico || (tipo === 'error' ? 'alerta' : 'check')),
+    h('span', {}, texto),
+    opciones.accion ? h('button', { type: 'button', class: 'tostada-accion', onclick: () => { cerrar(); opciones.alAccion?.(); } }, opciones.accion) : null,
+    opciones.fijo ? h('button', { type: 'button', class: 'tostada-cerrar', 'aria-label': 'Cerrar aviso', title: 'Cerrar', onclick: cerrar }, icono('cerrar'))
+      : h('i', { class: 'tostada-tiempo', 'aria-hidden': 'true' }));
   document.body.append(t);
-  setTimeout(() => t.classList.add('fuera'), 2600);
-  setTimeout(() => t.remove(), 3000);
+  if (!opciones.fijo) setTimeout(cerrar, 2600);
 }
 
 function mensajeError(e, porDefecto) {
@@ -1166,7 +1177,7 @@ function actualizarCacheFijo(mes, f) {
 // Botón redondo para marcar o desmarcar un gasto fijo. Cambia al instante y, si el Sheets no responde, vuelve atrás.
 function botonFijo(f, mes, alCambiar) {
   const btn = h('button', { type: 'button', class: 'check-fijo', 'aria-pressed': String(!!f.pagado),
-    'aria-label': `Pagado: ${f.concepto}` }, icono('check'));
+    'aria-label': `Pagado: ${f.concepto}`, title: f.pagado ? 'Quitar pagado' : 'Marcar pagado' }, icono('check'));
   btn.addEventListener('click', async () => {
     if (btn.dataset.enviando) return;
     const nuevo = !f.pagado;
@@ -1185,6 +1196,7 @@ function botonFijo(f, mes, alCambiar) {
     }
     delete btn.dataset.enviando;
     btn.setAttribute('aria-pressed', String(!!f.pagado));
+    btn.title = f.pagado ? 'Quitar pagado' : 'Marcar pagado';
     alCambiar?.(f);
   });
   return btn;
@@ -1253,17 +1265,22 @@ function editarConsumo(t, c) {
   const msg = h('p', { class: 'mensaje error', hidden: true });
   const zona = h('div', { class: 'acciones modal-acciones' });
   const dlg = h('dialog', { class: 'hoja-modal', 'aria-label': 'Editar gasto' });
-  const cerrar = () => { if (dlg.open) dlg.close(); dlg.remove(); };
+  const cerrar = () => {
+    if (dlg.classList.contains('cerrando')) return;
+    dlg.classList.add('cerrando');
+    setTimeout(() => { if (dlg.open) dlg.close(); dlg.remove(); }, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 190);
+  };
   const base = { idCliente: uuid(), hoja: t.hoja, fila: c.fila, verificar: { monto: c.monto, descripcion: c.descripcion } };
   const fallar = (e, porDefecto) => { msg.textContent = mensajeError(e, porDefecto); msg.hidden = false; pintarZona(); };
 
   const guardar = async (btn) => {
     const cambios = {};
     const monto = leerMonto(inMonto.value);
-    if (!monto) { msg.textContent = 'Escribe un monto mayor a cero.'; msg.hidden = false; inMonto.focus(); return; }
+    msg.hidden = true;
+    if (!monto) { marcarError(cMonto, 'Escribe cuánto fue.'); inMonto.focus(); return; }
     if (Math.round(monto * 100) !== Math.round(c.monto * 100)) cambios.monto = monto;
     const desc = inDesc.value.trim();
-    if (!desc) { msg.textContent = 'Escribe una descripción.'; msg.hidden = false; inDesc.focus(); return; }
+    if (!desc) { marcarError(cDesc, 'Escribe una descripción.'); inDesc.focus(); return; }
     if (desc !== (c.descripcion || '')) cambios.descripcion = desc;
     if (normalizar(selConcepto.value) !== normalizar(c.concepto)) cambios.concepto = selConcepto.value;
     if (inFecha.value && inFecha.value !== (c.fecha || '')) cambios.fecha = inFecha.value;
@@ -1302,14 +1319,18 @@ function editarConsumo(t, c) {
   pintarZona();
 
   const campo = (id, etiqueta, control, clase = '') => h('div', { class: `campo ${clase}`.trim() }, h('label', { for: id }, etiqueta), control);
+  const cMonto = campo('ed-monto', 'Monto (S/)', inMonto, 'campo-chico');
+  const cDesc = campo('ed-descripcion', 'Descripción', inDesc);
+  inMonto.addEventListener('input', () => limpiarError(cMonto));
+  inDesc.addEventListener('input', () => limpiarError(cDesc));
   dlg.append(
     h('div', { class: 'modal-cab' }, catIco(c.concepto),
       h('div', {}, h('strong', {}, 'Editar gasto'), h('span', { class: 'suave' }, NOMBRE_TC[t.id] || t.nombre)),
-      h('button', { type: 'button', class: 'boton icono-solo', 'aria-label': 'Cerrar', onclick: cerrar }, icono('cerrar'))),
+      h('button', { type: 'button', class: 'boton icono-solo', 'aria-label': 'Cerrar', title: 'Cerrar', onclick: cerrar }, icono('cerrar'))),
     h('div', { class: 'modal-cuerpo' },
-      campo('ed-monto', 'Monto (S/)', inMonto, 'campo-chico'),
+      cMonto,
       campo('ed-fecha', 'Fecha', inFecha, 'campo-chico'),
-      campo('ed-descripcion', 'Descripción', inDesc),
+      cDesc,
       campo('ed-concepto', 'Concepto', selConcepto),
       campo('ed-nota', 'Nota', inNota)),
     msg, zona);
@@ -1967,14 +1988,16 @@ async function vistaTarjeta(id) {
           h('div', { class: 'consumo-texto' }, h('span', {}, limpiarComercio(c.descripcion)), h('span', { class: 'suave' }, sub)),
           h('div', { class: 'derecha' }, h('strong', {}, soles(c.monto)),
             etiquetaEstado ? h('span', { class: 'etiqueta-estado' }, etiquetaEstado) : null),
-          enEspera(c) ? null : h('button', { type: 'button', class: 'boton-editar', 'aria-label': `Editar ${limpiarComercio(c.descripcion)}`,
+          enEspera(c) ? null : h('button', { type: 'button', class: 'boton-editar', title: 'Editar', 'aria-label': `Editar ${limpiarComercio(c.descripcion)}`,
             onclick: (ev) => { ev.preventDefault(); ev.stopPropagation(); editarConsumo(t, c); } }, icono('lapiz'))));
       })),
       zona));
   }
   if (todos.length > 6) {
     const cuenta = h('span', { class: 'buscador-cuenta', 'aria-live': 'polite' });
-    const sinResultados = h('p', { class: 'vacio', hidden: true }, 'Ningún consumo coincide con la búsqueda.');
+    const sinResultados = vacio('Ningún consumo coincide con la búsqueda.');
+    sinResultados.querySelector('.vacio-ico').replaceChildren(icono('buscar'));
+    sinResultados.hidden = true;
     const entrada = h('input', { type: 'search', id: 'buscar-consumo', placeholder: 'Buscar por comercio o concepto', 'aria-label': 'Buscar consumo', autocomplete: 'off' });
     entrada.addEventListener('input', () => {
       const q = normalizar(entrada.value);
@@ -2240,10 +2263,10 @@ function selectorMes(meses, mes, etiqueta) {
   const siguiente = i >= 0 ? (i < meses.length - 1 ? meses[i + 1] : null) : meses.find((m) => cmpMes(m.clave, mes) > 0) || null;
   const ir = (m) => () => { estado.mesPres = m.clave; navegar(); };
   return h('div', { class: 'selector-mes' },
-    h('button', { type: 'button', class: 'boton icono-solo', disabled: !anterior, 'aria-label': 'Mes anterior',
+    h('button', { type: 'button', class: 'boton icono-solo', disabled: !anterior, 'aria-label': 'Mes anterior', title: 'Mes anterior',
       onclick: anterior ? ir(anterior) : null }, icono('atras')),
     h('strong', { 'aria-live': 'polite' }, etiqueta),
-    h('button', { type: 'button', class: 'boton icono-solo', disabled: !siguiente, 'aria-label': 'Mes siguiente',
+    h('button', { type: 'button', class: 'boton icono-solo', disabled: !siguiente, 'aria-label': 'Mes siguiente', title: 'Mes siguiente',
       onclick: siguiente ? ir(siguiente) : null }, icono('adelante')));
 }
 
@@ -2276,13 +2299,13 @@ async function navegar() {
   if (ruta.startsWith('tarjeta-')) { fn = vistaTarjeta; arg = ruta.slice('tarjeta-'.length); }
   if (!fn) fn = vistaInicio;
   if (ruta !== 'registrar') {
-    const actual = vista.querySelector('.pantalla:not(.cargando):not(.login)');
+    const actual = vista.querySelector('.pantalla:not(.cargando):not(.login):not(.arranque)');
     if (actual && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
       actual.classList.add('saliendo');
       await esperar(150);
       if (id !== estado.navId) return;
     }
-    mostrar(cargando(ruta));
+    if (!vista.querySelector('.arranque')) mostrar(cargando(ruta));
   }
   let nodo;
   try {
@@ -2324,6 +2347,11 @@ function construirNav() {
 
 // ---------- Arranque ----------
 
+// Hay algo a medio escribir (Nuevo gasto, el editor de un gasto o una selección): no se recarga la pantalla sola.
+function hayEdicionAbierta() {
+  return SOLO_GASTO || (location.hash.slice(1) || 'inicio') === 'registrar' || !!document.querySelector('dialog[open]') || estado.seleccion.size > 0;
+}
+
 async function arrancar() {
   aplicarApariencia();
   document.body.classList.toggle('solo-gasto', SOLO_GASTO);
@@ -2343,14 +2371,37 @@ async function arrancar() {
     setTimeout(() => onda.remove(), 700);
   });
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    // Si la app ya estaba abierta cuando se publicó una versión nueva, se avisa con un botón para actualizar.
+    const habiaVersion = !!navigator.serviceWorker.controller;
+    const abiertaDesde = Date.now();
+    navigator.serviceWorker.register('./sw.js').then((reg) => { estado.registroSW = reg; }).catch(() => {});
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      // Recién abierta ya trae los archivos nuevos: solo se avisa si llevaba un rato abierta.
+      if (!habiaVersion || Date.now() - abiertaDesde < 60000) return;
+      avisar('Hay una versión nueva', '', { ico: 'novedad', fijo: true, accion: 'Actualizar', alAccion: () => location.reload() });
+    });
   }
   window.addEventListener('hashchange', navegar);
-  window.addEventListener('online', async () => { estado.tsDatos = null; estado.motivoDatos = null; await procesarCola(); navegar(); });
-  window.addEventListener('offline', pintarAvisos);
+  window.addEventListener('online', async () => {
+    avisar('Conexión recuperada', 'ok');
+    estado.tsDatos = null; estado.motivoDatos = null;
+    await procesarCola();
+    if (!hayEdicionAbierta()) navegar();
+  });
+  window.addEventListener('offline', () => {
+    pintarAvisos();
+    avisar('Sin conexión. Lo que registres se envía al volver la señal.', '', { ico: 'sin-senal' });
+  });
   window.addEventListener('cola-cambio', () => { refrescarCola(); });
+  // Al volver a la app: se envía lo pendiente, se busca versión nueva y, si pasó un buen rato, se traen los datos de nuevo.
+  let ocultaDesde = 0;
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && navigator.onLine) procesarCola();
+    if (document.visibilityState !== 'visible') { ocultaDesde = Date.now(); return; }
+    if (!navigator.onLine) return;
+    procesarCola();
+    estado.registroSW?.update().catch(() => {});
+    const rato = ocultaDesde && Date.now() - ocultaDesde > 5 * 60000;
+    if (rato && !hayEdicionAbierta() && api.emailGuardado()) navegar();
   });
 
   if (api.configurado()) {
