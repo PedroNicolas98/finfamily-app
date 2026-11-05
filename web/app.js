@@ -78,6 +78,11 @@ const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', '
 const ABREV = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
 const ICONOS = {
+  lapiz: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="m13.5 6.5 4 4"/></svg>',
+  cerrar: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  papelera: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13M10 11v5.5M14 11v5.5"/></svg>',
+  borrar: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 5H9l-6 7 6 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1z"/><path d="m12 9.5 5 5M17 9.5l-5 5"/></svg>',
+  personas: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><circle cx="17.5" cy="9" r="2.4"/><path d="M16.5 13.7c2.7.3 4.5 2.1 4.5 4.8"/></svg>',
   descargar: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10.5l5 5 5-5M5 20h14"/></svg>',
   lista: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7h11M9 12h11M9 17h11M4.5 7h.01M4.5 12h.01M4.5 17h.01"/></svg>',
   dona: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.2"/><path d="M12 3.5v5.3M18.5 17.5l-4-3.2"/></svg>',
@@ -519,7 +524,7 @@ function filaMov(c, derecha) {
 
 // Caja con título y, si hace falta, un enlace o dato a la derecha.
 const ICONO_PANEL = { 'Consumos por día': 'presupuesto', '¿En qué se fue?': 'dona', 'Últimos consumos': 'lista',
-  'Gastos hormiga': 'billetera', 'Calendario de pagos': 'calendario', Ingresos: 'sube', Gastos: 'baja', Ahorros: 'billetera', 'Tus tarjetas': 'tarjetas' };
+  'Gastos hormiga': 'billetera', 'Calendario de pagos': 'calendario', Ingresos: 'sube', Gastos: 'baja', Ahorros: 'billetera', 'Tus tarjetas': 'tarjetas', 'Gastos fijos': 'check', 'Quién gastó': 'personas' };
 function tituloSeccion(titulo) {
   return h('h2', {}, ICONO_PANEL[titulo] ? h('span', { class: 'titulo-ico' }, icono(ICONO_PANEL[titulo])) : null, titulo);
 }
@@ -1064,12 +1069,230 @@ function etiquetaMedio(id) {
   return medios.find((m) => m.id === id)?.etiqueta || id;
 }
 
+// ---------- Avisos breves ----------
+
+function avisar(texto, tipo = '') {
+  document.querySelectorAll('.tostada').forEach((t) => t.remove());
+  const t = h('div', { class: `tostada ${tipo}`.trim(), role: 'status' }, texto);
+  document.body.append(t);
+  setTimeout(() => t.classList.add('fuera'), 2600);
+  setTimeout(() => t.remove(), 3000);
+}
+
+function mensajeError(e, porDefecto) {
+  if (e?.codigo === 'sin_conexion') return 'Sin conexión. Inténtalo cuando vuelva la señal.';
+  if (e?.codigo === 'no_autorizado') return 'Tu sesión venció. Vuelve a entrar.';
+  return e?.message || porDefecto;
+}
+
+// ---------- Gastos fijos pagados ----------
+
+// Líneas de gasto del presupuesto que se pueden marcar (las de tarjetas se pagan en Tarjetas).
+const fijosDe = (filas) => (filas || []).filter((f) => f.seccion === 'gastos' && f.fila && !f.esTarjeta && f.monto > 0);
+
+function actualizarCacheFijo(mes, f) {
+  const c = leerCache('presupuesto:' + mes);
+  const linea = c?.datos?.filas?.find((x) => x.fila === f.fila);
+  if (!linea) return;
+  linea.pagado = f.pagado;
+  linea.pagadoNota = f.pagadoNota;
+  guardarCache('presupuesto:' + mes, c.datos);
+}
+
+// Botón redondo para marcar o desmarcar un gasto fijo. Cambia al instante y, si el Sheets no responde, vuelve atrás.
+function botonFijo(f, mes, alCambiar) {
+  const btn = h('button', { type: 'button', class: 'check-fijo', 'aria-pressed': String(!!f.pagado),
+    'aria-label': `Pagado: ${f.concepto}` }, icono('check'));
+  btn.addEventListener('click', async () => {
+    if (btn.dataset.enviando) return;
+    const nuevo = !f.pagado;
+    btn.dataset.enviando = '1';
+    f.pagado = nuevo;
+    btn.setAttribute('aria-pressed', String(nuevo));
+    alCambiar?.(f);
+    try {
+      const r = await api.llamar('marcarFijo', { idCliente: uuid(), mes, fila: f.fila, concepto: f.concepto, pagado: nuevo }, { email: emailSesion() });
+      f.pagado = !!r.pagado;
+      f.pagadoNota = r.pagadoNota || '';
+      actualizarCacheFijo(mes, f);
+    } catch (e) {
+      f.pagado = !nuevo;
+      avisar(mensajeError(e, 'No se pudo guardar. Intenta de nuevo.'), 'error');
+    }
+    delete btn.dataset.enviando;
+    btn.setAttribute('aria-pressed', String(!!f.pagado));
+    alCambiar?.(f);
+  });
+  return btn;
+}
+
+// Panel de Inicio: avance de los gastos fijos del mes y la lista para marcarlos.
+function panelFijos(pres, mes) {
+  const fijos = fijosDe(pres?.filas);
+  if (!fijos.length) return null;
+  const total = fijos.reduce((s, f) => s + f.monto, 0) || 1;
+  const resumen = h('span', { class: 'pill' });
+  const avance = h('i');
+  const pintar = () => {
+    const pagados = fijos.filter((f) => f.pagado);
+    resumen.textContent = `${pagados.length} de ${fijos.length}`;
+    resumen.classList.toggle('ok', pagados.length === fijos.length);
+    avance.style.width = `${Math.round((pagados.reduce((s, f) => s + f.monto, 0) / total) * 100)}%`;
+  };
+  const orden = [...fijos].sort((a, b) => (a.pagado - b.pagado) || (b.monto - a.monto));
+  const visibles = orden.slice(0, 6);
+  const lista = h('ul', { class: 'lista-fijos' }, visibles.map((f) => {
+    const li = h('li', { class: 'fijo' + (f.pagado ? ' pagado' : '') });
+    li.append(
+      botonFijo(f, mes, (x) => { li.classList.toggle('pagado', !!x.pagado); pintar(); }),
+      h('span', { class: 'fijo-nombre' }, f.concepto),
+      h('strong', {}, soles(f.monto)));
+    return li;
+  }));
+  pintar();
+  return panel('panel-fijos revelar', 'Gastos fijos', resumen,
+    h('div', { class: 'progreso-fijos', 'aria-hidden': 'true' }, avance),
+    lista,
+    orden.length > visibles.length ? h('a', { class: 'panel-enlace', href: '#presupuesto' }, `Ver los ${orden.length}`, icono('adelante')) : null);
+}
+
+// ---------- Gasto por persona ----------
+
+function panelPersonas(datos) {
+  const personas = (datos?.personas || []).filter((p) => p.total > 0);
+  if (!personas.length) return null;
+  const total = personas.reduce((s, p) => s + p.total, 0) || 1;
+  return panel('panel-personas revelar', 'Quién gastó',
+    h('span', { class: 'suave', title: 'Todos los consumos con fecha de este mes, pagados o no' }, soles(total)),
+    barraPartes(personas.map((p, i) => ({ etiqueta: p.nombre, valor: p.total, clase: `d${i}` }))),
+    h('div', { class: 'personas' }, personas.map((p, i) => h('div', { class: 'persona' },
+      h('div', { class: 'persona-cab' }, avatar(p.nombre, 'grande'),
+        h('div', {}, h('strong', {}, p.nombre.split(' ')[0]),
+          h('span', { class: 'suave' }, `${Math.round((p.total / total) * 100)}% · ${p.consumos} consumo${p.consumos === 1 ? '' : 's'}`)),
+        h('i', { class: `punto d${i}`, 'aria-hidden': 'true' })),
+      h('p', { class: 'persona-total', 'data-rico': '', 'data-contar': String(p.total) }, soles(0)),
+      h('ul', { class: 'persona-conceptos' }, (p.conceptos || []).slice(0, 3).map((x) => h('li', {},
+        catIco(x.concepto), h('span', {}, x.concepto), h('strong', {}, soles(x.monto)))))))));
+}
+
+// ---------- Editar o borrar un gasto ----------
+
+function editarConsumo(t, c) {
+  const conceptosBase = leerCache('config')?.datos?.conceptos?.length ? leerCache('config').datos.conceptos : CONCEPTOS_LOCAL;
+  const conceptos = conceptosBase.some((x) => normalizar(x) === normalizar(c.concepto)) || !c.concepto ? conceptosBase : [c.concepto, ...conceptosBase];
+  const manana = iso(new Date(Date.now() + 86400000));
+  const inMonto = h('input', { id: 'ed-monto', type: 'text', inputmode: 'decimal', autocomplete: 'off', value: Number(c.monto).toFixed(2) });
+  const inDesc = h('input', { id: 'ed-descripcion', type: 'text', maxlength: '120', autocomplete: 'off', value: c.descripcion || '' });
+  const selConcepto = h('select', { id: 'ed-concepto' }, conceptos.map((x) => h('option', { value: x, selected: normalizar(x) === normalizar(c.concepto) }, x)));
+  const inFecha = h('input', { id: 'ed-fecha', type: 'date', max: manana, value: c.fecha || '' });
+  const inNota = h('input', { id: 'ed-nota', type: 'text', maxlength: '200', autocomplete: 'off', placeholder: 'Opcional', value: c.nota || '' });
+  const msg = h('p', { class: 'mensaje error', hidden: true });
+  const zona = h('div', { class: 'acciones modal-acciones' });
+  const dlg = h('dialog', { class: 'hoja-modal', 'aria-label': 'Editar gasto' });
+  const cerrar = () => { if (dlg.open) dlg.close(); dlg.remove(); };
+  const base = { idCliente: uuid(), hoja: t.hoja, fila: c.fila, verificar: { monto: c.monto, descripcion: c.descripcion } };
+  const fallar = (e, porDefecto) => { msg.textContent = mensajeError(e, porDefecto); msg.hidden = false; pintarZona(); };
+
+  const guardar = async (btn) => {
+    const cambios = {};
+    const monto = leerMonto(inMonto.value);
+    if (!monto) { msg.textContent = 'Escribe un monto mayor a cero.'; msg.hidden = false; inMonto.focus(); return; }
+    if (Math.round(monto * 100) !== Math.round(c.monto * 100)) cambios.monto = monto;
+    const desc = inDesc.value.trim();
+    if (!desc) { msg.textContent = 'Escribe una descripción.'; msg.hidden = false; inDesc.focus(); return; }
+    if (desc !== (c.descripcion || '')) cambios.descripcion = desc;
+    if (normalizar(selConcepto.value) !== normalizar(c.concepto)) cambios.concepto = selConcepto.value;
+    if (inFecha.value && inFecha.value !== (c.fecha || '')) cambios.fecha = inFecha.value;
+    if (inNota.value.trim() !== (c.nota || '')) cambios.nota = inNota.value.trim();
+    if (!Object.keys(cambios).length) { cerrar(); return; }
+    btn.disabled = true;
+    btn.textContent = 'Guardando…';
+    try {
+      await api.llamar('editarGasto', { ...base, cambios }, { email: emailSesion() });
+      cerrar();
+      avisar('Cambios guardados', 'ok');
+      navegar();
+    } catch (e) {
+      fallar(e, 'No se pudo guardar. Intenta de nuevo.');
+    }
+  };
+
+  function pintarZona() {
+    const btnGuardar = h('button', { type: 'button', class: 'boton primario', onclick: () => guardar(btnGuardar) }, 'Guardar');
+    zona.replaceChildren(
+      btnGuardar,
+      h('button', { type: 'button', class: 'boton peligro', onclick: () => {
+        msg.hidden = true;
+        confirmarEnLinea(zona, `Se borrará del Sheets: ${limpiarComercio(c.descripcion)}, ${soles(c.monto)}.`, 'Sí, borrar', async () => {
+          try {
+            await api.llamar('borrarGasto', base, { email: emailSesion() });
+            cerrar();
+            avisar('Gasto borrado', 'ok');
+            navegar();
+          } catch (e) {
+            fallar(e, 'No se pudo borrar. Intenta de nuevo.');
+          }
+        });
+      } }, icono('papelera'), 'Borrar'),
+      h('button', { type: 'button', class: 'boton', onclick: cerrar }, 'Cancelar'));
+  }
+  pintarZona();
+
+  const campo = (id, etiqueta, control, clase = '') => h('div', { class: `campo ${clase}`.trim() }, h('label', { for: id }, etiqueta), control);
+  dlg.append(
+    h('div', { class: 'modal-cab' }, catIco(c.concepto),
+      h('div', {}, h('strong', {}, 'Editar gasto'), h('span', { class: 'suave' }, NOMBRE_TC[t.id] || t.nombre)),
+      h('button', { type: 'button', class: 'boton icono-solo', 'aria-label': 'Cerrar', onclick: cerrar }, icono('cerrar'))),
+    h('div', { class: 'modal-cuerpo' },
+      campo('ed-monto', 'Monto (S/)', inMonto, 'campo-chico'),
+      campo('ed-fecha', 'Fecha', inFecha, 'campo-chico'),
+      campo('ed-descripcion', 'Descripción', inDesc),
+      campo('ed-concepto', 'Concepto', selConcepto),
+      campo('ed-nota', 'Nota', inNota)),
+    msg, zona);
+  dlg.addEventListener('click', (ev) => { if (ev.target === dlg) cerrar(); }); // clic fuera
+  dlg.addEventListener('cancel', (ev) => { ev.preventDefault(); cerrar(); });
+  document.body.append(dlg);
+  dlg.showModal();
+}
+
+// ---------- Teclado propio para el monto (app de gastos en celular) ----------
+
+function tecladoMonto(inMonto) {
+  const teclas = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'borrar'];
+  return h('div', { class: 'teclado', role: 'group', 'aria-label': 'Teclado del monto' }, teclas.map((k) => h('button', {
+    type: 'button', class: 'tecla' + (k === 'borrar' ? ' tecla-borrar' : ''), 'aria-label': k === 'borrar' ? 'Borrar' : k === '.' ? 'Punto' : k,
+    onclick: () => {
+      let v = inMonto.value;
+      if (k === 'borrar') v = v.slice(0, -1);
+      else if (k === '.') { if (v.includes('.')) return; v = (v || '0') + '.'; }
+      else {
+        const [entero, decimales] = v.split('.');
+        if (decimales !== undefined && decimales.length >= 2) return;
+        if (decimales === undefined && entero.length >= 6) return;
+        v = v === '0' ? k : v + k;
+      }
+      inMonto.value = v;
+      inMonto.dispatchEvent(new Event('input', { bubbles: true }));
+      inMonto.classList.remove('pulso');
+      void inMonto.offsetWidth;
+      inMonto.classList.add('pulso');
+    },
+  }, k === 'borrar' ? icono('borrar') : k)));
+}
+
 // ---------- Pantalla: Inicio ----------
 
 async function vistaInicio() {
-  const [r, rt] = await Promise.all([
+  const mesHoy = mesActual();
+  const [r, rt, rp, rf] = await Promise.all([
     cargar('inicio', { hoy: hoyISO() }, 'inicio'),
     cargarRapido('tarjetas', { hoy: hoyISO(), incluirPagados: false }, 'tarjetas').catch(() => null),
+    cargarRapido('personas', { mes: mesHoy }, 'personas:' + mesHoy).catch(() => null),
+    // Si lo guardado es de una versión anterior (sin el dato de "pagado"), se pide de nuevo.
+    cargarRapido('presupuesto', { mes: mesHoy }, 'presupuesto:' + mesHoy)
+      .then((x) => (x?.datos?.filas?.some((f) => f.fila === undefined) ? cargar('presupuesto', { mes: mesHoy }, 'presupuesto:' + mesHoy) : x))
+      .catch(() => null),
   ]);
   marcarDatos(r);
   const d = r.datos;
@@ -1168,6 +1391,11 @@ async function vistaInicio() {
           h('a', { href: '#tarjetas' }, 'Ver todas'))),
       carril));
   }
+
+  // Gastos fijos por marcar y cuánto gastó cada uno
+  const fijosPanel = panelFijos(rf?.datos, mesHoy);
+  const personasPanel = panelPersonas(rp?.datos);
+  if (fijosPanel || personasPanel) raiz.append(h('div', { class: 'rejilla-2b' }, fijosPanel, personasPanel));
 
   if (rt?.datos?.tarjetas) {
     const todas = rt.datos.tarjetas;
@@ -1292,6 +1520,11 @@ async function vistaRegistrar() {
     inMonto.value = inMonto.value.replace(/[^\d.,]/g, '');
     f.monto = inMonto.value;
   });
+  // En la app de gastos del celular el monto se escribe con un teclado propio (sin abrir el del sistema).
+  const conTeclado = SOLO_GASTO && matchMedia('(pointer: coarse)').matches;
+  if (conTeclado) { inMonto.readOnly = true; inMonto.setAttribute('inputmode', 'none'); }
+  let cajaMonto = null;
+  const plegar = () => cajaMonto?.classList.add('plegado');
 
   const colorMedio = (m) => (m.id === 'TC_IBK' ? (idCicloDeMedio(m, usuario) || 'IBK_P') : (COLOR_MEDIO[m.id] || 'HORMIGA'));
   const botonesMedio = medios.map((m) => h('button', { type: 'button', class: `opcion medio tc-${colorMedio(m)}`, 'data-id': m.id,
@@ -1300,14 +1533,20 @@ async function vistaRegistrar() {
       try { localStorage.setItem('ff:medio', m.id); } catch { /* nada */ }
       botonesMedio.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.id === m.id)));
       actualizarPrevia();
+      plegar();
     } }, h('span', { class: `chip-tc mini tc-${colorMedio(m)}`, 'aria-hidden': 'true' }), m.etiqueta));
 
   const inDesc = h('input', { id: 'descripcion', type: 'text', maxlength: '120', autocomplete: 'off',
     placeholder: 'Ej. Plaza Vea, almuerzo, taxi', value: f.descripcion, enterkeyhint: 'done' });
 
-  const botonesConcepto = conceptos.map((c) => h('button', { type: 'button', class: 'opcion chica', 'data-c': c,
+  // Los conceptos que más usas van primero.
+  const usos = new Map();
+  for (const x of indiceHistorial()) usos.set(x.c, (usos.get(x.c) || 0) + 1);
+  const conceptosOrden = [...conceptos].sort((a, b) => (usos.get(b) || 0) - (usos.get(a) || 0));
+  const botonesConcepto = conceptosOrden.map((c) => h('button', { type: 'button', class: 'opcion chica', 'data-c': c,
     'aria-pressed': String(f.concepto === c), onclick: () => {
       f.concepto = c; f.conceptoManual = true; pintarConceptos(); sugerencia.textContent = '';
+      plegar();
     } }, catIco(c), c));
   function pintarConceptos() {
     botonesConcepto.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.c === f.concepto)));
@@ -1347,11 +1586,12 @@ async function vistaRegistrar() {
   const btnGuardar = h('button', { type: 'submit', class: 'boton primario grande' }, 'Guardar gasto');
 
   const form = h('form', { class: 'formulario', novalidate: true },
-    h('div', { class: 'hero monto-caja' }, heroFondo(),
-      h('label', { class: 'campo-monto-caja', for: 'monto' }, h('span', { class: 'moneda' }, 'S/'), inMonto),
-      vistaPrevia),
+    (cajaMonto = h('div', { class: 'hero monto-caja' + (conTeclado ? ' con-teclado' : '') }, heroFondo(),
+      h('label', { class: 'campo-monto-caja', for: 'monto', onclick: () => cajaMonto.classList.remove('plegado') }, h('span', { class: 'moneda' }, 'S/'), inMonto),
+      vistaPrevia,
+      conTeclado ? tecladoMonto(inMonto) : null)),
     h('fieldset', {}, h('legend', {}, 'Pagué con'), h('div', { class: 'opciones' }, botonesMedio)),
-    h('div', { class: 'campo' }, h('label', { for: 'descripcion' }, 'Descripción'), inDesc, sugerencia),
+    h('div', { class: 'campo' }, h('label', { for: 'descripcion' }, 'Descripción (opcional)'), inDesc, sugerencia),
     h('fieldset', { class: 'f-conceptos' }, h('legend', {}, 'Concepto'), h('div', { class: 'opciones chicas' }, botonesConcepto)),
     h('div', { class: 'fila-dos' },
       h('div', { class: 'campo' }, h('label', { for: 'fecha' }, 'Fecha'), inFecha),
@@ -1412,7 +1652,6 @@ async function vistaRegistrar() {
     const errores = [];
     if (!monto) errores.push('Escribe un monto mayor a cero.');
     if (!f.medio) errores.push('Elige el medio de pago.');
-    if (!f.descripcion.trim()) errores.push('Escribe una descripción.');
     if (!f.concepto) errores.push('Elige un concepto.');
     if (!deISO(f.fecha)) errores.push('Revisa la fecha.');
     else if (f.fecha > manana) errores.push('La fecha no puede ser futura.');
@@ -1421,14 +1660,14 @@ async function vistaRegistrar() {
     if (errores.length) {
       msg.className = 'mensaje error';
       msg.replaceChildren(errores[0]);
-      if (!monto) inMonto.focus(); else if (!f.descripcion.trim()) inDesc.focus();
+      if (!monto) { inMonto.focus(); cajaMonto?.classList.remove('plegado'); }
       return;
     }
     btnGuardar.disabled = true;
     btnGuardar.textContent = 'Guardando…';
     const datos = {
       idCliente: uuid(), monto, medio: f.medio, concepto: f.concepto,
-      descripcion: f.descripcion.trim().slice(0, 120), nota: f.nota.trim().slice(0, 200),
+      descripcion: (f.descripcion.trim() || f.concepto || '').slice(0, 120), nota: f.nota.trim().slice(0, 200),
       fecha: f.fecha, confirmarDuplicado: false,
     };
     try {
@@ -1441,6 +1680,7 @@ async function vistaRegistrar() {
     }
     // Ya está en la cola: se puede registrar el siguiente mientras se envía.
     Object.assign(f, { monto: '', descripcion: '', concepto: null, conceptoManual: false, nota: '' });
+    cajaMonto?.classList.remove('plegado');
     inMonto.value = ''; inDesc.value = ''; inNota.value = ''; sugerencia.textContent = ''; pintarConceptos();
     btnGuardar.disabled = false; btnGuardar.textContent = 'Guardar gasto';
     celebrar(datos.monto);
@@ -1652,7 +1892,9 @@ async function vistaTarjeta(id) {
           catIco(c.concepto),
           h('div', { class: 'consumo-texto' }, h('span', {}, limpiarComercio(c.descripcion)), h('span', { class: 'suave' }, sub)),
           h('div', { class: 'derecha' }, h('strong', {}, soles(c.monto)),
-            etiquetaEstado ? h('span', { class: 'etiqueta-estado' }, etiquetaEstado) : null)));
+            etiquetaEstado ? h('span', { class: 'etiqueta-estado' }, etiquetaEstado) : null),
+          enEspera(c) ? null : h('button', { type: 'button', class: 'boton-editar', 'aria-label': `Editar ${limpiarComercio(c.descripcion)}`,
+            onclick: (ev) => { ev.preventDefault(); ev.stopPropagation(); editarConsumo(t, c); } }, icono('lapiz'))));
       })),
       zona));
   }
@@ -1813,17 +2055,35 @@ async function vistaPresupuesto() {
   const d = r.datos;
   if (d.meses?.length) guardarCache('meses', d.meses);
   const tot = d.totales || {};
+  const fijos = fijosDe(d.filas);
+  const resumenFijos = h('span', { class: 'pill resumen-fijos' });
+  const pintarResumenFijos = () => {
+    const n = fijos.filter((f) => f.pagado).length;
+    resumenFijos.textContent = `${n} de ${fijos.length} pagados`;
+    resumenFijos.classList.toggle('ok', n > 0 && n === fijos.length);
+  };
+  pintarResumenFijos();
   const seccion = (clave, titulo, totalEtiqueta, total) => {
     const filas = (d.filas || []).filter((f) => f.seccion === clave);
     if (!filas.length && !total) return null;
     const max = Math.max(...filas.map((f) => Math.abs(f.monto || 0)), 1);
     const ordenadas = clave === 'gastos' ? [...filas].sort((a, b) => (b.monto || 0) - (a.monto || 0)) : filas;
     return h('section', { class: `panel seccion-pres seccion-${clave}` },
-      h('div', { class: 'panel-cab' }, tituloSeccion(titulo), h('strong', { class: 'cifra-cab' }, soles(total))),
-      h('ul', { class: 'filas-pres' }, ordenadas.map((f) => h('li', { class: f.monto ? '' : 'cero' },
-        h('div', { class: 'fila-pres-top' }, h('span', {}, f.concepto),
-          h('span', {}, f.monto && total ? h('small', { class: 'pct' }, `${Math.round((f.monto / total) * 100)}%`) : null, soles(f.monto))),
-        h('div', { class: 'barra-pres', 'aria-hidden': 'true' }, h('i', { 'data-w': `${Math.round((Math.abs(f.monto || 0) / max) * 100)}%` }))))));
+      h('div', { class: 'panel-cab' }, tituloSeccion(titulo),
+        clave === 'gastos' && fijos.length ? resumenFijos : null,
+        h('strong', { class: 'cifra-cab' }, soles(total))),
+      h('ul', { class: 'filas-pres' }, ordenadas.map((f) => {
+        const marcable = fijos.includes(f);
+        const nota = h('small', { class: 'nota-pagado' }, f.pagadoNota || '');
+        const li = h('li', { class: [f.monto ? '' : 'cero', f.pagado && marcable ? 'pagado' : ''].join(' ').trim() },
+          h('div', { class: 'fila-pres-top' },
+            h('span', { class: 'fila-pres-nombre' },
+              marcable ? botonFijo(f, d.mes, (x) => { li.classList.toggle('pagado', !!x.pagado); nota.textContent = x.pagado ? (x.pagadoNota || '') : ''; pintarResumenFijos(); }) : null,
+              h('span', {}, f.concepto, marcable ? nota : null)),
+            h('span', {}, f.monto && total ? h('small', { class: 'pct' }, `${Math.round((f.monto / total) * 100)}%`) : null, soles(f.monto))),
+          h('div', { class: 'barra-pres', 'aria-hidden': 'true' }, h('i', { 'data-w': `${Math.round((Math.abs(f.monto || 0) / max) * 100)}%` })));
+        return li;
+      })));
   };
 
   // Cómo se reparte el ingreso: gastos, ahorros y lo que queda libre.
@@ -1988,6 +2248,7 @@ function construirNav() {
 
 async function arrancar() {
   aplicarApariencia();
+  document.body.classList.toggle('solo-gasto', SOLO_GASTO);
   construirNav();
   document.addEventListener('click', (ev) => { if (!ev.target.closest?.('.cuenta-menu')) cerrarMenusCuenta(); });
   document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') cerrarMenusCuenta(); });

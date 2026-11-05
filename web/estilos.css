@@ -1425,6 +1425,126 @@ body.solo-gasto .f-cierre .mensaje { box-shadow: var(--sombra-alta); }
   body.solo-gasto .cabecera-gasto { padding-right: 54px; }
 }
 
+/* ---------- Gastos fijos, gasto por persona, editar gastos y teclado ---------- */
+
+/* Aviso breve */
+.tostada {
+  position: fixed; left: 50%; bottom: calc(var(--alto-nav) + env(safe-area-inset-bottom) + 18px); transform: translateX(-50%);
+  z-index: 70; max-width: min(92vw, 420px); padding: 11px 16px; border-radius: 14px;
+  background: var(--tinta); color: var(--fondo); font-size: 0.88rem; font-weight: 600; box-shadow: var(--sombra-alta);
+  animation: tostada-entra 320ms var(--suave) both; transition: opacity 350ms ease;
+}
+.tostada.ok { background: #12805C; color: #FFFFFF; }
+.tostada.error { background: #B93227; color: #FFFFFF; }
+.tostada.fuera { opacity: 0; }
+@keyframes tostada-entra { from { opacity: 0; transform: translate(-50%, 14px); } }
+body.solo-gasto .tostada { bottom: calc(96px + env(safe-area-inset-bottom)); }
+
+/* Check redondo de "pagado" */
+.check-fijo {
+  width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0; display: grid; place-items: center; padding: 0; cursor: pointer;
+  border: 2px solid var(--borde-fuerte); background: var(--sup); color: transparent;
+  transition: background 220ms ease, border-color 220ms ease, transform 260ms var(--suave), box-shadow 220ms ease;
+}
+.check-fijo .icono, .check-fijo .icono svg { width: 14px; height: 14px; }
+.check-fijo .icono svg { stroke-width: 3; }
+.check-fijo:hover { border-color: var(--ok); transform: scale(1.12); }
+.check-fijo[aria-pressed="true"] { background: var(--ok); border-color: var(--ok); color: #FFFFFF; box-shadow: 0 8px 14px -8px var(--ok); animation: marca 420ms var(--suave); }
+@keyframes marca { 40% { transform: scale(1.32); } }
+
+/* Panel de gastos fijos (Inicio) */
+.rejilla-2b { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+.rejilla-2b > :only-child { grid-column: 1 / -1; }
+.progreso-fijos { height: 8px; border-radius: 99px; background: var(--sup-2); overflow: hidden; }
+.progreso-fijos i { display: block; height: 100%; width: 0; border-radius: 99px; background: linear-gradient(90deg, color-mix(in srgb, var(--ok) 55%, white), var(--ok)); transition: width 700ms var(--suave); }
+.lista-fijos { list-style: none; margin: -4px 0; padding: 0; display: flex; flex-direction: column; }
+.fijo { display: flex; align-items: center; gap: 12px; padding: 9px 0; }
+.fijo + .fijo { border-top: 1px solid var(--borde); }
+.fijo-nombre { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; transition: color 300ms ease; }
+.fijo strong { white-space: nowrap; transition: color 300ms ease; }
+.fijo.pagado .fijo-nombre { color: var(--tinta-3); text-decoration: line-through; }
+.fijo.pagado strong { color: var(--tinta-3); }
+.panel-enlace { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; color: var(--marca-tinta); font-weight: 650; font-size: 0.84rem; }
+.panel-enlace .icono, .panel-enlace .icono svg { width: 15px; height: 15px; }
+.panel-enlace:hover .icono { transform: translateX(3px); }
+.panel-enlace .icono { transition: transform 260ms var(--suave); }
+
+/* Presupuesto: líneas que se pueden marcar */
+.fila-pres-nombre { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.fila-pres-nombre > span { display: flex; flex-direction: column; min-width: 0; }
+.nota-pagado { font-size: 0.72rem; font-weight: 600; color: var(--ok); }
+.nota-pagado:empty { display: none; }
+.filas-pres li.pagado .barra-pres i { background: linear-gradient(90deg, color-mix(in srgb, var(--ok) 55%, white), var(--ok)); }
+.resumen-fijos { margin-left: auto; }
+
+/* Gasto por persona */
+.panel-personas .partes { height: 12px; }
+.personas { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.persona { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 14px; border-radius: 18px; background: var(--sup-2); border: 1px solid var(--borde); transition: transform 300ms var(--suave), box-shadow 300ms var(--suave); }
+.persona:hover { transform: translateY(-3px); box-shadow: var(--sombra); }
+.persona-cab { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.persona-cab > div { display: flex; flex-direction: column; flex: 1; min-width: 0; line-height: 1.25; }
+.persona-cab .suave { font-size: 0.76rem; }
+.persona-total { font-size: 1.5rem; font-weight: 750; letter-spacing: -0.025em; line-height: 1.1; white-space: nowrap; }
+.persona-conceptos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 0.82rem; }
+.persona-conceptos li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.persona-conceptos li > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.persona-conceptos .cat-ico { width: 26px; height: 26px; border-radius: 8px; box-shadow: none; }
+.persona-conceptos .cat-ico svg { width: 14px; height: 14px; }
+
+/* Editar un gasto */
+.boton-editar { width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0; display: grid; place-items: center; padding: 0; border: 0; background: none; color: var(--tinta-3); cursor: pointer; opacity: 0; transition: opacity 200ms ease, background 200ms ease, color 200ms ease, transform 260ms var(--suave); }
+.boton-editar .icono, .boton-editar .icono svg { width: 16px; height: 16px; }
+.consumo:hover .boton-editar, .boton-editar:focus-visible { opacity: 1; }
+.boton-editar:hover { background: var(--marca-suave); color: var(--marca-tinta); transform: rotate(-8deg) scale(1.08); }
+@media (hover: none) { .boton-editar { opacity: 0.75; } }
+.hoja-modal { border: 0; padding: 0; width: min(520px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; border-radius: 26px; background: var(--sup); color: var(--tinta); box-shadow: var(--sombra-alta); }
+.hoja-modal[open] { display: flex; flex-direction: column; gap: 16px; padding: 20px; animation: modal-entra 340ms var(--suave); }
+.hoja-modal::backdrop { background: rgba(11, 18, 32, 0.5); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); animation: aparecer 200ms ease; }
+@keyframes modal-entra { from { opacity: 0; transform: translateY(26px) scale(0.97); } }
+.modal-cab { display: flex; align-items: center; gap: 12px; }
+.modal-cab > div { display: flex; flex-direction: column; flex: 1; min-width: 0; line-height: 1.25; }
+.modal-cab strong { font-size: 1.1rem; }
+.modal-cab .boton { border: 0; background: var(--sup-2); border-radius: 50%; }
+.modal-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+.modal-cuerpo .campo:not(.campo-chico) { grid-column: 1 / -1; }
+.campo select { min-height: 48px; padding: 0 12px; border: 1px solid var(--borde-fuerte); border-radius: var(--radio-chico); background: var(--sup); color: inherit; font: inherit; width: 100%; }
+.campo select:focus { border-color: var(--accion); outline: none; box-shadow: 0 0 0 4px var(--marca-suave); }
+.boton.peligro { color: var(--mal); border-color: color-mix(in srgb, var(--mal) 35%, var(--borde)); }
+.boton.peligro:hover { background: var(--mal-suave); }
+.hoja-modal .confirmacion .boton.primario { background: var(--mal); color: #FFFFFF; box-shadow: none; }
+
+/* Teclado propio del monto (app de gastos en celular) */
+.teclado { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; overflow: hidden; max-height: 280px; transition: max-height 420ms var(--suave), opacity 280ms ease, margin 300ms ease; }
+.monto-caja.plegado .teclado { max-height: 0; opacity: 0; margin-top: -10px; pointer-events: none; }
+.tecla {
+  min-height: 52px; border-radius: 16px; display: grid; place-items: center; cursor: pointer; padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18); background: rgba(255, 255, 255, 0.12); color: #FFFFFF;
+  font-size: 1.35rem; font-weight: 700; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent; user-select: none;
+  transition: transform 120ms ease, background 160ms ease;
+}
+.tecla:active { transform: scale(0.92); background: rgba(255, 255, 255, 0.3); }
+.tecla .icono, .tecla .icono svg { width: 22px; height: 22px; }
+.campo-monto { transform-origin: 0 60%; }
+.campo-monto.pulso { animation: pulso-monto 200ms var(--suave); }
+@keyframes pulso-monto { 40% { transform: scale(1.05); } }
+.monto-caja.con-teclado .campo-monto { caret-color: transparent; cursor: pointer; }
+.revelar.visible .fijo { animation: subir 460ms var(--suave) both; animation-delay: calc(180ms + var(--k, 0) * 60ms); }
+.revelar.visible .fijo:nth-child(2) { --k: 1; } .revelar.visible .fijo:nth-child(3) { --k: 2; } .revelar.visible .fijo:nth-child(4) { --k: 3; }
+.revelar.visible .fijo:nth-child(5) { --k: 4; } .revelar.visible .fijo:nth-child(n+6) { --k: 5; }
+.revelar.visible .persona { animation: subir 520ms var(--suave) both; animation-delay: 200ms; }
+.revelar.visible .persona:nth-child(2) { animation-delay: 300ms; }
+
+@media (min-width: 1024px) {
+  .rejilla-2b { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 20px; }
+  .tostada { left: calc(50% + 132px); bottom: 28px; }
+  body.solo-gasto .tostada { left: 50%; }
+}
+@media (max-width: 1023px) {
+  .hoja-modal { margin: auto auto 12px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }

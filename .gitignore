@@ -6,3 +6,6 @@ node_modules/
 
 # Archivos solo para tu computadora (ej. config.local.js)
 *.local.*
+
+# Página de pruebas locales (no se publica)
+web/prueba.html
