@@ -2,7 +2,7 @@
 // La API (Apps Script) y Google están en otros dominios: esas peticiones no se tocan
 // y van directo a la red. Cambia VERSION al publicar cambios.
 
-const VERSION = 'finfamily-v35';
+const VERSION = 'finfamily-v36';
 const CASCARON = [
   './',
   './index.html',
