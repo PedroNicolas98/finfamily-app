@@ -1917,6 +1917,11 @@ body.menu-chico { --ancho-menu: 76px; }
 /* ---------- Ocultar o mostrar el menú: una sola animación ---------- */
 html[data-vt="menu"]::view-transition-old(root) { display: none; }
 html[data-vt="menu"]::view-transition-new(root) { animation: none; }
+/* Pantallas angostas: el contenido cambia de ancho, así que se funde rápido al nuevo tamaño */
+html[data-vt="menu"][data-vt-ancho="cambia"]::view-transition-old(root) { display: block; animation: vt-funde-sale 150ms ease both; }
+html[data-vt="menu"][data-vt-ancho="cambia"]::view-transition-new(root) { animation: vt-funde-entra 260ms ease 60ms both; }
+@keyframes vt-funde-sale { to { opacity: 0; } }
+@keyframes vt-funde-entra { from { opacity: 0; } }
 ::view-transition-group(menu), ::view-transition-group(contenido), ::view-transition-group(plegar), ::view-transition-group(central) {
   animation-duration: 420ms; animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -1930,9 +1935,14 @@ html[data-vt="menu"]::view-transition-new(root) { animation: none; }
 ::view-transition-group(central) { border-radius: 14px; overflow: clip; z-index: 2; }
 ::view-transition-old(central), ::view-transition-new(central) { width: 100%; height: 100%; object-fit: none; object-position: 50% 50%; }
 ::view-transition-group(plegar) { z-index: 3; }
-/* El contenido no se funde: ya con su forma nueva, se desliza hasta su lugar y el borde lo va destapando */
-::view-transition-old(contenido) { display: none; }
-::view-transition-new(contenido) { animation: none; width: 100%; height: 100%; object-fit: none; object-position: 0 0; }
+/* El contenido va centrado en el espacio que deja el menú. Las dos fotos (antes y después) se mantienen a su
+   tamaño real y centradas mientras ese espacio cambia, así que el contenido se desplaza de su centro viejo al nuevo
+   sin saltos. En pantallas anchas las dos fotos son iguales y solo se ve el desplazamiento; en pantallas angostas,
+   donde el ancho sí cambia, además se funden una con la otra. */
+::view-transition-old(contenido), ::view-transition-new(contenido) {
+  width: 100%; height: 100%; object-fit: none; object-position: 50% 0;
+  animation-duration: 420ms; animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
