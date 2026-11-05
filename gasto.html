@@ -1,0 +1,38 @@
+<!doctype html>
+<!-- App aparte, solo para registrar gastos. Usa el mismo código que la app completa (app.js) en modo "gasto". -->
+<html lang="es-PE" data-app="gasto">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Gasto rápido</title>
+  <meta name="description" content="Registra un gasto de la casa en segundos.">
+  <meta name="theme-color" content="#F2F4F8">
+  <script>
+    // Aplica el modo y el color elegidos antes de pintar, para que no parpadee.
+    try {
+      document.documentElement.dataset.modo = localStorage.getItem('ff:modo') === 'oscuro' ? 'oscuro' : 'claro';
+      document.documentElement.dataset.color = localStorage.getItem('ff:color') || 'marino';
+    } catch (e) { document.documentElement.dataset.modo = 'claro'; }
+  </script>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Gasto">
+  <link rel="manifest" href="gasto.webmanifest">
+  <link rel="icon" href="iconos/gasto.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="iconos/gasto-192.png">
+  <link rel="preload" href="fuentes/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="estilos.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body class="solo-gasto">
+  <div id="avisos" class="avisos"></div>
+  <main id="vista" class="vista" tabindex="-1">
+    <div class="pantalla cargando" aria-busy="true">
+      <div class="esqueleto alto"></div>
+      <div class="esqueleto"></div>
+    </div>
+  </main>
+  <nav id="nav" class="barra-nav" aria-label="Secciones"></nav>
+  <noscript><p class="pantalla">Esta app necesita JavaScript activado.</p></noscript>
+</body>
+</html>
