@@ -586,6 +586,7 @@ const estado = {
   cola: [],
   filasEnEspera: new Set(),
   mesPres: null,
+  mesInicio: null, // mes elegido en Inicio (null = el mes en curso)
   selTarjeta: null,
   seleccion: new Set(),
   mensajeTarjeta: null,
@@ -1424,23 +1425,29 @@ function tecladoMonto(inMonto) {
 
 async function vistaInicio() {
   const mesHoy = mesActual();
+  // Mes que se está viendo. En el mes en curso sale todo; en otro mes, lo que es propio de ese mes
+  // (saldo, reparto, gastos fijos, quién gastó y en qué), porque las deudas de tarjeta son siempre las de hoy.
+  const mes = estado.mesInicio || mesHoy;
+  const esHoy = mes === mesHoy;
   const [r, rt, rp, rf] = await Promise.all([
     cargarRapido('inicio', { hoy: hoyISO() }, 'inicio'),
     cargarRapido('tarjetas', { hoy: hoyISO(), incluirPagados: false }, 'tarjetas').catch(() => null),
-    cargarRapido('personas', { mes: mesHoy }, 'personas:' + mesHoy).catch(() => null),
+    cargarRapido('personas', { mes }, 'personas:' + mes).catch(() => null),
     // Si lo guardado es de una versión anterior (sin el dato de "pagado"), se pide de nuevo.
-    cargarRapido('presupuesto', { mes: mesHoy }, 'presupuesto:' + mesHoy)
-      .then((x) => (x?.datos?.filas?.some((f) => f.fila === undefined) ? cargar('presupuesto', { mes: mesHoy }, 'presupuesto:' + mesHoy) : x))
+    cargarRapido('presupuesto', { mes }, 'presupuesto:' + mes)
+      .then((x) => (x?.datos?.filas?.some((f) => f.fila === undefined) ? cargar('presupuesto', { mes }, 'presupuesto:' + mes) : x))
       .catch(() => null),
   ]);
   marcarDatos(r);
   const d = r.datos;
-  const p = d.presupuesto;
+  const p = esHoy ? d.presupuesto : (rf?.datos?.totales || null);
+  if (rf?.datos?.meses?.length) guardarCache('meses', rf.datos.meses);
+  const mesesLista = rf?.datos?.meses || leerCache('meses')?.datos || [];
   const nombre = (d.usuario?.nombre || '').split(' ')[0];
   const hoy = new Date();
   const fechaHoy = hoy.toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long' });
   const saludo = hoy.getHours() < 12 ? 'Buenos días' : hoy.getHours() < 19 ? 'Buenas tardes' : 'Buenas noches';
-  const mesNombre = (nombreMesClave(d.mes) || '').split(' ')[0].toLowerCase();
+  const mesNombre = (nombreMesClave(mes) || '').split(' ')[0].toLowerCase();
   const ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
   const diasQuedan = ultimoDia - hoy.getDate();
   const raiz = h('div', { class: 'pantalla inicio' });
@@ -1449,11 +1456,15 @@ async function vistaInicio() {
     h('div', { class: 'cabecera' },
       h('p', { class: 'sobretitulo' }, fechaHoy),
       h('h1', {}, nombre ? `${saludo}, ${nombre}` : saludo)),
-    // Inicio siempre muestra el mes en curso; los demás meses se ven en Presupuesto, y este botón lleva allá.
-    h('a', { class: 'pill-mes solo-pc', href: '#presupuesto', title: 'Ver otros meses' },
-      icono('calendario'), h('span', {}, nombreMesClave(d.mes) || d.etiquetaMes || ''), icono('adelante'))));
+    h('div', { class: 'mes-inicio' },
+      esHoy ? null : h('button', { type: 'button', class: 'boton boton-hoy', title: 'Volver al mes en curso', onclick: () => {
+        estado.sentido = cmpMes(mesHoy, mes) > 0 ? 'adelante' : 'atras';
+        estado.mesInicio = null;
+        navegar();
+      } }, icono('calendario'), 'Hoy'),
+      selectorMes(mesesLista, mes, nombreMesClave(mes) || '', (m) => { estado.mesInicio = m.clave === mesHoy ? null : m.clave; }))));
 
-  const alertas = d.alertas || [];
+  const alertas = esHoy ? (d.alertas || []) : [];
   if (alertas.length) {
     raiz.append(h('section', { class: 'avisos-inicio' }, alertas.map((a) => {
       const dias = diasEntre(hoyISO(), a.vence);
@@ -1493,15 +1504,39 @@ async function vistaInicio() {
   } else {
     hero.append(h('div', { class: 'hero-principal' },
       h('p', { class: 'hero-etq' }, 'Saldo del mes'),
-      h('p', { class: 'hero-vacio' }, `${d.etiquetaMes || 'Este mes'} todavía no está en el presupuesto del Sheets.`)));
+      h('p', { class: 'hero-vacio' }, `${nombreMesClave(mes) || 'Este mes'} todavía no está en el presupuesto del Sheets.`)));
   }
-  hero.append(h('a', { class: 'hero-pagar', href: '#tarjetas' },
+  if (esHoy) hero.append(h('a', { class: 'hero-pagar', href: '#tarjetas' },
     h('span', { class: 'hero-pagar-cab' }, 'Por pagar', icono('adelante')),
     h('strong', { class: 'hero-pagar-monto', 'data-rico': '', 'data-contar': String(d.totalPorPagar || 0) }, soles(0)),
     conDeuda.length ? barraPartes(conDeuda.map((t) => ({ etiqueta: nombreCortoTC(t), valor: t.pendiente, clase: `tc-${t.id}` }))) : null,
     h('span', { class: 'hero-pagar-pie' }, icono('calendario'),
       proxima ? `Próximo: ${fechaCorta(proxima.proximoVence)} · ${nombreCortoTC(proxima)}` : 'Sin vencimientos pendientes')));
-  if (p) {
+  if (p && !esHoy) {
+    // Otro mes: en vez de lo que falta pagar hoy, cómo se repartió (o se repartirá) el ingreso de ese mes.
+    const gastos = Math.max(p.gastos || 0, 0);
+    const ahorros = Math.max(p.ahorros || 0, 0);
+    const libre = Math.max(p.saldo || 0, 0);
+    const base = Math.max(p.ingresos || 0, gastos + ahorros, 1);
+    const reparto = [
+      { etiqueta: 'Gastos', valor: gastos, clase: 'r-gastos' },
+      { etiqueta: 'Ahorros', valor: ahorros, clase: 'r-ahorros' },
+      { etiqueta: 'Saldo libre', valor: libre, clase: 'r-libre' },
+    ];
+    hero.append(
+      h('div', { class: 'hero-pagar hero-reparto' },
+        h('span', { class: 'hero-pagar-cab' }, 'Reparto del ingreso'),
+        barraPartes(reparto),
+        h('ul', { class: 'hero-leyenda' }, reparto.map((x) => h('li', {},
+          h('i', { class: `punto ${x.clase}`, 'aria-hidden': 'true' }), h('span', {}, x.etiqueta),
+          h('b', {}, `${Math.round((x.valor / base) * 100)}%`))))),
+      h('ul', { class: 'hero-datos' },
+        dato('sube', 'Ingresos', soles(p.ingresos)),
+        dato('baja', 'Gastos', soles(p.gastos)),
+        dato('billetera', 'Ahorros', soles(p.ahorros || 0)),
+        dato('check', 'Saldo libre', soles(libre))));
+  }
+  if (p && esHoy) {
     const libre = Math.max(p.saldo, 0);
     hero.append(h('ul', { class: 'hero-datos' },
       dato('sube', 'Ingresos', soles(p.ingresos)),
@@ -1516,7 +1551,7 @@ async function vistaInicio() {
   const ordenadas = [...tarjetas].sort((a, b) => (b.pendiente > 0) - (a.pendiente > 0)
     || String(a.proximoVence || '9').localeCompare(String(b.proximoVence || '9')));
   const enCarril = [...ordenadas, hormiga].filter(Boolean);
-  if (enCarril.length) {
+  if (esHoy && enCarril.length) {
     const carril = h('div', { class: 'carrusel' }, enCarril.map((t, i) => {
       const el = tarjetaVisual(t);
       el.style.setProperty('--i', String(i));
@@ -1534,11 +1569,25 @@ async function vistaInicio() {
   }
 
   // Gastos fijos por marcar y cuánto gastó cada uno
-  const fijosPanel = panelFijos(rf?.datos, mesHoy);
+  const fijosPanel = panelFijos(rf?.datos, mes);
   const personasPanel = panelPersonas(rp?.datos);
   if (fijosPanel || personasPanel) raiz.append(h('div', { class: 'rejilla-2b' }, fijosPanel, personasPanel));
 
-  if (rt?.datos?.tarjetas) {
+  if (!esHoy) {
+    // En qué se fue ese mes: todos los consumos con fecha del mes, sumados por concepto.
+    const porConcepto = new Map();
+    for (const per of rp?.datos?.personas || []) {
+      for (const x of per.conceptos || []) porConcepto.set(x.concepto, (porConcepto.get(x.concepto) || 0) + (Number(x.monto) || 0));
+    }
+    const orden = [...porConcepto].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+    const partes = orden.slice(0, 7).map(([etiqueta, valor]) => ({ etiqueta, valor }));
+    const resto = orden.slice(7).reduce((s, [, v]) => s + v, 0);
+    if (resto > 0) partes.push({ etiqueta: 'Otros conceptos', valor: resto });
+    raiz.append(panel('panel-dona ancho revelar', '¿En qué se fue?', null,
+      partes.length ? dona(partes, 'Total') : vacio('No hay consumos con fecha de este mes.')));
+  }
+
+  if (esHoy && rt?.datos?.tarjetas) {
     const todas = rt.datos.tarjetas;
     // Consumos por día (últimos 30 días): lo que falta pagar en tarjetas y los gastos hormiga
     const dias = graficoDias(consumosDe(todas, () => true).filter((c) => c.tarjeta.id === 'HORMIGA' || c.estado !== 'Pagado'), 30);
@@ -2324,12 +2373,16 @@ function cmpMes(a, b) {
   return (ya - yb) * 12 + (ma - mb);
 }
 
-function selectorMes(meses, mes, etiqueta) {
+function selectorMes(meses, mes, etiqueta, alElegir) {
   const i = meses.findIndex((m) => m.clave === mes);
   // Si el mes mostrado no está en la lista, se ofrece el más cercano hacia atrás y hacia adelante.
   const anterior = i > 0 ? meses[i - 1] : i < 0 ? [...meses].reverse().find((m) => cmpMes(m.clave, mes) < 0) || null : null;
   const siguiente = i >= 0 ? (i < meses.length - 1 ? meses[i + 1] : null) : meses.find((m) => cmpMes(m.clave, mes) > 0) || null;
-  const ir = (m) => () => { estado.sentido = cmpMes(m.clave, mes) > 0 ? 'adelante' : 'atras'; estado.mesPres = m.clave; navegar(); };
+  const ir = (m) => () => {
+    estado.sentido = cmpMes(m.clave, mes) > 0 ? 'adelante' : 'atras';
+    if (alElegir) alElegir(m); else estado.mesPres = m.clave;
+    navegar();
+  };
   return h('div', { class: 'selector-mes' },
     h('button', { type: 'button', class: 'boton icono-solo', disabled: !anterior, 'aria-label': 'Mes anterior', title: 'Mes anterior',
       onclick: anterior ? ir(anterior) : null }, icono('atras')),
@@ -2418,6 +2471,7 @@ async function navegar(opciones) {
   const silencioso = opciones?.silencioso === true; // (los eventos del navegador también llegan aquí como argumento)
   const ruta = SOLO_GASTO ? 'registrar' : (location.hash.slice(1) || 'inicio');
   const id = ++estado.navId;
+  if (ruta === 'inicio' && estado.rutaVista && estado.rutaVista !== 'inicio') estado.mesInicio = null;
   estado.tsDatos = null;
   estado.motivoDatos = null;
   marcarNav(ruta);
