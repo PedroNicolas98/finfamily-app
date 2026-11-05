@@ -703,21 +703,20 @@ legend + * { clear: both; }
 .logo { border-radius: 18px; }
 .boton-google { min-height: 44px; }
 
-/* Logo con el color de la app: una casa sólida con barras que suben, sobre un recuadro con luz */
+/* Logo con el color de la app, sin recuadro: una casa sólida y adentro tres barras que suben */
 .logo-marca { display: block; flex-shrink: 0; overflow: visible; }
-.lm-g1 { stop-color: color-mix(in srgb, var(--marca) 70%, white); }
+.lm-g1 { stop-color: color-mix(in srgb, var(--marca) 62%, white); }
 .lm-gm { stop-color: var(--marca); }
 .lm-g2 { stop-color: var(--marca-2); }
-.lm-t1 { stop-color: var(--marca); }
-.lm-t2 { stop-color: var(--marca-2); }
-.lm-fondo { transform-box: fill-box; transform-origin: 50% 50%; }
-.lm-base { fill: url(#lm-degradado) var(--marca); }
+:root[data-modo="oscuro"] .lm-g1 { stop-color: color-mix(in srgb, var(--accion) 70%, white); }
+:root[data-modo="oscuro"] .lm-gm { stop-color: var(--accion); }
+:root[data-modo="oscuro"] .lm-g2 { stop-color: var(--marca); }
+.lm-casa { transform-box: fill-box; transform-origin: 50% 100%; }
+.lm-base { fill: url(#lm-degradado) var(--marca); stroke: url(#lm-degradado) var(--marca); stroke-width: 30; stroke-linejoin: round; }
 .lm-luz { fill: url(#lm-luz) transparent; }
-.lm-borde { fill: none; stroke: #FFFFFF; stroke-opacity: 0.2; stroke-width: 5; }
-.lm-casa { fill: url(#lm-blanco) #FFFFFF; stroke: url(#lm-blanco) #FFFFFF; stroke-width: 30; stroke-linejoin: round; transform-box: fill-box; transform-origin: 50% 100%; }
-.lm-b { fill: url(#lm-tinta) var(--marca-2); transform-box: fill-box; transform-origin: 50% 100%; }
-.lm-b1 { fill-opacity: 0.55; }
-.lm-b3 { fill: var(--lm-acento, #1FB894); }
+.lm-b { fill: #FFFFFF; transform-box: fill-box; transform-origin: 50% 100%; }
+.lm-b1 { fill-opacity: 0.6; }
+.lm-b3 { fill: var(--vivo); }
 .lm-brillo { fill: url(#lm-rayo) transparent; opacity: 0; }
 :root { --lm-acento: #1FB894; }
 :root[data-color="esmeralda"] { --lm-acento: #8FC42B; }
@@ -728,25 +727,23 @@ legend + * { clear: both; }
 .marca-texto { font-weight: 800; letter-spacing: -0.025em; }
 .marca-texto span, .nav-marca .marca-texto span { display: inline; font-size: inherit; font-weight: 500; color: inherit; opacity: 0.72; }
 
-/* El logo se construye: aparece el recuadro, sube la casa, crecen las barras y pasa un brillo. En la entrada se repite. */
-@keyframes lm-recuadro { 0% { transform: scale(0.86); } 9% { transform: scale(1.05); } 15%, 90% { transform: scale(1); } 97%, 100% { transform: scale(0.94); } }
-@keyframes lm-casa { 0%, 5% { transform: translateY(16%) scale(0.62); opacity: 0; } 17% { transform: translateY(0) scale(1.05); opacity: 1; } 23%, 90% { transform: none; opacity: 1; } 97%, 100% { transform: scale(0.8); opacity: 0; } }
-@keyframes lm-barra { 0%, 20% { transform: scaleY(0); } 30% { transform: scaleY(1.16); } 35%, 88% { transform: scaleY(1); } 94%, 100% { transform: scaleY(0); } }
-@keyframes lm-brillo { 0%, 42% { transform: translateX(0); opacity: 0; } 44% { opacity: 1; } 60% { transform: translateX(900px); opacity: 1; } 62%, 100% { transform: translateX(900px); opacity: 0; } }
-.logo-marca.vivo .lm-fondo { animation: lm-recuadro 6.5s var(--suave) infinite both; }
+/* El logo se arma: la casa se asienta, crecen las barras y pasa un brillo. En la entrada y en la carga se repite. */
+@keyframes lm-casa { 0% { transform: scale(0.84); } 9% { transform: scale(1.06); } 15%, 90% { transform: scale(1); } 97%, 100% { transform: scale(0.84); } }
+@keyframes lm-barra { 0%, 12% { transform: scaleY(0); } 22% { transform: scaleY(1.16); } 27%, 88% { transform: scaleY(1); } 94%, 100% { transform: scaleY(0); } }
+@keyframes lm-brillo { 0%, 36% { transform: translateX(0); opacity: 0; } 38% { opacity: 1; } 54% { transform: translateX(640px); opacity: 1; } 56%, 100% { transform: translateX(640px); opacity: 0; } }
 .logo-marca.vivo .lm-casa { animation: lm-casa 6.5s var(--suave) infinite both; }
 .logo-marca.vivo .lm-b { animation: lm-barra 6.5s var(--suave) infinite both; }
 .logo-marca.vivo .lm-b2 { animation-delay: 110ms; }
 .logo-marca.vivo .lm-b3 { animation-delay: 220ms; }
 .logo-marca.vivo .lm-brillo { animation: lm-brillo 6.5s ease-in-out infinite both; }
 
-/* En el menú se construye una vez al abrir y otra vez al pasar o quitar el cursor. */
+/* En el menú se arma una vez al abrir y otra vez al pasar o quitar el cursor. */
 @keyframes lm-casa-a { from { transform: translateY(16%) scale(0.62); opacity: 0; } 70% { transform: scale(1.05); opacity: 1; } }
 @keyframes lm-casa-b { from { transform: translateY(16%) scale(0.62); opacity: 0; } 70% { transform: scale(1.05); opacity: 1; } }
 @keyframes lm-barra-a { 0% { transform: scaleY(0); } 70% { transform: scaleY(1.16); } }
 @keyframes lm-barra-b { 0% { transform: scaleY(0); } 70% { transform: scaleY(1.16); } }
-@keyframes lm-brillo-a { from { transform: translateX(0); opacity: 1; } to { transform: translateX(900px); opacity: 1; } }
-@keyframes lm-brillo-b { from { transform: translateX(0); opacity: 1; } to { transform: translateX(900px); opacity: 1; } }
+@keyframes lm-brillo-a { from { transform: translateX(0); opacity: 1; } to { transform: translateX(640px); opacity: 1; } }
+@keyframes lm-brillo-b { from { transform: translateX(0); opacity: 1; } to { transform: translateX(640px); opacity: 1; } }
 .nav-marca .lm-casa { animation: lm-casa-a 620ms var(--suave) 120ms both; }
 .nav-marca .lm-b { animation: lm-barra-a 560ms var(--suave) both; }
 .nav-marca .lm-brillo { animation: lm-brillo-a 900ms ease-in-out 1100ms backwards; }
@@ -778,8 +775,11 @@ legend + * { clear: both; }
 
 .login-logo { display: flex; align-items: center; gap: 12px; font-size: 1.2rem; letter-spacing: -0.01em; }
 .login-logo .logo-marca { width: 48px; height: 48px; filter: drop-shadow(0 10px 16px rgba(0, 0, 0, 0.28)); }
-.login-marca .lm-base { fill: rgba(255, 255, 255, 0.16); stroke: rgba(255, 255, 255, 0.3); stroke-width: 8; }
-.login-marca .lm-luz, .login-marca .lm-borde { display: none; }
+/* Sobre el panel de color la casa va en blanco y las barras en el color de la app */
+.login-marca .lm-base { fill: #FFFFFF; stroke: #FFFFFF; }
+.login-marca .lm-luz { display: none; }
+.login-marca .lm-b { fill: var(--marca-2); }
+.login-marca .lm-b3 { fill: var(--lm-acento, #1FB894); }
 .login-marca h1 { font-size: clamp(1.7rem, 5.4vw, 2.7rem); max-width: 15ch; line-height: 1.1; text-shadow: 0 2px 18px rgba(0, 0, 0, 0.2); }
 .palabra { display: inline-block; }
 .login-puntos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; font-size: 0.92rem; color: rgba(255, 255, 255, 0.9); max-width: 46ch; }
@@ -1663,7 +1663,7 @@ body.cargando-datos .barra-carga { opacity: 1; }
 /* Pantalla de arranque: el logo se arma mientras abre la app */
 .pantalla.arranque { min-height: calc(100vh - 150px); min-height: calc(100dvh - 150px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px; animation: aparecer 300ms ease both; }
 .arranque .logo-marca { width: 92px; height: 92px; filter: drop-shadow(0 22px 26px color-mix(in srgb, var(--marca) 45%, transparent)); }
-.arranque .logo-marca.vivo .lm-fondo, .arranque .logo-marca.vivo .lm-casa, .arranque .logo-marca.vivo .lm-b, .arranque .logo-marca.vivo .lm-brillo { animation-duration: 2.6s; }
+.arranque .logo-marca.vivo .lm-casa, .arranque .logo-marca.vivo .lm-b, .arranque .logo-marca.vivo .lm-brillo { animation-duration: 2.6s; }
 /* Entre páginas la casa va un poco más chica que al abrir la app */
 .pantalla.cargando.arranque .logo-marca { width: 76px; height: 76px; }
 .pantalla.cargando.arranque { animation: aparecer 220ms ease both; }
