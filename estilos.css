@@ -1944,6 +1944,17 @@ html[data-vt="menu"][data-vt-ancho="cambia"]::view-transition-new(root) { animat
   animation-duration: 420ms; animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* ---------- Carrusel que gira de forma continua ---------- */
+.carrusel.infinito { overflow: hidden; scroll-snap-type: none; touch-action: pan-y; cursor: grab; user-select: none; -webkit-user-select: none; }
+.carrusel.infinito.arrastrando { cursor: grabbing; }
+.carrusel.infinito.arrastrando .plastico { pointer-events: none; }
+.carrusel.infinito .plastico { -webkit-user-drag: none; }
+.carrusel-pista { display: flex; gap: 16px; width: max-content; will-change: transform; }
+/* La fila no lleva animación propia: la entrada y el flotar son de cada tarjeta */
+.vista.entrada .carrusel > .carrusel-pista { animation: none; }
+.vista.entrada .carrusel-pista > * { animation: de-lado 700ms var(--suave) both, flotar-t 6s ease-in-out infinite; animation-delay: calc(240ms + var(--i, 0) * 80ms), calc(1200ms + var(--i, 0) * 450ms); }
+html[data-vt] .carrusel-pista > .plastico[style*="view-transition-name"] { animation: none; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
