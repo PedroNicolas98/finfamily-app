@@ -1919,6 +1919,8 @@ body.menu-chico { --ancho-menu: 76px; }
   /* Mientras se mueve: lo que sobra queda tapado por el borde, y el resaltado deslizante se apaga un momento */
   body.menu-moviendo .barra-nav { overflow: hidden; }
   body.menu-moviendo .nav-indicador { opacity: 0 !important; transition: none; }
+  /* Con el menú oculto el resaltado nunca puede ser más ancho que la columna de íconos */
+  body.menu-chico .nav-indicador { max-width: 44px; }
 }
 
 
@@ -2055,6 +2057,31 @@ html[data-vt] .carrusel-pista > .plastico[style*="view-transition-name"] { anima
   body:not(.solo-gasto) .monto-caja .vista-previa { flex-shrink: 0; max-width: 46%; }
   body:not(.solo-gasto) .f-recientes { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; min-width: 0; }
   .f-recientes-etq { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--tinta-3); flex-shrink: 0; }
+}
+
+/* ---------- Tarjetas en computadora: todo entra en la ventana, sin scroll ---------- */
+@media (min-width: 1024px) {
+  body:has(.pantalla.tarjetas) { padding-bottom: 12px; }
+  .pantalla.tarjetas { padding-top: 20px; padding-bottom: 8px; gap: 14px; }
+  .pantalla.tarjetas .billetera-caja > .seccion-cab { display: none; } /* el título de la página ya lo dice */
+  .pantalla.tarjetas .rejilla-billetera { grid-template-columns: minmax(0, 430px) minmax(0, 1fr); align-items: start; }
+  .pantalla.tarjetas .billetera { max-width: 430px; }
+  .pantalla.tarjetas .billetera .plastico + .plastico { margin-top: calc(-63.05% + 54px); }
+  .pantalla.tarjetas .col-pila { gap: 14px; }
+  .pantalla.tarjetas .col-pila > .panel:last-child { flex: none; }
+  .pantalla.tarjetas .hero.simple { padding: 20px 24px; gap: 14px; }
+  .pantalla.tarjetas .hero-monto { margin: 4px 0 8px; }
+  .pantalla.tarjetas .panel-ruta { padding-block: 16px; gap: 10px; }
+}
+/* Ventanas bajas: se aprieta un poco más */
+@media (min-width: 1024px) and (max-height: 640px) {
+  .pantalla.tarjetas { padding-top: 14px; gap: 10px; }
+  .pantalla.tarjetas h1 { font-size: 1.6rem; }
+  .pantalla.tarjetas .billetera .plastico + .plastico { margin-top: calc(-63.05% + 46px); }
+  .pantalla.tarjetas .hero.simple { padding: 16px 22px; gap: 10px; }
+  .pantalla.tarjetas .hero-monto { font-size: 2.5rem; }
+  .pantalla.tarjetas .hero-datos li { padding: 9px 12px; }
+  .pantalla.tarjetas .col-pila { gap: 10px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
