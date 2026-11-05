@@ -419,10 +419,10 @@ function tarjetaVisual(t, comoEnlace = true) {
       h('span', { class: 'plastico-titular' }, esH ? 'Yape · Plin · Efectivo' : duenioTC(t)),
       e ? h('span', { class: `plastico-estado ${e.clase}`.trim() }, e.clase === '' && t.proximoVence ? `Vence el ${fechaCorta(t.proximoVence)}` : e.texto) : null));
 }
-function anillo(pct) {
+function anillo(pct, etiqueta = 'gastado') {
   const r = 52;
   const c = 2 * Math.PI * r;
-  const caja = h('div', { class: 'anillo', role: 'img', 'aria-label': `${pct}% de los ingresos comprometido` });
+  const caja = h('div', { class: 'anillo', role: 'img', title: `${pct}% del ingreso ya ${etiqueta}`, 'aria-label': `${pct}% del ingreso ya ${etiqueta}` });
   caja.append(
     svg('svg', { viewBox: '0 0 120 120', 'aria-hidden': 'true' },
       svg('defs', {}, svg('linearGradient', { id: 'anillo-degradado', x1: 0, y1: 0, x2: 1, y2: 1 },
@@ -430,11 +430,34 @@ function anillo(pct) {
       svg('circle', { class: 'anillo-pista', cx: 60, cy: 60, r }),
       svg('circle', { class: 'anillo-valor', cx: 60, cy: 60, r, 'stroke-dasharray': c.toFixed(1), 'stroke-dashoffset': c.toFixed(1),
         'data-offset': (c * (1 - Math.min(pct, 100) / 100)).toFixed(1) })),
-    h('div', { class: 'anillo-texto' }, h('strong', {}, `${pct}%`), h('span', {}, 'comprometido')));
+    h('div', { class: 'anillo-texto' }, h('strong', {}, `${pct}%`), h('span', {}, etiqueta)));
   return caja;
 }
 
 // Gráfico de dona con leyenda. Al pasar el cursor o tocar una parte, el centro muestra su monto.
+// Panel con pestañas: un solo recuadro que alterna entre varias vistas.
+function panelPestanas(clase, pestanas) {
+  const cuerpo = h('div', { class: 'pest-cuerpo' });
+  const lado = h('span', { class: 'suave pest-lado' });
+  const botones = pestanas.map((p, i) => h('button', { type: 'button', class: 'pest', role: 'tab',
+    'aria-selected': String(i === 0), onclick: () => elegir(i) }, p.etiqueta));
+  function elegir(i) {
+    botones.forEach((b, k) => b.setAttribute('aria-selected', String(k === i)));
+    lado.replaceChildren(pestanas[i].lado || '');
+    lado.title = pestanas[i].pista || '';
+    cuerpo.replaceChildren(pestanas[i].nodo);
+    if (!cuerpo.isConnected) return;
+    cuerpo.classList.remove('entra');
+    void cuerpo.offsetWidth;
+    cuerpo.classList.add('entra');
+    animarVista(cuerpo);
+  }
+  elegir(0);
+  return h('section', { class: `panel panel-pestanas ${clase}`.trim() },
+    h('div', { class: 'panel-cab' }, h('div', { class: 'pestanas', role: 'tablist' }, botones), lado),
+    cuerpo);
+}
+
 function dona(partes, etiquetaCentro) {
   const total = partes.reduce((s, p) => s + p.valor, 0) || 1;
   const r = 54;
@@ -712,6 +735,7 @@ const estado = {
   cola: [],
   filasEnEspera: new Set(),
   mesPres: null,
+  recienRegistrados: [], // gastos registrados en esta visita (para mostrarlos al instante en Nuevo gasto)
   plasticoClic: null, // última tarjeta tocada (para saber cuál viaja al detalle)
   mesInicio: null, // mes elegido en Inicio (null = el mes en curso)
   selTarjeta: null,
@@ -1238,6 +1262,11 @@ function mostrar(nodo) {
   document.body.classList.toggle('sin-sesion', esLogin);
   // En celular, el menú de cuenta va arriba a la derecha de cada pantalla.
   if (!esLogin && !nodo.classList?.contains('cargando') && api.emailGuardado()) nodo.append(botonCuenta(SOLO_GASTO ? 'movil' : 'movil solo-movil'));
+  // En celular no hay menú lateral: el logo va junto al título de la página.
+  if (!esLogin && !SOLO_GASTO && !nodo.classList?.contains('cargando')) {
+    const cab = nodo.querySelector?.('.cabecera');
+    if (cab && !cab.querySelector('.logo-marca')) cab.prepend(logoMarca('marca-movil solo-movil'));
+  }
   vista.replaceChildren(nodo);
 }
 
@@ -1749,10 +1778,6 @@ async function vistaInicio() {
     const todas = rt.datos.tarjetas;
     // Consumos por día (últimos 30 días): lo que falta pagar en tarjetas y los gastos hormiga
     const dias = graficoDias(consumosDe(todas, () => true).filter((c) => c.tarjeta.id === 'HORMIGA' || c.estado !== 'Pagado'), 30);
-    const panelDias = panel('panel-dias revelar', 'Consumos por día',
-      h('span', { class: 'suave', title: 'Últimos 30 días. Cuenta lo que falta pagar en tarjetas y los gastos hormiga.' }, `${soles(dias.total)} en 30 días`),
-      dias.nodo);
-    raiz.append(panelDias);
     const rejilla = h('div', { class: 'rejilla-3 dos' });
     const agregar = (nodo) => { nodo.classList.add('revelar'); nodo.style.setProperty('--i', String(rejilla.children.length)); rejilla.append(nodo); };
 
@@ -1767,8 +1792,12 @@ async function vistaInicio() {
     const partes = orden.slice(0, 5).map(([etiqueta, valor]) => ({ etiqueta, valor }));
     const resto = orden.slice(5).reduce((s, [, v]) => s + v, 0);
     if (resto > 0) partes.push({ etiqueta: 'Otros conceptos', valor: resto });
-    agregar(panel('panel-dona', '¿En qué se fue?', null,
-      partes.length ? dona(partes, 'Total') : vacio('Todavía no hay consumos este mes.')));
+    // Un solo panel con dos vistas del mismo gasto: por día y por concepto.
+    agregar(panelPestanas('panel-gasto', [
+      { etiqueta: 'Por día', lado: `${soles(dias.total)} en 30 días`, pista: 'Últimos 30 días. Cuenta lo que falta pagar en tarjetas y los gastos hormiga.', nodo: dias.nodo },
+      { etiqueta: 'Por concepto', lado: soles(orden.reduce((s, [, v]) => s + v, 0)), pista: 'Lo que falta pagar en tarjetas y los gastos hormiga, por concepto.',
+        nodo: h('div', { class: 'dona-ancha' }, partes.length ? dona(partes, 'Total') : vacio('Todavía no hay consumos este mes.')) },
+    ]));
 
     const recientes = consumosDe(todas, (t) => t.id !== 'HORMIGA').filter((c) => c.estado !== 'Pagado')
       .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 6);
@@ -1935,6 +1964,21 @@ async function vistaRegistrar() {
   const campoConcepto = h('fieldset', { class: 'f-conceptos' }, h('legend', {}, 'Concepto'), h('div', { class: 'opciones chicas' }, botonesConcepto));
   const campoFecha = h('div', { class: 'campo' }, h('label', { for: 'fecha' }, 'Fecha'), inFecha);
   inFecha.addEventListener('change', () => limpiarError(campoFecha));
+  // Últimos gastos: primero los registrados en esta visita, luego los más recientes que ya están en el Sheets.
+  const listaRecientes = h('ul', { class: 'rec-lista' });
+  const pintarRecientes = () => {
+    const guardados = consumosDe(leerCache('tarjetas')?.datos?.tarjetas || [], () => true)
+      .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+    const items = [...(estado.recienRegistrados || []), ...guardados].slice(0, 4);
+    listaRecientes.replaceChildren(...items.map((c) => h('li', { class: 'rec' + (c.nuevo ? ' nuevo' : ''), title: c.descripcion || c.concepto || '' },
+      catIco(c.concepto),
+      h('span', { class: 'rec-texto' }, h('span', {}, limpiarComercio(c.descripcion || c.concepto || 'Gasto')), h('span', { class: 'suave' }, fechaCorta(c.fecha))),
+      h('strong', {}, soles(c.monto)),
+      c.nuevo ? h('span', { class: 'rec-ok', 'aria-label': 'Recién registrado' }, icono('check')) : null)));
+  };
+  pintarRecientes();
+  const recientes = h('section', { class: 'f-recientes', 'aria-label': 'Últimos gastos registrados' },
+    h('span', { class: 'f-recientes-etq' }, 'Últimos'), listaRecientes);
   const form = h('form', { class: 'formulario', novalidate: true },
     (cajaMonto = h('div', { class: 'hero monto-caja' + (conTeclado ? ' con-teclado' : '') }, heroFondo(),
       h('label', { class: 'campo-monto-caja', for: 'monto', onclick: () => cajaMonto.classList.remove('plegado') }, h('span', { class: 'moneda' }, 'S/'), inMonto),
@@ -1946,7 +1990,8 @@ async function vistaRegistrar() {
     h('div', { class: 'fila-dos' },
       campoFecha,
       h('div', { class: 'campo' }, h('label', { for: 'nota' }, 'Nota'), inNota)),
-    h('div', { class: 'f-cierre' }, msg, btnGuardar));
+    h('div', { class: 'f-cierre' }, msg, btnGuardar),
+    recientes);
 
   // Muestra en 'msg' lo que pasó con el envío de un gasto (también tras 'Guardar igual').
   function mostrarResultado(datos, res) {
@@ -2041,6 +2086,9 @@ async function vistaRegistrar() {
     const miEnvio = ++ultimoEnvio;
     msg.className = 'mensaje';
     msg.replaceChildren(cola.persistente() ? 'Guardado en este equipo. Enviando al Sheets…' : 'Enviando al Sheets…');
+    estado.recienRegistrados = [{ descripcion: datos.descripcion, concepto: datos.concepto, monto: datos.monto, fecha: datos.fecha, nuevo: true },
+      ...(estado.recienRegistrados || [])].slice(0, 4);
+    pintarRecientes();
     inMonto.focus();
 
     const res = await procesarHasta(datos.idCliente);
@@ -2109,7 +2157,7 @@ async function vistaTarjetas() {
   if (!lista.length) { raiz.append(vacio('No hay tarjetas para mostrar.')); return raiz; }
 
   // Resumen: total, reparto por tarjeta y datos clave
-  raiz.append(h('section', { class: 'hero simple' }, heroFondo(),
+  const heroTarjetas = h('section', { class: 'hero simple' }, heroFondo(),
     h('div', { class: 'hero-principal' },
       h('p', { class: 'hero-etq' }, 'Por pagar'),
       h('p', { class: 'hero-monto', 'data-rico': '', 'data-contar': String(total) }, soles(0)),
@@ -2121,27 +2169,41 @@ async function vistaTarjetas() {
     h('ul', { class: 'hero-datos' },
       heroDato('calendario', 'Próximo pago', proxima ? fechaCorta(proxima.proximoVence) : 'Ninguno'),
       heroDato('tarjetas', 'La más alta', conDeuda[0] ? nombreCortoTC(conDeuda[0]) : 'Ninguna'),
-      heroDato('billetera', 'Gastos hormiga', soles(hormiga?.pendiente || 0)))));
+      heroDato('billetera', 'Gastos hormiga', soles(hormiga?.pendiente || 0))));
 
   // Calendario de pagos: de hoy a la última fecha
+  let panelRuta = null;
   if (porFecha.length) {
     const hoy = deISO(hoyISO());
     const paso = (clase, fecha, titulo, detalle, monto, href, i) => h(href ? 'a' : 'div', { class: `ruta-paso ${clase}`.trim(), href: href || null, style: `--i: ${i}` },
       h('span', { class: 'ruta-fecha' }, h('b', {}, String(fecha.getDate())), h('i', {}, ABREV[fecha.getMonth()])),
       h('span', { class: 'ruta-texto' }, h('strong', {}, titulo), h('span', {}, detalle)),
       monto != null ? h('strong', { class: 'ruta-monto' }, soles(monto)) : null);
-    raiz.append(h('section', { class: 'panel panel-ruta revelar' },
+    panelRuta = h('section', { class: 'panel panel-ruta revelar' },
       h('div', { class: 'panel-cab' }, tituloSeccion('Calendario de pagos')),
       h('div', { class: 'ruta' },
         paso('hoy', hoy, 'Hoy', '', null, null, 0),
         porFecha.map((t, i) => {
           const e = estadoVence(t.proximoVence, t.pendiente);
           return paso(`tc-${t.id} ${e.clase}`, deISO(t.proximoVence), nombreCortoTC(t), e.texto, t.pendiente, `#tarjeta-${t.id}`, i + 1);
-        }))));
+        })));
   }
 
-  raiz.append(h('div', { class: 'seccion-cab' }, tituloSeccion('Tus tarjetas')),
-    h('div', { class: 'rejilla-plasticos' }, lista.map((t) => tarjetaVisual(t))));
+  // Billetera: las tarjetas van encimadas, como en una billetera. La que vence primero queda adelante, completa;
+  // de las demás se ve la franja de arriba con el nombre y lo que falta pagar.
+  const peso = (t) => (t.id === 'HORMIGA' ? 0 : t.pendiente > 0 && t.proximoVence ? 2 : 1);
+  const enPila = [...lista].sort((a, b) => peso(a) - peso(b) || String(b.proximoVence || '').localeCompare(String(a.proximoVence || '')));
+  const billetera = h('div', { class: 'billetera' }, enPila.map((t, i) => {
+    const el = tarjetaVisual(t);
+    el.style.setProperty('--i', String(i));
+    const arriba = el.querySelector('.plastico-top');
+    arriba.insertBefore(h('strong', { class: 'pila-monto' }, soles(t.pendiente || 0)), arriba.lastChild);
+    return el;
+  }));
+  // A un lado la billetera; al otro, el resumen y el calendario de pagos.
+  raiz.append(h('div', { class: 'rejilla-billetera' },
+    h('div', { class: 'col-pila' }, heroTarjetas, panelRuta),
+    h('section', { class: 'billetera-caja' }, h('div', { class: 'seccion-cab' }, tituloSeccion('Tus tarjetas')), billetera)));
   return raiz;
 }
 
@@ -2231,7 +2293,13 @@ async function vistaTarjeta(id) {
             `${consumos.length} consumo${consumos.length === 1 ? '' : 's'}`].filter(Boolean).join(' · '))),
         h('div', { class: 'derecha' }, h('strong', { class: 'monto-medio' }, soles(esHormiga ? g.total : g.pendiente)),
           !esHormiga && g.total !== g.pendiente ? h('p', { class: 'suave' }, `de ${soles(g.total)}`) : null)),
-      h('ul', { class: 'lista consumos' }, consumos.map((c) => {
+      h('ul', { class: 'lista consumos' }, consumos.flatMap((c, k) => {
+        // Antes del primer consumo de cada día va una franja con la fecha y lo gastado ese día.
+        const nuevoDia = k === 0 || consumos[k - 1].fecha !== c.fecha;
+        const delDia = nuevoDia ? consumos.filter((x) => x.fecha === c.fecha) : null;
+        const franja = nuevoDia ? h('li', { class: 'dia', 'data-dia': c.fecha || '' },
+          h('span', {}, c.fecha ? deISO(c.fecha).toLocaleDateString('es-PE', { weekday: 'short', day: 'numeric', month: 'short' }) : 'Sin fecha'),
+          h('strong', { class: 'dia-total' }, soles(delDia.reduce((s, x) => s + (Number(x.monto) || 0), 0)))) : null;
         const puede = marcable(c) && !esHormiga;
         const caja = h('input', { type: 'checkbox', checked: estado.seleccion.has(c.fila), disabled: !puede,
           'aria-label': `Seleccionar ${c.descripcion}` });
@@ -2240,8 +2308,9 @@ async function vistaTarjeta(id) {
           actualizarBarra();
         });
         const etiquetaEstado = enEspera(c) ? 'En espera' : c.estado === 'Pagado' ? 'Pagado' : '';
-        const sub = [fechaCorta(c.fecha), c.concepto, esHormiga ? c.medio : ''].filter(Boolean).join(' · ');
-        return h('li', { 'data-texto': normalizar(`${c.descripcion} ${limpiarComercio(c.descripcion)} ${c.concepto || ''} ${esHormiga ? c.medio || '' : ''}`) },
+        const sub = [c.concepto, esHormiga ? c.medio : ''].filter(Boolean).join(' · ');
+        const fila = h('li', { 'data-dia': c.fecha || '', 'data-concepto': c.concepto || 'Sin concepto', 'data-monto': String(Number(c.monto) || 0),
+          'data-texto': normalizar(`${c.descripcion} ${limpiarComercio(c.descripcion)} ${c.concepto || ''} ${esHormiga ? c.medio || '' : ''}`) },
           h('label', { class: 'consumo' + (puede ? '' : ' inactivo'), title: c.descripcion,
             style: `--p: ${Math.round(Math.sqrt(Math.abs(c.monto || 0) / montoMax) * 100)}%` }, // raíz: un consumo muy grande no aplasta a los demás
           esHormiga ? null : caja,
@@ -2251,32 +2320,56 @@ async function vistaTarjeta(id) {
             onclick: (ev) => { ev.preventDefault(); ev.stopPropagation(); editarConsumo(t, c); } }, icono('lapiz')),
           h('div', { class: 'derecha' }, h('strong', {}, soles(c.monto)),
             etiquetaEstado ? h('span', { class: 'etiqueta-estado' }, etiquetaEstado) : null)));
+        return franja ? [franja, fila] : [fila];
       })),
       zona));
   }
   if (todos.length > 6) {
     const cuenta = h('span', { class: 'buscador-cuenta', 'aria-live': 'polite' });
-    const sinResultados = vacio('Ningún consumo coincide con la búsqueda.');
+    const sinResultados = vacio('Ningún consumo coincide.');
     sinResultados.querySelector('.vacio-ico').replaceChildren(icono('buscar'));
     sinResultados.hidden = true;
     const entrada = h('input', { type: 'search', id: 'buscar-consumo', placeholder: 'Buscar por comercio o concepto', 'aria-label': 'Buscar consumo', autocomplete: 'off' });
-    entrada.addEventListener('input', () => {
+    let conceptoElegido = null;
+    // Filtra por texto y por concepto a la vez; las franjas de cada día muestran solo lo que queda a la vista.
+    const filtrar = () => {
       const q = normalizar(entrada.value);
       let visibles = 0;
       col.querySelectorAll('.grupo').forEach((grupo) => {
         let enGrupo = 0;
+        const porDia = new Map();
         grupo.querySelectorAll('li[data-texto]').forEach((li) => {
-          const ok = !q || li.dataset.texto.includes(q);
+          const ok = (!q || li.dataset.texto.includes(q)) && (!conceptoElegido || li.dataset.concepto === conceptoElegido);
           li.hidden = !ok;
-          if (ok) enGrupo++;
+          if (!ok) return;
+          enGrupo++;
+          porDia.set(li.dataset.dia, (porDia.get(li.dataset.dia) || 0) + Number(li.dataset.monto));
+        });
+        grupo.querySelectorAll('li.dia').forEach((li) => {
+          li.hidden = !porDia.has(li.dataset.dia);
+          if (!li.hidden) li.querySelector('.dia-total').textContent = soles(porDia.get(li.dataset.dia));
         });
         grupo.hidden = enGrupo === 0;
         visibles += enGrupo;
       });
-      cuenta.textContent = q ? `${visibles} de ${todos.length}` : '';
+      cuenta.textContent = q || conceptoElegido ? `${visibles} de ${todos.length}` : '';
       sinResultados.hidden = visibles > 0;
+    };
+    entrada.addEventListener('input', filtrar);
+    // Conceptos de esta tarjeta, del que más pesa al que menos
+    const porConcepto = new Map();
+    for (const c of todos) porConcepto.set(c.concepto || 'Sin concepto', (porConcepto.get(c.concepto || 'Sin concepto') || 0) + (Number(c.monto) || 0));
+    const chips = [...porConcepto].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([nombre]) => {
+      const chip = h('button', { type: 'button', class: 'chip-filtro', 'aria-pressed': 'false', title: `${nombre}: ${soles(porConcepto.get(nombre))}`,
+        onclick: () => {
+          conceptoElegido = conceptoElegido === nombre ? null : nombre;
+          chips.forEach((x) => x.setAttribute('aria-pressed', String(x === chip && conceptoElegido === nombre)));
+          filtrar();
+        } }, catIco(nombre), h('span', {}, nombre));
+      return chip;
     });
-    col.prepend(h('div', { class: 'buscador' }, icono('buscar'), entrada, cuenta));
+    col.prepend(h('div', { class: 'buscador' }, icono('buscar'), entrada, cuenta),
+      chips.length > 1 ? h('div', { class: 'chips-filtro', role: 'group', 'aria-label': 'Filtrar por concepto' }, chips) : null);
     col.append(sinResultados);
   }
   raiz.append(barra);
@@ -2462,19 +2555,64 @@ async function vistaPresupuesto() {
   ];
   const mesNombre = (nombreMesClave(d.mes) || d.etiquetaMes || '').split(' ')[0].toLowerCase();
   const deltas = { ingresos: h('span', { class: 'hero-delta' }), gastos: h('span', { class: 'hero-delta' }), ahorros: h('span', { class: 'hero-delta' }), saldo: h('span', { class: 'hero-delta' }) };
-  const hero = h('section', { class: 'hero' }, heroFondo(),
+  // En vez de repetir el panel de Inicio, aquí se compara el saldo de todos los meses del presupuesto.
+  const listaBarras = d.meses || meses;
+  const saldos = new Map([[d.mes, tot.saldo || 0]]);
+  const INICIALES = ['E', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+  const barrasMes = listaBarras.map((m) => {
+    const nMes = Number(m.clave.slice(5, 7));
+    const b = h('button', { type: 'button', class: 'mb-col' + (m.clave === d.mes ? ' actual' : '') + (m.clave === mesActual() ? ' hoy' : ''),
+      'aria-label': nombreMesClave(m.clave), 'aria-current': m.clave === d.mes ? 'true' : null,
+      onclick: () => {
+        if (m.clave === d.mes) return;
+        estado.sentido = cmpMes(m.clave, d.mes) > 0 ? 'adelante' : 'atras';
+        estado.mesPres = m.clave;
+        navegar();
+      } },
+      h('span', { class: 'mb-barra' }, h('i')),
+      h('span', { class: 'mb-letra' }, INICIALES[nMes - 1] || '', nMes === 1 ? h('small', {}, `'${m.clave.slice(2, 4)}`) : null));
+    return [m.clave, b];
+  });
+  const pintarBarras = () => {
+    const max = Math.max(1, ...[...saldos.values()].map((v) => Math.abs(v)));
+    for (const [clave, b] of barrasMes) {
+      const v = saldos.get(clave);
+      b.classList.toggle('cargando', v == null);
+      if (v == null) continue;
+      b.classList.toggle('negativo', v < 0);
+      b.querySelector('i').style.height = `${Math.max(5, Math.round((Math.abs(v) / max) * 100))}%`;
+      b.title = `${nombreMesClave(clave)}: ${soles(v)}`;
+      b.dataset.valor = solesCorto(v);
+    }
+  };
+  // De los otros meses se usa lo guardado en el equipo; lo que falte se pide de a tres, sin frenar la pantalla.
+  const faltan = [];
+  for (const m of listaBarras) {
+    if (m.clave === d.mes) continue;
+    const guardado = leerCache('presupuesto:' + m.clave)?.datos?.totales;
+    if (guardado) saldos.set(m.clave, guardado.saldo || 0); else faltan.push(m.clave);
+  }
+  pintarBarras();
+  if (faltan.length && navigator.onLine) {
+    const navId = estado.navId;
+    (async () => {
+      for (let k = 0; k < faltan.length; k += 3) {
+        if (navId !== estado.navId) return; // se cambió de pantalla
+        await Promise.all(faltan.slice(k, k + 3).map((clave) => cargar('presupuesto', { mes: clave }, 'presupuesto:' + clave)
+          .then((x) => { if (x?.datos?.totales) saldos.set(clave, x.datos.totales.saldo || 0); }).catch(() => {})));
+        pintarBarras();
+      }
+    })();
+  }
+  const hero = h('section', { class: 'hero hero-meses' }, heroFondo(),
     h('div', { class: 'hero-principal' },
       h('p', { class: 'hero-etq' }, `Saldo final de ${mesNombre}`),
       h('p', { class: 'hero-monto', 'data-rico': '', 'data-contar': String(tot.saldo || 0) }, soles(0)),
       h('p', { class: 'hero-personal' }, h('span', { class: 'avatares' }, avatar('Pedro'), avatar('Britney')),
         h('span', {}, h('strong', {}, soles(tot.saldoPersonal)), ' c/u'))),
-    anillo(pct),
-    h('div', { class: 'hero-pagar hero-reparto' },
-      h('span', { class: 'hero-pagar-cab' }, 'Reparto del ingreso'),
-      barraPartes(partes),
-      h('ul', { class: 'hero-leyenda' }, partes.map((p) => h('li', {},
-        h('i', { class: `punto ${p.clase}`, 'aria-hidden': 'true' }), h('span', {}, p.etiqueta),
-        h('b', {}, `${Math.round((p.valor / base) * 100)}%`))))),
+    h('div', { class: 'meses-barras', role: 'group', 'aria-label': 'Saldo de cada mes' },
+      h('span', { class: 'mb-titulo' }, 'Saldo por mes'),
+      h('div', { class: 'mb-fila' }, barrasMes.map(([, b]) => b))),
     h('ul', { class: 'hero-datos' },
       heroDato('sube', 'Ingresos', soles(tot.ingresos), deltas.ingresos),
       heroDato('baja', 'Gastos', soles(tot.gastos), deltas.gastos),
