@@ -33,6 +33,8 @@ const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', '
 const ABREV = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
 const ICONOS = {
+  ajustes: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M19 7h1M4 17h3M13 17h7"/><circle cx="16" cy="7" r="2.5"/><circle cx="10" cy="17" r="2.5"/></svg>',
+  buscar: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>',
   candado: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9.5" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
   sol: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
@@ -107,16 +109,126 @@ function limpiarComercio(texto) {
   return s || original;
 }
 
+// Escribe un monto. Con data-rico, el símbolo y los céntimos van más chicos (se lee primero la cifra).
+function pintarMonto(el, valor) {
+  const texto = soles(valor);
+  const m = el.hasAttribute('data-rico') ? /^(-?)S\/ ([\d,]+)(\.\d+)$/.exec(texto) : null;
+  if (!m) { el.textContent = texto; return; }
+  if (!el._partes) {
+    const entero = h('span', { class: 'm-e' });
+    const centimos = h('span', { class: 'm-c' });
+    el.replaceChildren(h('span', { class: 'm-s' }, 'S/'), entero, centimos);
+    el._partes = [entero, centimos];
+  }
+  el._partes[0].textContent = m[1] + m[2];
+  el._partes[1].textContent = m[3];
+}
+
 // Anima un número de 0 al valor final (respeta "reducir movimiento").
 function contar(el, valor) {
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches || !Number.isFinite(valor)) { el.textContent = soles(valor); return; }
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches || !Number.isFinite(valor)) { pintarMonto(el, valor); return; }
   const t0 = performance.now(); const dur = 900;
   const paso = (t) => {
     const p = Math.min((t - t0) / dur, 1);
-    el.textContent = soles(valor * (1 - Math.pow(1 - p, 3)));
+    pintarMonto(el, valor * (1 - Math.pow(1 - p, 3)));
     if (p < 1) requestAnimationFrame(paso);
   };
   requestAnimationFrame(paso);
+}
+
+// Menú de la cuenta: quién eres, apariencia y cerrar sesión. Va en la barra lateral y, en celular, arriba a la derecha.
+function botonCuenta(variante) {
+  const nombre = (usuarioActual()?.nombre || '').split(' ')[0];
+  const correo = api.emailGuardado();
+  const panel = h('div', { class: 'cuenta-panel', hidden: true, role: 'dialog', 'aria-label': 'Tu cuenta' },
+    h('div', { class: 'cuenta-quien' }, avatar(nombre || correo, 'grande'),
+      h('div', {}, h('strong', {}, nombre || 'Tu cuenta'), h('span', { class: 'suave' }, correo))),
+    h('p', { class: 'cuenta-titulo' }, 'Apariencia'),
+    panelApariencia(),
+    zonaSesion());
+  const caja = h('div', { class: `cuenta-menu ${variante}` });
+  const disparador = h('button', { type: 'button', class: 'cuenta-boton', 'aria-haspopup': 'dialog', 'aria-expanded': 'false',
+    'aria-label': 'Tu cuenta y apariencia', onclick: () => {
+      const abrir = panel.hidden;
+      cerrarMenusCuenta();
+      if (!abrir) return;
+      panel.hidden = false;
+      caja.classList.add('abierto');
+      disparador.setAttribute('aria-expanded', 'true');
+    } },
+    avatar(nombre || correo),
+    variante === 'nav' ? h('span', { class: 'cuenta-boton-texto' }, h('strong', {}, nombre || 'Tu cuenta'), h('span', {}, correo)) : null,
+    variante === 'nav' ? icono('ajustes') : null);
+  caja.append(disparador, panel);
+  return caja;
+}
+
+function cerrarMenusCuenta() {
+  document.querySelectorAll('.cuenta-menu.abierto').forEach((m) => {
+    m.classList.remove('abierto');
+    m.querySelector('.cuenta-panel').hidden = true;
+    m.querySelector('.cuenta-boton').setAttribute('aria-expanded', 'false');
+  });
+}
+
+// Tope "redondo" para el eje de un gráfico (1, 2, 2.5, 5 o 10 por una potencia de diez).
+function topeBonito(v) {
+  const p = Math.pow(10, Math.floor(Math.log10(Math.max(v, 1))));
+  return [1, 2, 2.5, 5, 10].map((k) => k * p).find((x) => x >= v) || v;
+}
+
+// Barras de consumo por día (una sola serie). Al pasar el cursor o tocar un día se ve su monto.
+function graficoDias(consumos, dias = 30) {
+  const hoy = deISO(hoyISO());
+  const suma = new Map();
+  const cuantos = new Map();
+  for (const c of consumos) {
+    if (!deISO(c.fecha)) continue;
+    suma.set(c.fecha, (suma.get(c.fecha) || 0) + (Number(c.monto) || 0));
+    cuantos.set(c.fecha, (cuantos.get(c.fecha) || 0) + 1);
+  }
+  const serie = [];
+  for (let k = dias - 1; k >= 0; k--) {
+    const d = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - k);
+    const clave = iso(d);
+    serie.push({ d, valor: suma.get(clave) || 0, n: cuantos.get(clave) || 0, hoy: k === 0 });
+  }
+  const total = serie.reduce((s, x) => s + x.valor, 0);
+  const tope = topeBonito(Math.max(...serie.map((x) => x.valor), 1));
+  const prom = total / dias;
+  const fecha = (x) => `${x.d.getDate()} ${ABREV[x.d.getMonth()]}`;
+  const tip = h('div', { class: 'gd-tip', hidden: true, role: 'status' });
+  const barras = h('div', { class: 'gd-barras' });
+  const quitarActiva = () => barras.querySelectorAll('.activa').forEach((e) => e.classList.remove('activa'));
+  const mostrarTip = (col, x) => {
+    tip.replaceChildren(h('span', {}, x.hoy ? `${fecha(x)} · hoy` : fecha(x)), h('strong', {}, soles(x.valor)),
+      h('span', {}, x.n === 0 ? 'Sin consumos' : `${x.n} consumo${x.n === 1 ? '' : 's'}`));
+    tip.hidden = false;
+    tip.style.left = `${Math.max(62, Math.min(barras.offsetWidth - 62, col.offsetLeft + col.offsetWidth / 2))}px`;
+    quitarActiva();
+    col.classList.add('activa');
+  };
+  serie.forEach((x, i) => {
+    const col = h('button', { type: 'button', class: 'gd-col' + (x.hoy ? ' hoy' : '') + (x.valor ? '' : ' cero'), style: `--i: ${i}`,
+      'aria-label': `${fecha(x)}: ${soles(x.valor)}` },
+      h('i', { style: `height: ${x.valor ? Math.max(3, (x.valor / tope) * 100).toFixed(1) : 0}%` }));
+    col.addEventListener('pointerenter', () => mostrarTip(col, x));
+    col.addEventListener('focus', () => mostrarTip(col, x));
+    col.addEventListener('click', () => mostrarTip(col, x));
+    barras.append(col);
+  });
+  barras.addEventListener('pointerleave', () => { tip.hidden = true; quitarActiva(); });
+  const eje = h('div', { class: 'gd-eje', 'aria-hidden': 'true' },
+    serie.map((x, i) => h('span', {}, (dias - 1 - i) % 7 === 0 ? (x.hoy ? 'Hoy' : fecha(x)) : '')));
+  const nodo = h('div', { class: 'gd' },
+    h('div', { class: 'gd-plano' },
+      h('div', { class: 'gd-rejilla', 'aria-hidden': 'true' },
+        [1, 0.5, 0].map((f) => h('span', { style: `bottom: ${f * 100}%` }, h('b', {}, solesCorto(tope * f))))),
+      prom > 0 ? h('div', { class: 'gd-prom', style: `bottom: ${Math.min(100, (prom / tope) * 100).toFixed(1)}%`, 'aria-hidden': 'true' },
+        h('b', {}, `Promedio ${solesCorto(prom)}`)) : null,
+      barras, tip),
+    eje);
+  return { total, prom, nodo };
 }
 
 // Tras pintar una pantalla: barras que crecen y montos que cuentan.
@@ -230,7 +342,7 @@ function tarjetaVisual(t, comoEnlace = true) {
       esH ? icono('billetera') : h('span', { class: 'plastico-chip', 'aria-hidden': 'true' })),
     h('span', { class: 'plastico-monto' },
       h('span', {}, esH ? 'Gastado este mes' : 'Por pagar'),
-      h('strong', { 'data-contar': String(t.pendiente || 0) }, soles(0))),
+      h('strong', { 'data-rico': '', 'data-contar': String(t.pendiente || 0) }, soles(0))),
     h('span', { class: 'plastico-pie' },
       h('span', {}, esH ? 'Yape · Plin · Efectivo' : duenioTC(t)),
       e ? h('span', { class: `plastico-estado ${e.clase}`.trim() }, e.clase === '' && t.proximoVence ? `Vence el ${fechaCorta(t.proximoVence)}` : e.texto) : null));
@@ -817,7 +929,10 @@ function pantallaLogin(mensaje) {
 
 // Pone una pantalla en la vista; la de ingreso oculta el menú.
 function mostrar(nodo) {
-  document.body.classList.toggle('sin-sesion', !!nodo.classList?.contains('login'));
+  const esLogin = !!nodo.classList?.contains('login');
+  document.body.classList.toggle('sin-sesion', esLogin);
+  // En celular, el menú de cuenta va arriba a la derecha de cada pantalla.
+  if (!esLogin && !nodo.classList?.contains('cargando') && api.emailGuardado()) nodo.append(botonCuenta('movil solo-movil'));
   vista.replaceChildren(nodo);
 }
 
@@ -954,7 +1069,7 @@ async function vistaInicio() {
     hero.append(
       h('div', { class: 'hero-principal' },
         h('p', { class: 'hero-etq' }, `Saldo de ${mesNombre}`),
-        h('p', { class: 'hero-monto', 'data-contar': String(p.saldo) }, soles(0)),
+        h('p', { class: 'hero-monto', 'data-rico': '', 'data-contar': String(p.saldo) }, soles(0)),
         h('p', { class: 'hero-personal' }, h('span', { class: 'avatares' }, avatar('Pedro'), avatar('Britney')),
           h('span', {}, h('strong', {}, soles(p.saldoPersonal)), ' libres para cada uno'))),
       anillo(pct));
@@ -965,7 +1080,7 @@ async function vistaInicio() {
   }
   hero.append(h('a', { class: 'hero-pagar', href: '#tarjetas' },
     h('span', { class: 'hero-pagar-cab' }, 'Por pagar en tarjetas', icono('adelante')),
-    h('strong', { class: 'hero-pagar-monto', 'data-contar': String(d.totalPorPagar || 0) }, soles(0)),
+    h('strong', { class: 'hero-pagar-monto', 'data-rico': '', 'data-contar': String(d.totalPorPagar || 0) }, soles(0)),
     conDeuda.length ? barraPartes(conDeuda.map((t) => ({ etiqueta: nombreCortoTC(t), valor: t.pendiente, clase: `tc-${t.id}` }))) : null,
     h('span', { class: 'hero-pagar-pie' }, icono('calendario'),
       proxima ? `Próximo: ${fechaCorta(proxima.proximoVence)} · ${nombreCortoTC(proxima)}` : 'Sin vencimientos pendientes')));
@@ -1003,6 +1118,12 @@ async function vistaInicio() {
 
   if (rt?.datos?.tarjetas) {
     const todas = rt.datos.tarjetas;
+    // Consumos por día (últimos 30 días): lo que falta pagar en tarjetas y los gastos hormiga
+    const dias = graficoDias(consumosDe(todas, () => true).filter((c) => c.tarjeta.id === 'HORMIGA' || c.estado !== 'Pagado'), 30);
+    const panelDias = panel('panel-dias revelar', 'Consumos por día', h('span', { class: 'suave' }, 'Últimos 30 días'),
+      h('p', { class: 'panel-sub' }, h('strong', {}, soles(dias.total)), ` en total, ${soles(dias.prom)} al día en promedio. Cuenta lo que falta pagar en tarjetas y los gastos hormiga.`),
+      dias.nodo);
+    raiz.append(panelDias);
     const rejilla = h('div', { class: 'rejilla-3' });
     const agregar = (nodo) => { nodo.classList.add('revelar'); nodo.style.setProperty('--i', String(rejilla.children.length)); rejilla.append(nodo); };
 
@@ -1039,10 +1160,6 @@ async function vistaInicio() {
   const revisar = seccionRevisar();
   if (revisar) raiz.append(revisar);
 
-  // En celular la cuenta y la apariencia van al final de Inicio (en computadora están en la barra lateral).
-  raiz.append(h('section', { class: 'panel cuenta solo-movil' },
-    h('div', { class: 'panel-cab' }, h('h2', {}, 'Tu cuenta')),
-    h('div', { class: 'cuenta-cuerpo' }, panelApariencia(), zonaSesion())));
   return raiz;
 }
 
@@ -1348,7 +1465,7 @@ async function vistaTarjetas() {
   raiz.append(h('section', { class: 'hero simple' }, heroFondo(),
     h('div', { class: 'hero-principal' },
       h('p', { class: 'hero-etq' }, 'Por pagar en tarjetas'),
-      h('p', { class: 'hero-monto', 'data-contar': String(total) }, soles(0)),
+      h('p', { class: 'hero-monto', 'data-rico': '', 'data-contar': String(total) }, soles(0)),
       h('p', { class: 'hero-personal' }, `${conDeuda.length} tarjeta${conDeuda.length === 1 ? '' : 's'} con deuda`)),
     conDeuda.length ? h('div', { class: 'hero-extra' },
       barraPartes(conDeuda.map((t) => ({ etiqueta: nombreCortoTC(t), valor: t.pendiente, clase: `tc-${t.id}` }))),
@@ -1476,7 +1593,8 @@ async function vistaTarjeta(id) {
         });
         const etiquetaEstado = enEspera(c) ? 'En espera' : c.estado === 'Pagado' ? 'Pagado' : '';
         const sub = [fechaCorta(c.fecha), c.concepto, esHormiga ? c.medio : ''].filter(Boolean).join(' · ');
-        return h('li', {}, h('label', { class: 'consumo' + (puede ? '' : ' inactivo'), title: c.descripcion },
+        return h('li', { 'data-texto': normalizar(`${c.descripcion} ${limpiarComercio(c.descripcion)} ${c.concepto || ''} ${esHormiga ? c.medio || '' : ''}`) },
+          h('label', { class: 'consumo' + (puede ? '' : ' inactivo'), title: c.descripcion },
           esHormiga ? null : caja,
           catIco(c.concepto),
           h('div', { class: 'consumo-texto' }, h('span', {}, limpiarComercio(c.descripcion)), h('span', { class: 'suave' }, sub)),
@@ -1484,6 +1602,29 @@ async function vistaTarjeta(id) {
             etiquetaEstado ? h('span', { class: 'etiqueta-estado' }, etiquetaEstado) : null)));
       })),
       zona));
+  }
+  if (todos.length > 6) {
+    const cuenta = h('span', { class: 'buscador-cuenta', 'aria-live': 'polite' });
+    const sinResultados = h('p', { class: 'vacio', hidden: true }, 'Ningún consumo coincide con la búsqueda.');
+    const entrada = h('input', { type: 'search', id: 'buscar-consumo', placeholder: 'Buscar por comercio o concepto', 'aria-label': 'Buscar consumo', autocomplete: 'off' });
+    entrada.addEventListener('input', () => {
+      const q = normalizar(entrada.value);
+      let visibles = 0;
+      col.querySelectorAll('.grupo').forEach((grupo) => {
+        let enGrupo = 0;
+        grupo.querySelectorAll('li[data-texto]').forEach((li) => {
+          const ok = !q || li.dataset.texto.includes(q);
+          li.hidden = !ok;
+          if (ok) enGrupo++;
+        });
+        grupo.hidden = enGrupo === 0;
+        visibles += enGrupo;
+      });
+      cuenta.textContent = q ? `${visibles} de ${todos.length}` : '';
+      sinResultados.hidden = visibles > 0;
+    });
+    col.prepend(h('div', { class: 'buscador' }, icono('buscar'), entrada, cuenta));
+    col.append(sinResultados);
   }
   raiz.append(barra);
   actualizarBarra();
@@ -1627,7 +1768,8 @@ async function vistaPresupuesto() {
     return h('section', { class: `panel seccion-pres seccion-${clave}` },
       h('div', { class: 'panel-cab' }, h('h2', {}, titulo), h('strong', { class: 'cifra-cab' }, soles(total))),
       h('ul', { class: 'filas-pres' }, ordenadas.map((f) => h('li', { class: f.monto ? '' : 'cero' },
-        h('div', { class: 'fila-pres-top' }, h('span', {}, f.concepto), h('span', {}, soles(f.monto))),
+        h('div', { class: 'fila-pres-top' }, h('span', {}, f.concepto),
+          h('span', {}, f.monto && total ? h('small', { class: 'pct' }, `${Math.round((f.monto / total) * 100)}%`) : null, soles(f.monto))),
         h('div', { class: 'barra-pres', 'aria-hidden': 'true' }, h('i', { 'data-w': `${Math.round((Math.abs(f.monto || 0) / max) * 100)}%` }))))),
       h('div', { class: 'linea total' }, h('span', {}, totalEtiqueta), h('strong', {}, soles(total))));
   };
@@ -1644,10 +1786,11 @@ async function vistaPresupuesto() {
     { etiqueta: 'Saldo libre', valor: libre, clase: 'r-libre' },
   ];
   const mesNombre = (nombreMesClave(d.mes) || d.etiquetaMes || '').split(' ')[0].toLowerCase();
+  const deltas = { ingresos: h('span', { class: 'hero-delta' }), gastos: h('span', { class: 'hero-delta' }), ahorros: h('span', { class: 'hero-delta' }), saldo: h('span', { class: 'hero-delta' }) };
   const hero = h('section', { class: 'hero' }, heroFondo(),
     h('div', { class: 'hero-principal' },
       h('p', { class: 'hero-etq' }, `Saldo final de ${mesNombre}`),
-      h('p', { class: 'hero-monto', 'data-contar': String(tot.saldo || 0) }, soles(0)),
+      h('p', { class: 'hero-monto', 'data-rico': '', 'data-contar': String(tot.saldo || 0) }, soles(0)),
       h('p', { class: 'hero-personal' }, h('span', { class: 'avatares' }, avatar('Pedro'), avatar('Britney')),
         h('span', {}, h('strong', {}, soles(tot.saldoPersonal)), ' libres para cada uno'))),
     anillo(pct),
@@ -1658,10 +1801,31 @@ async function vistaPresupuesto() {
         h('i', { class: `punto ${p.clase}`, 'aria-hidden': 'true' }), h('span', {}, p.etiqueta),
         h('b', {}, `${Math.round((p.valor / base) * 100)}%`))))),
     h('ul', { class: 'hero-datos' },
-      heroDato('sube', 'Ingresos', soles(tot.ingresos)),
-      heroDato('baja', 'Gastos', soles(tot.gastos)),
-      heroDato('billetera', 'Ahorros', soles(tot.ahorros)),
-      heroDato('check', 'Saldo libre', soles(libre))));
+      heroDato('sube', 'Ingresos', soles(tot.ingresos), deltas.ingresos),
+      heroDato('baja', 'Gastos', soles(tot.gastos), deltas.gastos),
+      heroDato('billetera', 'Ahorros', soles(tot.ahorros), deltas.ahorros),
+      heroDato('check', 'Saldo libre', soles(libre), deltas.saldo)));
+
+  // Cambio frente al mes anterior (se completa cuando llegan esos datos, sin frenar la pantalla).
+  const listaMeses = d.meses || meses;
+  const iMes = listaMeses.findIndex((m) => m.clave === d.mes);
+  const previo = iMes > 0 ? listaMeses[iMes - 1] : null;
+  if (previo) {
+    cargarRapido('presupuesto', { mes: previo.clave }, 'presupuesto:' + previo.clave).then((rp) => {
+      const antes = rp?.datos?.totales;
+      if (!antes) return;
+      const corto = (nombreMesClave(previo.clave) || '').slice(0, 3).toLowerCase();
+      const poner = (el, ahora, anterior) => {
+        if (!anterior || !Number.isFinite(ahora)) return;
+        const dif = ((ahora - anterior) / Math.abs(anterior)) * 100;
+        el.textContent = Math.abs(dif) < 0.5 ? `Igual que en ${corto}.` : `${dif > 0 ? '+' : '−'}${Math.abs(dif).toFixed(0)}% vs ${corto}.`;
+      };
+      poner(deltas.ingresos, tot.ingresos, antes.ingresos);
+      poner(deltas.gastos, tot.gastos, antes.gastos);
+      poner(deltas.ahorros, tot.ahorros, antes.ahorros);
+      poner(deltas.saldo, libre, Math.max(antes.saldo || 0, 0));
+    }).catch(() => {});
+  }
 
   const secciones = [
     seccion('ingresos', 'Ingresos', 'Total ingresos', tot.ingresos),
@@ -1755,19 +1919,15 @@ async function navegar() {
 function construirNav() {
   const enlace = (ruta, texto, clase = '') => h('a', { href: `#${ruta}`, 'data-ruta': ruta, class: clase },
     icono(ruta === 'registrar' ? 'mas' : ruta), h('span', { class: clase ? 'texto-central' : '' }, texto));
-  const nombre = (usuarioActual()?.nombre || '').split(' ')[0];
   document.getElementById('nav').replaceChildren(
     h('div', { class: 'nav-marca' }, logoMarca(),
       h('div', {}, h('strong', {}, 'FinFamily'), h('span', {}, 'Finanzas del hogar'))),
+    h('p', { class: 'nav-titulo' }, 'Menú'),
     enlace('inicio', 'Inicio'),
     enlace('tarjetas', 'Tarjetas'),
     enlace('registrar', 'Registrar gasto', 'central'),
     enlace('presupuesto', 'Presupuesto'),
-    h('div', { class: 'nav-pie' },
-      h('p', { class: 'nav-pie-titulo' }, 'Apariencia'),
-      panelApariencia(),
-      h('div', { class: 'nav-usuario' }, nombre ? avatar(nombre) : null,
-        h('div', {}, nombre ? h('strong', {}, nombre) : null, zonaSesion()))));
+    h('div', { class: 'nav-pie' }, api.emailGuardado() ? botonCuenta('nav') : null));
   marcarNav(location.hash.slice(1) || 'inicio');
 }
 
@@ -1776,6 +1936,8 @@ function construirNav() {
 async function arrancar() {
   aplicarApariencia();
   construirNav();
+  document.addEventListener('click', (ev) => { if (!ev.target.closest?.('.cuenta-menu')) cerrarMenusCuenta(); });
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') cerrarMenusCuenta(); });
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
