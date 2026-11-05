@@ -713,6 +713,29 @@ legend + * { clear: both; }
 .lm-b { fill: #FFFFFF; transform-box: fill-box; transform-origin: 50% 100%; }
 .lm-b1 { fill-opacity: 0.82; }
 .lm-b3 { fill: var(--vivo); }
+.lm-techo { stroke-dasharray: 100; }
+.lm-fondo { transform-box: fill-box; transform-origin: 50% 50%; }
+
+/* El logo se construye: aparece el recuadro, se dibuja el techo y suben las barras. En la entrada se repite. */
+@keyframes lm-recuadro { 0% { transform: scale(0.86); } 9% { transform: scale(1.05); } 15%, 90% { transform: scale(1); } 97%, 100% { transform: scale(0.94); } }
+@keyframes lm-techo { 0%, 6% { stroke-dashoffset: 100; } 24%, 90% { stroke-dashoffset: 0; } 97%, 100% { stroke-dashoffset: -100; } }
+@keyframes lm-barra { 0%, 16% { transform: scaleY(0); } 26% { transform: scaleY(1.18); } 31%, 88% { transform: scaleY(1); } 95%, 100% { transform: scaleY(0); } }
+.logo-marca.vivo .lm-fondo { animation: lm-recuadro 6.5s var(--suave) infinite both; }
+.logo-marca.vivo .lm-techo { animation: lm-techo 6.5s var(--suave) infinite both; }
+.logo-marca.vivo .lm-b { animation: lm-barra 6.5s var(--suave) infinite both; }
+.logo-marca.vivo .lm-b2 { animation-delay: 130ms; }
+.logo-marca.vivo .lm-b3 { animation-delay: 260ms; }
+
+/* En el menú se construye una vez al abrir y otra vez al pasar o quitar el cursor. */
+@keyframes lm-techo-a { from { stroke-dashoffset: 100; } }
+@keyframes lm-techo-b { from { stroke-dashoffset: 100; } }
+@keyframes lm-barra-a { 0% { transform: scaleY(0); } 70% { transform: scaleY(1.18); } }
+@keyframes lm-barra-b { 0% { transform: scaleY(0); } 70% { transform: scaleY(1.18); } }
+.nav-marca .lm-techo { animation: lm-techo-a 700ms var(--suave) 150ms both; }
+.nav-marca .lm-b { animation: lm-barra-a 600ms var(--suave) both; }
+.nav-marca:hover .lm-techo { animation-name: lm-techo-b; }
+.nav-marca:hover .lm-b { animation-name: lm-barra-b; }
+.nav-marca .lm-b1 { animation-delay: 500ms; } .nav-marca .lm-b2 { animation-delay: 620ms; } .nav-marca .lm-b3 { animation-delay: 740ms; }
 
 /* Toda la pantalla es el fondo de color en movimiento; el ingreso es una hoja que flota encima. */
 .login.partida {
@@ -867,10 +890,6 @@ legend + * { clear: both; }
 .vista.entrada .login-puntos li { animation: subir 600ms var(--suave) both; animation-delay: calc(760ms + var(--n, 0) * 110ms); }
 .vista.entrada .login-puntos li:nth-child(2) { --n: 1; }
 .vista.entrada .login-puntos li:nth-child(3) { --n: 2; }
-.vista.entrada .login-logo .lm-b { animation: barra-logo 700ms var(--suave) both; }
-.vista.entrada .login-logo .lm-b1 { animation-delay: 250ms; }
-.vista.entrada .login-logo .lm-b2 { animation-delay: 370ms; }
-.vista.entrada .login-logo .lm-b3 { animation-delay: 490ms; }
 .vista.entrada .login-escena { animation: subir 800ms var(--suave) 1000ms both; }
 .vista.entrada .pantalla.login > .login-lado { animation: hoja-entra 900ms var(--suave) 100ms both; }
 .vista.entrada .login-caja > * { animation: caja-entra 600ms var(--suave) both; animation-delay: calc(450ms + var(--n, 0) * 80ms); }

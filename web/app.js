@@ -706,7 +706,7 @@ function logoMarca(clase = '') {
     svg('defs', {}, svg('linearGradient', { id: 'lm-degradado', x1: 0, y1: 0, x2: 1, y2: 1 },
       svg('stop', { offset: '0', class: 'lm-g1' }), svg('stop', { offset: '1', class: 'lm-g2' }))),
     svg('rect', { class: 'lm-fondo', width: 512, height: 512, rx: 116 }),
-    svg('path', { class: 'lm-techo', d: 'M116 238 256 126l140 112' }),
+    svg('path', { class: 'lm-techo', d: 'M116 238 256 126l140 112', pathLength: 100 }),
     svg('rect', { class: 'lm-b lm-b1', x: 160, y: 312, width: 46, height: 76, rx: 14 }),
     svg('rect', { class: 'lm-b lm-b2', x: 233, y: 274, width: 46, height: 114, rx: 14 }),
     svg('rect', { class: 'lm-b lm-b3', x: 306, y: 240, width: 46, height: 148, rx: 14 }));
@@ -716,7 +716,7 @@ const LOGO_GOOGLE = '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA
 
 // Botón de entrada: se ve con el diseño de la app y, encima e invisibles, van dos botones reales de Google
 // (uno cubre la mitad de arriba y otro la de abajo), que son los que reciben el clic.
-// "Botón clásico" deja el de Google a la vista por si algo falla.
+// Si Google no carga, se muestra un aviso con "Volver a intentar".
 function botonEntrar() {
   const arriba = h('div', { class: 'boton-google arriba' });
   const abajo = h('div', { class: 'boton-google abajo' });
@@ -737,14 +737,16 @@ function botonEntrar() {
     const ok = await api.renderBoton(arriba, ancho);
     if (ok) { await api.renderBoton(abajo, ancho); return; }
     clasico();
-    arriba.replaceChildren(h('p', { class: 'suave' }, 'No se pudo cargar el inicio de sesión de Google. Revisa tu conexión.'));
+    arriba.replaceChildren(
+      h('p', { class: 'suave' }, 'No se pudo cargar el inicio de sesión de Google. Revisa tu conexión.'),
+      h('button', { type: 'button', class: 'boton', onclick: () => navegar() }, 'Volver a intentar'));
   };
   // Se pinta cuando la pantalla ya está puesta (para medir el ancho real) y de nuevo si cambia el ancho.
   Promise.resolve().then(() => {
     pintar();
     if ('ResizeObserver' in window) new ResizeObserver(() => { pintar(); }).observe(envoltura);
   });
-  return { envoltura, clasico };
+  return { envoltura };
 }
 
 function pantallaLogin(mensaje) {
@@ -771,7 +773,7 @@ function pantallaLogin(mensaje) {
       h('strong', {}, 'S/ 86.40')));
 
   const marca = h('div', { class: 'login-marca' },
-    h('div', { class: 'login-logo' }, logoMarca(), h('strong', {}, 'FinFamily')),
+    h('div', { class: 'login-logo' }, logoMarca('vivo'), h('strong', {}, 'FinFamily')),
     titulo,
     h('ul', { class: 'login-puntos' },
       punto('mas', 'Registra un gasto en segundos, desde el celular o la computadora.'),
@@ -786,16 +788,13 @@ function pantallaLogin(mensaje) {
     marca,
     h('div', { class: 'login-lado' },
       h('div', { class: 'login-caja' },
-        h('div', { class: 'login-sello', 'aria-hidden': 'true' }, logoMarca()),
+        h('div', { class: 'login-sello', 'aria-hidden': 'true' }, logoMarca('vivo')),
         cerrada ? h('span', { class: 'pill ok' }, 'Sesión cerrada') : null,
         h('h2', {}, cerrada ? 'Hasta pronto' : 'Hola de nuevo'),
         h('p', { class: 'suave' }, 'Entra para ver las cuentas de la casa.'),
         mensaje && !cerrada ? h('p', { class: 'mensaje error' }, mensaje) : null,
         entrar.envoltura,
-        h('p', { class: 'login-nota' }, icono('candado'), 'Acceso privado: solo entran las cuentas de la familia.'),
-        h('div', { class: 'login-ayuda' },
-          h('button', { type: 'button', class: 'boton enlace', onclick: entrar.clasico }, 'Usar el botón clásico'),
-          h('button', { type: 'button', class: 'boton enlace', onclick: () => navegar() }, 'Volver a intentar')))));
+        h('p', { class: 'login-nota' }, icono('candado'), 'Acceso privado: solo entran las cuentas de la familia.'))));
 
   // La luz y la vista de ejemplo siguen al cursor.
   if (matchMedia('(hover: hover) and (pointer: fine)').matches && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
