@@ -2108,6 +2108,44 @@ html[data-vt] .carrusel-pista > .plastico[style*="view-transition-name"] { anima
 /* Detalle de tarjeta: se quita la franja detrás de cada monto. No decía qué medía, y el monto ya está escrito. */
 .consumo::before { display: none; }
 
+/* ---------- Foto de la cuenta y menú de cuenta compacto ---------- */
+.avatar { position: relative; overflow: hidden; }
+.avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; opacity: 0; transition: opacity 260ms ease; }
+.avatar.con-foto img { opacity: 1; }
+.avatar.con-foto { color: transparent; background: var(--sup-2); }
+
+.cuenta-panel { width: min(268px, calc(100vw - 32px)); gap: 6px; padding: 8px; border-radius: 16px; }
+.cuenta-quien { gap: 10px; padding: 6px 6px 10px; border-bottom: 1px solid var(--borde); }
+.cuenta-quien > div { line-height: 1.25; }
+.cuenta-quien strong { font-size: 0.92rem; }
+.cuenta-quien .suave { font-size: 0.74rem; }
+.cuenta-quien .avatar.grande { width: 38px; height: 38px; font-size: 0.95rem; }
+/* Apariencia en una sola fila: modo a la izquierda, colores a la derecha */
+.cuenta-panel .apariencia, .cuenta-menu.nav .cuenta-panel .apariencia { flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: nowrap; gap: 10px; padding: 4px 6px; }
+.cuenta-panel .segmentos { border-radius: 10px; padding: 2px; }
+.cuenta-panel .segmentos button { min-height: 30px; width: 36px; padding: 0; justify-content: center; border-radius: 8px; }
+.cuenta-panel .colores { gap: 9px; }
+.cuenta-panel .color-op { width: 22px; height: 22px; }
+/* Acciones en lista */
+.cuenta-enlaces { gap: 1px; padding-top: 6px; }
+.cuenta-enlace, .cuenta-panel .zona-sesion .boton.enlace {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; padding: 0 8px; margin: 0; border: 0; border-radius: 10px;
+  background: none; cursor: pointer; text-align: left; font-weight: 600; font-size: 0.86rem; color: var(--tinta); box-shadow: none;
+  transition: background 180ms ease, color 180ms ease;
+}
+.cuenta-enlace:hover { background: var(--sup-2); transform: none; }
+.cuenta-enlace .icono, .cuenta-enlace .icono svg, .cuenta-panel .zona-sesion .boton.enlace .icono, .cuenta-panel .zona-sesion .boton.enlace .icono svg { width: 16px; height: 16px; }
+.cuenta-pista { font-size: 0.74rem; padding: 2px 8px 4px; }
+.cuenta-panel .zona-sesion { padding-top: 6px; border-top: 1px solid var(--borde); display: block; }
+.cuenta-panel .zona-sesion .boton.enlace { color: var(--mal); justify-content: flex-start; }
+.cuenta-panel .zona-sesion .boton.enlace .icono { color: var(--mal); }
+.cuenta-panel .zona-sesion .boton.enlace:hover { background: var(--mal-suave); }
+.cuenta-panel .confirmacion { padding: 10px; font-size: 0.82rem; }
+@media (min-width: 1024px) {
+  .cuenta-menu.nav .cuenta-panel { padding: 8px; width: auto; }
+  body.menu-chico .cuenta-menu.nav .cuenta-panel { width: 268px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
