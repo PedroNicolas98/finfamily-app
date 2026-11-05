@@ -714,10 +714,12 @@ function logoMarca(clase = '') {
 
 const LOGO_GOOGLE = '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>';
 
-// Botón de entrada: se ve con el diseño de la app y, encima e invisible, está el botón real de Google,
-// que es el que recibe el clic. "Botón clásico" lo deja a la vista por si algo falla.
+// Botón de entrada: se ve con el diseño de la app y, encima e invisibles, van dos botones reales de Google
+// (uno cubre la mitad de arriba y otro la de abajo), que son los que reciben el clic.
+// "Botón clásico" deja el de Google a la vista por si algo falla.
 function botonEntrar() {
-  const real = h('div', { class: 'boton-google' });
+  const arriba = h('div', { class: 'boton-google arriba' });
+  const abajo = h('div', { class: 'boton-google abajo' });
   const g = h('span', { class: 'google-g' });
   g.innerHTML = LOGO_GOOGLE; // texto fijo
   const envoltura = h('div', { class: 'google-envoltura' },
@@ -725,22 +727,22 @@ function botonEntrar() {
       g,
       h('span', { class: 'google-texto' }, h('b', {}, 'Continuar con Google'), h('small', {}, 'Con tu cuenta de la familia')),
       h('span', { class: 'google-flecha' }, icono('adelante'))),
-    real);
+    arriba, abajo);
   const clasico = () => envoltura.classList.add('clasico');
-  // Se pinta cuando la pantalla ya está puesta, para medir el ancho real.
-  Promise.resolve().then(async () => {
+  let anchoPintado = 0;
+  const pintar = async () => {
     const ancho = Math.max(200, Math.min(400, Math.round(envoltura.clientWidth) || 320));
-    const ajustar = () => {
-      envoltura.style.setProperty('--sx', ((envoltura.clientWidth || ancho) / ancho).toFixed(3));
-      envoltura.style.setProperty('--sy', ((envoltura.clientHeight || 64) / 40).toFixed(3));
-    };
-    ajustar();
-    if ('ResizeObserver' in window) new ResizeObserver(ajustar).observe(envoltura);
-    const ok = await api.renderBoton(real, ancho);
-    if (!ok) {
-      clasico();
-      real.replaceChildren(h('p', { class: 'suave' }, 'No se pudo cargar el inicio de sesión de Google. Revisa tu conexión.'));
-    }
+    if (Math.abs(ancho - anchoPintado) < 8) return;
+    anchoPintado = ancho;
+    const ok = await api.renderBoton(arriba, ancho);
+    if (ok) { await api.renderBoton(abajo, ancho); return; }
+    clasico();
+    arriba.replaceChildren(h('p', { class: 'suave' }, 'No se pudo cargar el inicio de sesión de Google. Revisa tu conexión.'));
+  };
+  // Se pinta cuando la pantalla ya está puesta (para medir el ancho real) y de nuevo si cambia el ancho.
+  Promise.resolve().then(() => {
+    pintar();
+    if ('ResizeObserver' in window) new ResizeObserver(() => { pintar(); }).observe(envoltura);
   });
   return { envoltura, clasico };
 }
