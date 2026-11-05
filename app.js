@@ -592,6 +592,8 @@ const estado = {
   oneTapIntentado: false,
   frescoDesde: 0, // lo guardado antes de esta hora no se muestra: se espera al Sheets
   cambioDesde: 0, // lo guardado antes de esta hora se muestra, pero se vuelve a pedir por detrás
+  rutaVista: null, // página que se está viendo (para saber hacia dónde va la transición)
+  sentido: null, // sentido pedido para la próxima transición
   registroSW: null, // registro del service worker, para buscar versión nueva
   enviando: false, // hay un envío de la cola en curso
 };
@@ -970,16 +972,14 @@ function confirmarEnLinea(zona, texto, etiquetaSi, alConfirmar) {
 }
 
 // Logo dibujado con el color de la app (cambia con la apariencia elegida).
+const LOGO_SVG = '<defs><linearGradient id="lm-degradado" x1="0" y1="0" x2="1" y2="1"><stop offset="0" class="lm-g1"/><stop offset=".55" class="lm-gm"/><stop offset="1" class="lm-g2"/></linearGradient><radialGradient id="lm-luz" cx=".28" cy=".18" r=".75"><stop offset="0" stop-color="#fff" stop-opacity=".38"/><stop offset=".6" stop-color="#fff" stop-opacity="0"/></radialGradient><linearGradient id="lm-blanco" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#DCE6FA"/></linearGradient><linearGradient id="lm-tinta" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="lm-t1"/><stop offset="1" class="lm-t2"/></linearGradient><linearGradient id="lm-rayo" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".5"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient><clipPath id="lm-recorte"><path d="M256 0C76.8 0 0 76.8 0 256s76.8 256 256 256 256-76.8 256-256S435.2 0 256 0z"/></clipPath></defs><g class="lm-fondo"><path class="lm-base" d="M256 0C76.8 0 0 76.8 0 256s76.8 256 256 256 256-76.8 256-256S435.2 0 256 0z"/><path class="lm-luz" d="M256 0C76.8 0 0 76.8 0 256s76.8 256 256 256 256-76.8 256-256S435.2 0 256 0z"/><path class="lm-borde" d="M256 8C84 8 8 84 8 256s76 248 248 248 248-76 248-248S428 8 256 8z"/><g clip-path="url(#lm-recorte)"><g transform="rotate(24 256 256)"><rect class="lm-brillo" x="-260" y="-160" width="150" height="840"/></g></g></g><path class="lm-casa" d="M256 118 396 232v136a24 24 0 0 1-24 24H140a24 24 0 0 1-24-24V232z"/><rect class="lm-b lm-b1" x="160" y="312" width="50" height="74" rx="14"/><rect class="lm-b lm-b2" x="231" y="268" width="50" height="118" rx="14"/><rect class="lm-b lm-b3" x="302" y="224" width="50" height="162" rx="14"/>';
 function logoMarca(clase = '') {
-  return svg('svg', { class: `logo-marca ${clase}`.trim(), viewBox: '0 0 512 512', 'aria-hidden': 'true' },
-    svg('defs', {}, svg('linearGradient', { id: 'lm-degradado', x1: 0, y1: 0, x2: 1, y2: 1 },
-      svg('stop', { offset: '0', class: 'lm-g1' }), svg('stop', { offset: '1', class: 'lm-g2' }))),
-    svg('rect', { class: 'lm-fondo', width: 512, height: 512, rx: 116 }),
-    svg('path', { class: 'lm-techo', d: 'M116 238 256 126l140 112', pathLength: 100 }),
-    svg('rect', { class: 'lm-b lm-b1', x: 160, y: 312, width: 46, height: 76, rx: 14 }),
-    svg('rect', { class: 'lm-b lm-b2', x: 233, y: 274, width: 46, height: 114, rx: 14 }),
-    svg('rect', { class: 'lm-b lm-b3', x: 306, y: 240, width: 46, height: 148, rx: 14 }));
+  const el = svg('svg', { class: `logo-marca ${clase}`.trim(), viewBox: '0 0 512 512', 'aria-hidden': 'true' });
+  el.innerHTML = LOGO_SVG;
+  return el;
 }
+// Nombre de la app: "Fin" con peso y "Family" más liviano.
+const nombreMarca = () => h('strong', { class: 'marca-texto' }, 'Fin', h('span', {}, 'Family'));
 
 const LOGO_GOOGLE = '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>';
 
@@ -1041,7 +1041,7 @@ function pantallaLogin(mensaje) {
       h('strong', {}, 'S/ 86.40')));
 
   const marca = h('div', { class: 'login-marca' },
-    h('div', { class: 'login-logo' }, logoMarca('vivo'), h('strong', {}, 'FinFamily')),
+    h('div', { class: 'login-logo' }, logoMarca('vivo'), nombreMarca()),
     titulo,
     escena);
 
@@ -2291,7 +2291,7 @@ function selectorMes(meses, mes, etiqueta) {
   // Si el mes mostrado no está en la lista, se ofrece el más cercano hacia atrás y hacia adelante.
   const anterior = i > 0 ? meses[i - 1] : i < 0 ? [...meses].reverse().find((m) => cmpMes(m.clave, mes) < 0) || null : null;
   const siguiente = i >= 0 ? (i < meses.length - 1 ? meses[i + 1] : null) : meses.find((m) => cmpMes(m.clave, mes) > 0) || null;
-  const ir = (m) => () => { estado.mesPres = m.clave; navegar(); };
+  const ir = (m) => () => { estado.sentido = cmpMes(m.clave, mes) > 0 ? 'adelante' : 'atras'; estado.mesPres = m.clave; navegar(); };
   return h('div', { class: 'selector-mes' },
     h('button', { type: 'button', class: 'boton icono-solo', disabled: !anterior, 'aria-label': 'Mes anterior', title: 'Mes anterior',
       onclick: anterior ? ir(anterior) : null }, icono('atras')),
@@ -2302,6 +2302,69 @@ function selectorMes(meses, mes, etiqueta) {
 
 // ---------- Navegación ----------
 
+// Transición entre páginas: el navegador toma una foto de la pantalla que sale y otra de la que entra,
+// y las anima según el sentido (adelante, atras, entra a un detalle, sale de él, abre, igual).
+// El menú se queda quieto; el panel de color y la tarjeta elegida viajan de una página a la otra.
+const ORDEN_RUTAS = { inicio: 0, tarjetas: 1, registrar: 2, presupuesto: 3 };
+const sinMovimiento = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const puedeTransicionar = () => typeof document.startViewTransition === 'function' && !sinMovimiento() && document.visibilityState === 'visible';
+
+function tipoTransicion(antes, ahora) {
+  if (estado.sentido) { const s = estado.sentido; estado.sentido = null; return s; }
+  if (!antes) return 'abre';
+  if (antes === ahora) return 'igual';
+  const deDetalle = antes.startsWith('tarjeta-');
+  const aDetalle = ahora.startsWith('tarjeta-');
+  if (aDetalle) return deDetalle ? 'igual' : 'entra';
+  if (deDetalle && ahora === 'tarjetas') return 'sale';
+  const a = ORDEN_RUTAS[deDetalle ? 'tarjetas' : antes] ?? 0;
+  const b = ORDEN_RUTAS[ahora] ?? 0;
+  if (a === b) return 'sale';
+  return b > a ? 'adelante' : 'atras';
+}
+
+function limpiarNombres() {
+  document.querySelectorAll('[style*="view-transition-name"]').forEach((el) => el.style.removeProperty('view-transition-name'));
+}
+// Marca lo que viaja por separado en la foto: menú, barra de avance, aviso breve, panel de color y tarjeta.
+function nombrarParaTransicion(idTarjeta) {
+  limpiarNombres();
+  const poner = (el, nombre) => { if (el) el.style.viewTransitionName = nombre; };
+  poner(document.getElementById('nav'), 'nav');
+  poner(document.querySelector('.barra-carga'), 'carga');
+  poner(document.querySelector('.tostada'), 'aviso');
+  poner(vista.querySelector('.hero'), 'hero');
+  if (idTarjeta) poner(vista.querySelector(`a.plastico[href="#tarjeta-${CSS.escape(idTarjeta)}"]`) || vista.querySelector('div.plastico'), 'tarjeta');
+}
+
+let turnoTransicion = 0;
+function conTransicion(tipo, cambio, idTarjeta) {
+  if (!puedeTransicionar()) { cambio(); return; }
+  const turno = ++turnoTransicion;
+  const raiz = document.documentElement;
+  let hecho = false;
+  const una = () => {
+    if (hecho) return;
+    hecho = true;
+    cambio();
+    nombrarParaTransicion(idTarjeta);
+  };
+  nombrarParaTransicion(idTarjeta);
+  raiz.dataset.vt = tipo;
+  let t;
+  try { t = document.startViewTransition(una); } catch { una(); }
+  const terminar = () => {
+    if (turno !== turnoTransicion) return;
+    delete raiz.dataset.vt;
+    limpiarNombres();
+  };
+  if (!t) { terminar(); return; }
+  // Si el navegador no alcanza a tomar la foto, la pantalla cambia igual, sin animación.
+  const reloj = setTimeout(() => { if (!hecho) { una(); t.skipTransition(); } }, 700);
+  t.ready.catch(() => {});
+  t.finished.catch(() => {}).finally(() => { clearTimeout(reloj); terminar(); });
+}
+
 const RUTAS = { inicio: vistaInicio, registrar: vistaRegistrar, tarjetas: vistaTarjetas, presupuesto: vistaPresupuesto };
 
 function marcarNav(ruta) {
@@ -2309,6 +2372,7 @@ function marcarNav(ruta) {
   document.querySelectorAll('.barra-nav a').forEach((a) => {
     if (a.dataset.ruta === base) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   });
+  document.body.dataset.ruta = base;
   moverIndicador();
 }
 
@@ -2321,6 +2385,7 @@ async function navegar(opciones) {
   marcarNav(ruta);
   if (!api.configurado()) { mostrar(pantallaSinConfig()); return; }
   if (!api.emailGuardado() && !api.tokenVigente() && !leerCache('inicio')) {
+    estado.rutaVista = null;
     mostrar(pantallaLogin());
     pintarAvisos();
     return;
@@ -2336,7 +2401,8 @@ async function navegar(opciones) {
   const armado = Promise.resolve().then(() => fn(arg)).then((n) => { nodo = n; }, (e) => { nodo = vistaError(e); });
   if (!silencioso && (ruta !== 'registrar' || !leerCache('config'))) {
     const actual = vista.querySelector('.pantalla:not(.cargando):not(.login):not(.arranque)');
-    if (actual && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (actual && !puedeTransicionar() && !sinMovimiento()) {
+      // Navegadores sin transición de páginas: la pantalla anterior se desvanece.
       actual.classList.add('saliendo');
       await esperar(150);
     } else {
@@ -2347,28 +2413,40 @@ async function navegar(opciones) {
   }
   await armado;
   if (id !== estado.navId) return;
-  const altura = window.scrollY;
-  if (silencioso) vista.classList.remove('entrada');
-  mostrar(nodo);
-  animarVista(vista);
   if (silencioso) {
-    // Datos nuevos en la misma pantalla: sin animación de entrada y sin mover la página.
-    window.scrollTo(0, altura);
-    pintarAvisos();
+    // Datos nuevos en la misma pantalla: se funden con los anteriores, sin mover la página.
+    const altura = window.scrollY;
+    conTransicion('igual', () => {
+      if (id !== estado.navId) return;
+      vista.classList.remove('entrada');
+      mostrar(nodo);
+      animarVista(vista);
+      window.scrollTo(0, altura);
+      pintarAvisos();
+    });
     return;
   }
-  vista.classList.remove('entrada');
-  void vista.offsetWidth;
-  vista.classList.add('entrada');
-  if (ruta !== 'registrar') window.scrollTo(0, 0);
-  pintarAvisos();
-  // Mueve el foco al contenido nuevo para que el lector de pantalla anuncie el cambio
-  // (Registrar ya enfoca el monto).
-  if (estado.irARevisar && ruta === 'inicio') {
-    estado.irARevisar = false;
-    if (enfocarRevisar()) return;
-  }
-  if (ruta !== 'registrar') vista.focus({ preventScroll: true });
+  const antes = estado.rutaVista;
+  const tipo = tipoTransicion(antes, ruta);
+  const idTarjeta = tipo === 'entra' ? ruta.slice('tarjeta-'.length) : tipo === 'sale' && antes?.startsWith('tarjeta-') ? antes.slice('tarjeta-'.length) : null;
+  conTransicion(tipo, () => {
+    if (id !== estado.navId) return;
+    mostrar(nodo);
+    estado.rutaVista = nodo.classList?.contains('login') ? null : ruta;
+    animarVista(vista);
+    vista.classList.remove('entrada');
+    void vista.offsetWidth;
+    vista.classList.add('entrada');
+    if (ruta !== 'registrar') window.scrollTo(0, 0);
+    pintarAvisos();
+    // Mueve el foco al contenido nuevo para que el lector de pantalla anuncie el cambio
+    // (Registrar ya enfoca el monto).
+    if (estado.irARevisar && ruta === 'inicio') {
+      estado.irARevisar = false;
+      if (enfocarRevisar()) return;
+    }
+    if (ruta !== 'registrar') vista.focus({ preventScroll: true });
+  }, idTarjeta);
 }
 
 function construirNav() {
@@ -2377,7 +2455,7 @@ function construirNav() {
   if (SOLO_GASTO) { document.getElementById('nav').replaceChildren(); return; }
   document.getElementById('nav').replaceChildren(
     h('span', { class: 'nav-indicador', 'aria-hidden': 'true' }),
-    h('div', { class: 'nav-marca' }, logoMarca(), h('strong', {}, 'FinFamily')),
+    h('div', { class: 'nav-marca' }, logoMarca(), nombreMarca()),
     enlace('inicio', 'Inicio'),
     enlace('tarjetas', 'Tarjetas'),
     enlace('registrar', 'Registrar gasto', 'central'),
