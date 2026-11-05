@@ -2878,8 +2878,11 @@ function alternarMenu() {
   clearTimeout(alternarMenu.reloj);
   alternarMenu.reloj = setTimeout(() => {
     piezas.forEach((el) => { el.style.transition = ''; el.style.transform = ''; });
-    cuerpo.classList.remove('menu-moviendo');
+    // El resaltado de la página activa toma su medida nueva antes de volver a verse (si no, aparece un
+    // instante con el ancho del menú abierto y se sale encima del contenido).
     moverIndicador();
+    void document.getElementById('nav')?.offsetWidth;
+    cuerpo.classList.remove('menu-moviendo');
   }, MENU_MS + 60);
 }
 
