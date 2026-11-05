@@ -1125,13 +1125,14 @@ async function vistaRegistrar() {
     f.monto = inMonto.value;
   });
 
-  const botonesMedio = medios.map((m) => h('button', { type: 'button', class: 'opcion', 'data-id': m.id,
+  const colorMedio = (m) => (m.id === 'TC_IBK' ? (idCicloDeMedio(m, usuario) || 'IBK_P') : (COLOR_MEDIO[m.id] || 'HORMIGA'));
+  const botonesMedio = medios.map((m) => h('button', { type: 'button', class: `opcion medio tc-${colorMedio(m)}`, 'data-id': m.id,
     'aria-pressed': String(f.medio === m.id), onclick: () => {
       f.medio = m.id;
       try { localStorage.setItem('ff:medio', m.id); } catch { /* nada */ }
       botonesMedio.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.id === m.id)));
       actualizarPrevia();
-    } }, h('span', { class: `chip-tc mini tc-${m.id === 'TC_IBK' ? (idCicloDeMedio(m, usuario) || 'IBK_P') : (COLOR_MEDIO[m.id] || 'HORMIGA')}`, 'aria-hidden': 'true' }), m.etiqueta));
+    } }, h('span', { class: `chip-tc mini tc-${colorMedio(m)}`, 'aria-hidden': 'true' }), m.etiqueta));
 
   const inDesc = h('input', { id: 'descripcion', type: 'text', maxlength: '120', autocomplete: 'off',
     placeholder: 'Ej. Plaza Vea, almuerzo, taxi', value: f.descripcion, enterkeyhint: 'done' });
@@ -1178,14 +1179,17 @@ async function vistaRegistrar() {
   const btnGuardar = h('button', { type: 'submit', class: 'boton primario grande' }, 'Guardar gasto');
 
   const form = h('form', { class: 'formulario', novalidate: true },
-    h('label', { class: 'campo-monto-caja', for: 'monto' }, h('span', { class: 'moneda' }, 'S/'), inMonto),
+    h('div', { class: 'hero monto-caja' }, heroFondo(),
+      h('span', { class: 'hero-etq' }, '¿Cuánto fue?'),
+      h('label', { class: 'campo-monto-caja', for: 'monto' }, h('span', { class: 'moneda' }, 'S/'), inMonto),
+      vistaPrevia),
     h('fieldset', {}, h('legend', {}, 'Medio de pago'), h('div', { class: 'opciones' }, botonesMedio)),
     h('div', { class: 'campo' }, h('label', { for: 'descripcion' }, 'Descripción'), inDesc, sugerencia),
     h('fieldset', { class: 'f-conceptos' }, h('legend', {}, 'Concepto'), h('div', { class: 'opciones chicas' }, botonesConcepto)),
     h('div', { class: 'fila-dos' },
       h('div', { class: 'campo' }, h('label', { for: 'fecha' }, 'Fecha'), inFecha),
       h('div', { class: 'campo' }, h('label', { for: 'nota' }, 'Nota'), inNota)),
-    h('div', { class: 'f-cierre' }, vistaPrevia, msg, btnGuardar));
+    h('div', { class: 'f-cierre' }, msg, btnGuardar));
 
   // Muestra en 'msg' lo que pasó con el envío de un gasto (también tras 'Guardar igual').
   function mostrarResultado(datos, res) {
@@ -1298,19 +1302,83 @@ function obtenerTarjetas() {
   return cargar('tarjetas', { hoy: hoyISO(), incluirPagados: false }, 'tarjetas');
 }
 
+// Dato dentro de un panel de color: ícono, etiqueta y valor.
+function heroDato(ico, etiqueta, valor, extra) {
+  return h('li', {},
+    h('span', { class: 'hero-ico' }, icono(ico)),
+    h('span', { class: 'hero-dato-etq' }, etiqueta),
+    h('strong', {}, valor),
+    extra || null);
+}
+
+function heroFondo() {
+  return h('div', { class: 'hero-fondo', 'aria-hidden': 'true' }, h('i'), h('i'), h('i'));
+}
+
+// Reparto de consumos por concepto: las partes más grandes y el resto junto.
+function porConceptoDe(consumos, maximo) {
+  const mapa = new Map();
+  for (const c of consumos) {
+    const k = c.concepto || 'Sin concepto';
+    mapa.set(k, (mapa.get(k) || 0) + (Number(c.monto) || 0));
+  }
+  const orden = [...mapa].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const partes = orden.slice(0, maximo).map(([etiqueta, valor]) => ({ etiqueta, valor }));
+  const resto = orden.slice(maximo).reduce((s, [, v]) => s + v, 0);
+  if (resto > 0) partes.push({ etiqueta: 'Otros conceptos', valor: resto });
+  return partes;
+}
+
 async function vistaTarjetas() {
   const r = await obtenerTarjetas();
   marcarDatos(r);
   const lista = r.datos.tarjetas || [];
   const deCredito = lista.filter((t) => t.id !== 'HORMIGA');
+  const hormiga = lista.find((t) => t.id === 'HORMIGA');
   const total = deCredito.reduce((s, t) => s + (t.pendiente || 0), 0);
-  const conDeuda = deCredito.filter((t) => t.pendiente > 0).length;
-  return h('div', { class: 'pantalla' },
-    h('header', { class: 'cabecera-fila' },
-      h('div', { class: 'cabecera' }, h('h1', {}, 'Tarjetas'),
-        h('p', { class: 'suave' }, `${soles(total)} por pagar en ${conDeuda} tarjeta${conDeuda === 1 ? '' : 's'}`))),
-    lista.length ? h('div', { class: 'rejilla-plasticos' }, lista.map((t) => tarjetaVisual(t)))
-      : h('p', { class: 'vacio' }, 'No hay tarjetas para mostrar.'));
+  const conDeuda = deCredito.filter((t) => t.pendiente > 0).sort((a, b) => b.pendiente - a.pendiente);
+  const porFecha = conDeuda.filter((t) => t.proximoVence).sort((a, b) => a.proximoVence.localeCompare(b.proximoVence));
+  const proxima = porFecha[0];
+  const raiz = h('div', { class: 'pantalla tarjetas' },
+    h('header', { class: 'cabecera' }, h('h1', {}, 'Tarjetas'),
+      h('p', { class: 'suave' }, 'Lo que debes en cada una y cuándo vence')));
+  if (!lista.length) { raiz.append(h('p', { class: 'vacio' }, 'No hay tarjetas para mostrar.')); return raiz; }
+
+  // Resumen: total, reparto por tarjeta y datos clave
+  raiz.append(h('section', { class: 'hero simple' }, heroFondo(),
+    h('div', { class: 'hero-principal' },
+      h('p', { class: 'hero-etq' }, 'Por pagar en tarjetas'),
+      h('p', { class: 'hero-monto', 'data-contar': String(total) }, soles(0)),
+      h('p', { class: 'hero-personal' }, `${conDeuda.length} tarjeta${conDeuda.length === 1 ? '' : 's'} con deuda`)),
+    conDeuda.length ? h('div', { class: 'hero-extra' },
+      barraPartes(conDeuda.map((t) => ({ etiqueta: nombreCortoTC(t), valor: t.pendiente, clase: `tc-${t.id}` }))),
+      h('ul', { class: 'hero-leyenda' }, conDeuda.map((t) => h('li', {}, chipTC(t.id, 'mini'), h('span', {}, nombreCortoTC(t)),
+        h('b', {}, `${Math.round((t.pendiente / (total || 1)) * 100)}%`))))) : null,
+    h('ul', { class: 'hero-datos' },
+      heroDato('calendario', 'Próximo pago', proxima ? fechaCorta(proxima.proximoVence) : 'Ninguno'),
+      heroDato('tarjetas', 'La más alta', conDeuda[0] ? nombreCortoTC(conDeuda[0]) : 'Ninguna'),
+      heroDato('billetera', 'Gastos hormiga', soles(hormiga?.pendiente || 0)))));
+
+  // Calendario de pagos: de hoy a la última fecha
+  if (porFecha.length) {
+    const hoy = deISO(hoyISO());
+    const paso = (clase, fecha, titulo, detalle, monto, href, i) => h(href ? 'a' : 'div', { class: `ruta-paso ${clase}`.trim(), href: href || null, style: `--i: ${i}` },
+      h('span', { class: 'ruta-fecha' }, h('b', {}, String(fecha.getDate())), h('i', {}, ABREV[fecha.getMonth()])),
+      h('span', { class: 'ruta-texto' }, h('strong', {}, titulo), h('span', {}, detalle)),
+      monto != null ? h('strong', { class: 'ruta-monto' }, soles(monto)) : null);
+    raiz.append(h('section', { class: 'panel panel-ruta revelar' },
+      h('div', { class: 'panel-cab' }, h('h2', {}, 'Calendario de pagos'), h('span', { class: 'suave' }, `${porFecha.length} pago${porFecha.length === 1 ? '' : 's'} por delante`)),
+      h('div', { class: 'ruta' },
+        paso('hoy', hoy, 'Hoy', 'Estás aquí', null, null, 0),
+        porFecha.map((t, i) => {
+          const e = estadoVence(t.proximoVence, t.pendiente);
+          return paso(`tc-${t.id} ${e.clase}`, deISO(t.proximoVence), nombreCortoTC(t), e.texto, t.pendiente, `#tarjeta-${t.id}`, i + 1);
+        }))));
+  }
+
+  raiz.append(h('div', { class: 'seccion-cab' }, h('div', {}, h('h2', {}, 'Todas tus tarjetas'), h('p', { class: 'suave' }, 'Toca una para ver sus consumos y marcar pagos'))),
+    h('div', { class: 'rejilla-plasticos' }, lista.map((t) => tarjetaVisual(t))));
+  return raiz;
 }
 
 async function vistaTarjeta(id) {
@@ -1324,7 +1392,10 @@ async function vistaTarjeta(id) {
   const esHormiga = t.id === 'HORMIGA';
   const enEspera = (c) => estado.filasEnEspera.has(`${t.hoja}#${c.fila}`);
   const marcable = (c) => c.estado !== 'Pagado' && !enEspera(c);
-  const porPagar = (t.estados || []).reduce((s, g) => s + (g.consumos || []).filter((c) => c.estado !== 'Pagado').length, 0);
+  const pendientesTC = consumosDe([t], () => true).filter((c) => esHormiga || c.estado !== 'Pagado');
+  const porPagar = pendientesTC.length;
+  const partes = porConceptoDe(pendientesTC, 4);
+  const totalPartes = partes.reduce((s, p) => s + p.valor, 0) || 1;
 
   // En computadora: tarjeta a la izquierda (fija) y consumos a la derecha.
   const col = h('div', { class: 'columna' });
@@ -1332,11 +1403,17 @@ async function vistaTarjeta(id) {
     h('aside', { class: 'lateral' }, volver,
       h('h1', { class: 'solo-lector' }, NOMBRE_TC[t.id] || t.nombre),
       tarjetaVisual(t, false),
-      esHormiga ? null : h('section', { class: 'panel resumen-tc' },
-        h('div', { class: 'linea' }, h('span', { class: 'suave' }, 'Próximo vencimiento'), estadoPill(t.proximoVence, t.pendiente)),
-        h('div', { class: 'linea' }, h('span', { class: 'suave' }, 'Consumos por pagar'), h('strong', {}, String(porPagar))),
+      h('section', { class: 'panel resumen-tc' },
+        esHormiga ? null : h('div', { class: 'linea' }, h('span', { class: 'suave' }, 'Próximo vencimiento'), estadoPill(t.proximoVence, t.pendiente)),
+        h('div', { class: 'linea' }, h('span', { class: 'suave' }, esHormiga ? 'Gastos del mes' : 'Consumos por pagar'), h('strong', {}, String(porPagar))),
         duenioTC(t) ? h('div', { class: 'linea' }, h('span', { class: 'suave' }, 'Titular'),
-          h('span', { class: 'titular' }, avatar(duenioTC(t), 'chico'), duenioTC(t))) : null)), col);
+          h('span', { class: 'titular' }, avatar(duenioTC(t), 'chico'), duenioTC(t))) : null,
+        partes.length ? h('div', { class: 'resumen-conceptos' },
+          h('p', { class: 'etq' }, 'En qué se usó'),
+          barraPartes(partes.map((p, i) => ({ ...p, clase: `d${i}` }))),
+          h('ul', { class: 'resumen-leyenda' }, partes.map((p, i) => h('li', { title: `${p.etiqueta}: ${soles(p.valor)}` },
+            h('i', { class: `punto d${i}`, 'aria-hidden': 'true' }), h('span', {}, p.etiqueta),
+            h('span', { class: 'suave' }, `${Math.round((p.valor / totalPartes) * 100)}%`), h('strong', {}, soles(p.valor)))))) : null)), col);
 
   if (estado.mensajeTarjeta) {
     col.append(h('div', { class: 'mensaje ' + (estado.mensajeTarjeta.tipo || '') , role: 'status' }, estado.mensajeTarjeta.texto));
@@ -1560,39 +1637,48 @@ async function vistaPresupuesto() {
   const ahorros = Math.max(tot.ahorros || 0, 0);
   const libre = Math.max(tot.saldo || 0, 0);
   const base = Math.max(tot.ingresos || 0, gastos + ahorros, 1);
+  const pct = Math.max(0, Math.min(100, Math.round(((gastos + ahorros) / base) * 100)));
   const partes = [
-    { etiqueta: 'Gastos', valor: gastos, clase: 'd0' },
-    { etiqueta: 'Ahorros', valor: ahorros, clase: 'd2' },
-    { etiqueta: 'Saldo libre', valor: libre, clase: 'd1' },
+    { etiqueta: 'Gastos', valor: gastos, clase: 'r-gastos' },
+    { etiqueta: 'Ahorros', valor: ahorros, clase: 'r-ahorros' },
+    { etiqueta: 'Saldo libre', valor: libre, clase: 'r-libre' },
   ];
-  const reparto = h('section', { class: 'panel reparto' },
-    h('div', { class: 'reparto-cab' },
-      h('div', {},
-        h('p', { class: 'etq' }, 'Saldo final del mes'),
-        h('p', { class: 'cifra-grande' + (tot.saldo < 0 ? ' negativo' : ''), 'data-contar': String(tot.saldo || 0) }, soles(0)),
-        h('p', { class: 'hero-personal' }, h('span', { class: 'avatares' }, avatar('Pedro'), avatar('Britney')),
-          h('span', {}, h('strong', {}, soles(tot.saldoPersonal)), ' libres para cada uno'))),
-      h('div', { class: 'reparto-ingresos' },
-        h('p', { class: 'etq' }, 'Ingresos del mes'),
-        h('p', { class: 'cifra-media' }, soles(tot.ingresos)))),
-    barraPartes(partes),
-    h('ul', { class: 'reparto-leyenda' }, partes.map((p) => h('li', {},
-      h('i', { class: `punto ${p.clase}`, 'aria-hidden': 'true' }),
-      h('span', {}, p.etiqueta),
-      h('strong', {}, soles(p.valor)),
-      h('span', { class: 'suave' }, `${Math.round((p.valor / base) * 100)}% del ingreso`)))),
-    tot.saldo < 0 ? h('p', { class: 'mensaje error' }, `Los gastos y ahorros superan a los ingresos por ${soles(-tot.saldo)}.`) : null);
+  const mesNombre = (nombreMesClave(d.mes) || d.etiquetaMes || '').split(' ')[0].toLowerCase();
+  const hero = h('section', { class: 'hero' }, heroFondo(),
+    h('div', { class: 'hero-principal' },
+      h('p', { class: 'hero-etq' }, `Saldo final de ${mesNombre}`),
+      h('p', { class: 'hero-monto', 'data-contar': String(tot.saldo || 0) }, soles(0)),
+      h('p', { class: 'hero-personal' }, h('span', { class: 'avatares' }, avatar('Pedro'), avatar('Britney')),
+        h('span', {}, h('strong', {}, soles(tot.saldoPersonal)), ' libres para cada uno'))),
+    anillo(pct),
+    h('div', { class: 'hero-pagar hero-reparto' },
+      h('span', { class: 'hero-pagar-cab' }, 'Así se reparte el ingreso'),
+      barraPartes(partes),
+      h('ul', { class: 'hero-leyenda' }, partes.map((p) => h('li', {},
+        h('i', { class: `punto ${p.clase}`, 'aria-hidden': 'true' }), h('span', {}, p.etiqueta),
+        h('b', {}, `${Math.round((p.valor / base) * 100)}%`))))),
+    h('ul', { class: 'hero-datos' },
+      heroDato('sube', 'Ingresos', soles(tot.ingresos)),
+      heroDato('baja', 'Gastos', soles(tot.gastos)),
+      heroDato('billetera', 'Ahorros', soles(tot.ahorros)),
+      heroDato('check', 'Saldo libre', soles(libre))));
+
+  const secciones = [
+    seccion('ingresos', 'Ingresos', 'Total ingresos', tot.ingresos),
+    seccion('ahorros', 'Ahorros', 'Total ahorros', tot.ahorros),
+    seccion('gastos', 'Gastos', 'Total gastos', tot.gastos),
+  ];
+  secciones.forEach((el, i) => { if (el) { el.classList.add('revelar'); el.style.setProperty('--i', String(i)); } });
 
   return h('div', { class: 'pantalla presupuesto' },
     h('header', { class: 'cabecera-fila' },
       h('div', { class: 'cabecera' }, h('h1', {}, 'Presupuesto'), h('p', { class: 'suave' }, 'Tal como está en tu Sheets')),
       selectorMes(d.meses || meses, d.mes, nombreMesClave(d.mes) || d.etiquetaMes)),
-    reparto,
+    hero,
+    tot.saldo < 0 ? h('p', { class: 'mensaje error' }, `Los gastos y ahorros superan a los ingresos por ${soles(-tot.saldo)}.`) : null,
     h('div', { class: 'rejilla-pres' },
-      h('div', { class: 'col' },
-        seccion('ingresos', 'Ingresos', 'Total ingresos', tot.ingresos),
-        seccion('ahorros', 'Ahorros', 'Total ahorros', tot.ahorros)),
-      seccion('gastos', 'Gastos', 'Total gastos', tot.gastos)));
+      h('div', { class: 'col' }, secciones[0], secciones[1]),
+      secciones[2]));
 }
 
 function cmpMes(a, b) {
