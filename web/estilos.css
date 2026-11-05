@@ -1657,6 +1657,47 @@ body.cargando-datos .barra-carga { opacity: 1; }
   body:not(.solo-gasto) .opcion.chica { min-height: 42px; }
 }
 
+/* ---------- Arranque, versión nueva, conexión y cierres ---------- */
+
+/* Pantalla de arranque: el logo se arma mientras abre la app */
+.pantalla.arranque { min-height: calc(100vh - 150px); min-height: calc(100dvh - 150px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px; animation: aparecer 300ms ease both; }
+.arranque .logo-marca { width: 92px; height: 92px; filter: drop-shadow(0 22px 26px color-mix(in srgb, var(--marca) 45%, transparent)); }
+.arranque .logo-marca.vivo .lm-fondo, .arranque .logo-marca.vivo .lm-techo, .arranque .logo-marca.vivo .lm-b { animation-duration: 2.8s; }
+.arranque-barra { display: block; width: 132px; height: 4px; border-radius: 4px; background: var(--borde); overflow: hidden; }
+.arranque-barra b { display: block; height: 100%; width: 42%; border-radius: 4px; background: linear-gradient(90deg, var(--accion), var(--vivo)); animation: avanza 1100ms ease-in-out infinite; }
+
+/* Aviso breve con botón (versión nueva) y aviso que se queda */
+.tostada { transition: opacity 350ms ease, transform 350ms var(--suave); }
+.tostada.fuera { transform: translate(-50%, 12px); }
+.tostada.fija { padding: 8px 8px 8px 16px; gap: 12px; }
+.tostada-accion { border: 0; cursor: pointer; font: inherit; font-weight: 700; font-size: 0.84rem; padding: 8px 14px; border-radius: 10px; background: var(--vivo); color: #0B1220; transition: transform 200ms var(--suave), filter 200ms ease; }
+.tostada-accion:hover { transform: translateY(-1px); filter: brightness(1.06); }
+.tostada-accion:active { transform: scale(0.96); }
+.tostada-cerrar { border: 0; background: none; color: inherit; cursor: pointer; width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; padding: 0; opacity: 0.7; transition: opacity 200ms ease, background 200ms ease; }
+.tostada-cerrar:hover { opacity: 1; background: rgba(127, 127, 127, 0.25); }
+.tostada-cerrar .icono, .tostada-cerrar .icono svg { width: 15px; height: 15px; }
+.tostada.fija > .icono { color: var(--vivo); animation: destello 2.4s ease-in-out infinite; }
+@keyframes destello { 50% { transform: scale(1.22) rotate(12deg); } }
+
+/* Editor de gasto: se cierra con animación */
+.hoja-modal.cerrando { animation: modal-sale 190ms ease forwards; }
+.hoja-modal.cerrando::backdrop { animation: desaparecer 190ms ease forwards; }
+@keyframes modal-sale { to { opacity: 0; transform: translateY(18px) scale(0.97); } }
+@keyframes desaparecer { to { opacity: 0; } }
+.hoja-modal .nota-error { margin-top: 6px; }
+
+/* Gasto fijo: late mientras se guarda en el Sheets */
+.check-fijo[data-enviando] { animation: latido 800ms ease-in-out infinite; }
+@keyframes latido { 50% { transform: scale(0.84); opacity: 0.6; } }
+
+/* Cambio de modo o de color: los colores pasan suave */
+html.cambiando, html.cambiando *, html.cambiando *::before, html.cambiando *::after {
+  transition: background-color 420ms ease, color 420ms ease, border-color 420ms ease, fill 420ms ease, stroke 420ms ease, box-shadow 420ms ease !important;
+}
+
+/* Botones que solo tienen ícono: se nota cuando están apagados */
+.boton.icono-solo:disabled { opacity: 0.3; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
