@@ -877,17 +877,10 @@ async function llamarApi(...args) {
   try { return await api.llamar(...args); } finally { ocupado(-1); }
 }
 
-// Silueta de la pantalla que viene, para que la espera no se vea vacía.
-function cargando(ruta = '') {
-  const b = (clase) => h('div', { class: `esq ${clase}` });
-  const filas = (n) => Array.from({ length: n }, () => b('esq-fila'));
-  const col = (...hijos) => h('div', { class: 'esq-col' }, hijos);
-  let cuerpo;
-  if (ruta.startsWith('tarjeta-')) cuerpo = [h('div', { class: 'esq-dos lateral-izq' }, col(b('esq-tarjeta'), b('esq-panel chico')), col(b('esq-linea'), filas(6)))];
-  else if (ruta === 'tarjetas') cuerpo = [b('esq-titulo'), b('esq-hero chico'), b('esq-panel chico'), h('div', { class: 'esq-rejilla' }, b('esq-tarjeta'), b('esq-tarjeta'), b('esq-tarjeta'))];
-  else if (ruta === 'presupuesto') cuerpo = [b('esq-titulo'), b('esq-hero'), h('div', { class: 'esq-dos' }, col(filas(4)), col(filas(6)))];
-  else cuerpo = [b('esq-titulo'), b('esq-hero'), h('div', { class: 'esq-rejilla' }, b('esq-tarjeta'), b('esq-tarjeta'), b('esq-tarjeta'), b('esq-tarjeta')), h('div', { class: 'esq-dos' }, b('esq-panel'), b('esq-panel'))];
-  return h('div', { class: 'pantalla cargando', 'aria-busy': 'true', 'aria-label': 'Cargando' }, cuerpo);
+// Mientras llega cada pantalla se ve la casa del logo armándose (la misma del arranque).
+function cargando() {
+  return h('div', { class: 'pantalla cargando arranque', 'aria-busy': 'true', 'aria-label': 'Cargando' },
+    logoMarca('vivo'), h('i', { class: 'arranque-barra', 'aria-hidden': 'true' }, h('b')));
 }
 
 // Botón que está trabajando: se bloquea y muestra un círculo que gira.
@@ -2298,14 +2291,15 @@ async function navegar() {
   let arg;
   if (ruta.startsWith('tarjeta-')) { fn = vistaTarjeta; arg = ruta.slice('tarjeta-'.length); }
   if (!fn) fn = vistaInicio;
-  if (ruta !== 'registrar') {
+  // Nuevo gasto abre al instante si ya tiene guardadas las listas; si no, también muestra la casa.
+  if (ruta !== 'registrar' || !leerCache('config')) {
     const actual = vista.querySelector('.pantalla:not(.cargando):not(.login):not(.arranque)');
     if (actual && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
       actual.classList.add('saliendo');
       await esperar(150);
       if (id !== estado.navId) return;
     }
-    if (!vista.querySelector('.arranque')) mostrar(cargando(ruta));
+    if (!vista.querySelector('.arranque')) mostrar(cargando());
   }
   let nodo;
   try {
