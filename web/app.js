@@ -78,6 +78,8 @@ const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', '
 const ABREV = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
 const ICONOS = {
+  'sin-senal': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9a13 13 0 0 1 4.5-3M21 9a13 13 0 0 0-8-3.9M6 12.5a8.5 8.5 0 0 1 3-1.9M18 12.5a8.5 8.5 0 0 0-3.6-2.2M9 16a4 4 0 0 1 6 0M4 4l16 16"/><circle cx="12" cy="19" r=".8"/></svg>',
+  recargar: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v5h-5"/></svg>',
   lapiz: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="m13.5 6.5 4 4"/></svg>',
   cerrar: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>',
   papelera: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13M10 11v5.5M14 11v5.5"/></svg>',
@@ -583,6 +585,7 @@ const estado = {
   mensajeTarjeta: null,
   form: null,
   oneTapIntentado: false,
+  enviando: false, // hay un envío de la cola en curso
 };
 
 const vista = document.getElementById('vista');
@@ -724,7 +727,7 @@ function borrarCaches() {
 // Con 'no_autorizado' no se muestran datos guardados: la cuenta pudo perder el acceso.
 async function cargar(accion, datos, clave) {
   try {
-    const d = await api.llamar(accion, datos);
+    const d = await llamarApi(accion, datos);
     guardarCache(clave, d);
     estado.pideLogin = false;
     return { datos: d, ts: null };
@@ -782,9 +785,13 @@ async function procesarCola() {
   try {
     const yo = emailSesion();
     if (!yo) { await refrescarCola(); return null; } // sin usuario conocido no se envía nada
-    res = await cola.procesar(api.llamar, yo);
+    // Mientras se envía, la barra de avance ya lo indica: el aviso de espera solo aparece si algo queda sin enviar.
+    estado.enviando = true;
+    pintarAvisos();
+    res = await cola.procesar(llamarApi, yo);
     if (res.detenido === 'no_autorizado') estado.pideLogin = true;
   } catch { /* se reintenta luego */ }
+  estado.enviando = false;
   await refrescarCola();
   return res;
 }
@@ -801,7 +808,7 @@ async function procesarHasta(id) {
 function pintarAvisos() {
   const partes = [];
   if (!navigator.onLine || estado.tsDatos) {
-    partes.push(h('div', { class: 'aviso', role: 'status' }, textoDatosGuardados()));
+    partes.push(h('div', { class: 'aviso aviso-red', role: 'status' }, icono('sin-senal'), h('span', {}, textoDatosGuardados())));
   }
   if (estado.pideLogin && api.configurado()) {
     const caja = h('div', { class: 'aviso aviso-sesion' },
@@ -813,13 +820,13 @@ function pintarAvisos() {
   }
   const pendientes = estado.cola.filter((i) => i.estado === 'pendiente').length;
   const revisar = estado.cola.filter((i) => i.estado === 'revisar').length;
-  if (pendientes) {
-    partes.push(h('div', { class: 'aviso aviso-cola', role: 'status' },
-      pendientes === 1 ? '1 movimiento en espera de envío' : `${pendientes} movimientos en espera de envío`));
+  if (pendientes && !estado.enviando) {
+    partes.push(h('div', { class: 'aviso aviso-cola', role: 'status' }, h('span', { class: 'giro', 'aria-hidden': 'true' }),
+      h('span', {}, pendientes === 1 ? '1 movimiento en espera de envío' : `${pendientes} movimientos en espera de envío`)));
   }
   if (revisar) {
     partes.push(h('a', { class: 'aviso aviso-revisar', href: '#inicio', onclick: (ev) => { ev.preventDefault(); irARevisar(); } },
-      revisar === 1 ? '1 gasto por revisar' : `${revisar} gastos por revisar`));
+      icono('alerta'), h('span', {}, revisar === 1 ? '1 gasto por revisar' : `${revisar} gastos por revisar`), icono('adelante')));
   }
   avisos.replaceChildren(...partes);
 }
@@ -853,9 +860,59 @@ function irARevisar() {
 
 // ---------- Componentes ----------
 
-function cargando() {
-  return h('div', { class: 'pantalla cargando', 'aria-busy': 'true' },
-    h('div', { class: 'esqueleto alto' }), h('div', { class: 'esqueleto' }), h('div', { class: 'esqueleto' }));
+// Mientras se habla con el Sheets, arriba se ve una barra de avance.
+let cargasActivas = 0;
+function ocupado(delta) {
+  cargasActivas = Math.max(0, cargasActivas + delta);
+  document.body.classList.toggle('cargando-datos', cargasActivas > 0);
+}
+async function llamarApi(...args) {
+  ocupado(1);
+  try { return await api.llamar(...args); } finally { ocupado(-1); }
+}
+
+// Silueta de la pantalla que viene, para que la espera no se vea vacía.
+function cargando(ruta = '') {
+  const b = (clase) => h('div', { class: `esq ${clase}` });
+  const filas = (n) => Array.from({ length: n }, () => b('esq-fila'));
+  const col = (...hijos) => h('div', { class: 'esq-col' }, hijos);
+  let cuerpo;
+  if (ruta.startsWith('tarjeta-')) cuerpo = [h('div', { class: 'esq-dos lateral-izq' }, col(b('esq-tarjeta'), b('esq-panel chico')), col(b('esq-linea'), filas(6)))];
+  else if (ruta === 'tarjetas') cuerpo = [b('esq-titulo'), b('esq-hero chico'), b('esq-panel chico'), h('div', { class: 'esq-rejilla' }, b('esq-tarjeta'), b('esq-tarjeta'), b('esq-tarjeta'))];
+  else if (ruta === 'presupuesto') cuerpo = [b('esq-titulo'), b('esq-hero'), h('div', { class: 'esq-dos' }, col(filas(4)), col(filas(6)))];
+  else cuerpo = [b('esq-titulo'), b('esq-hero'), h('div', { class: 'esq-rejilla' }, b('esq-tarjeta'), b('esq-tarjeta'), b('esq-tarjeta'), b('esq-tarjeta')), h('div', { class: 'esq-dos' }, b('esq-panel'), b('esq-panel'))];
+  return h('div', { class: 'pantalla cargando', 'aria-busy': 'true', 'aria-label': 'Cargando' }, cuerpo);
+}
+
+// Botón que está trabajando: se bloquea y muestra un círculo que gira.
+function ocuparBoton(btn, texto) {
+  btn.disabled = true;
+  btn.classList.add('ocupado');
+  if (texto) btn.textContent = texto;
+}
+function liberarBoton(btn, texto) {
+  btn.disabled = false;
+  btn.classList.remove('ocupado');
+  if (texto) btn.textContent = texto;
+}
+
+// Campo con error: tiembla, se pinta de rojo y muestra la nota debajo. Se limpia al corregirlo.
+function limpiarError(campo) {
+  if (!campo) return;
+  campo.classList.remove('con-error', 'tiembla');
+  campo.querySelector(':scope > .nota-error')?.remove();
+}
+function marcarError(campo, texto) {
+  if (!campo) return;
+  limpiarError(campo);
+  campo.append(h('p', { class: 'nota-error', role: 'alert' }, icono('alerta'), texto));
+  void campo.offsetWidth;
+  campo.classList.add('con-error', 'tiembla');
+}
+
+// Aviso de "no hay nada que mostrar", con ícono.
+function vacio(...hijos) {
+  return h('div', { class: 'vacio' }, h('span', { class: 'vacio-ico', 'aria-hidden': 'true' }, icono('lista')), h('p', {}, hijos));
 }
 
 function dato(etiqueta, valor) {
@@ -867,7 +924,7 @@ function confirmarEnLinea(zona, texto, etiquetaSi, alConfirmar) {
   const previo = [...zona.childNodes];
   const cancelar = () => zona.replaceChildren(...previo);
   const si = h('button', { type: 'button', class: 'boton primario', onclick: async () => {
-    si.disabled = true; no.disabled = true; si.textContent = 'Procesando…';
+    ocuparBoton(si, 'Procesando…'); no.disabled = true;
     await alConfirmar();
   } }, etiquetaSi);
   const no = h('button', { type: 'button', class: 'boton', onclick: cancelar }, 'Cancelar');
@@ -1005,12 +1062,18 @@ function vistaError(e) {
   // Si el servidor dio el motivo (p. ej. 'Tu cuenta no tiene acceso a FinFamily.') se muestra tal cual.
   if (e?.codigo === 'no_autorizado') return pantallaLogin(e.delServidor ? e.message : undefined);
   if (e?.codigo === 'sin_configurar') return pantallaSinConfig();
-  const texto = e?.codigo === 'sin_conexion'
-    ? 'Sin conexión y todavía no hay datos guardados en este equipo.'
-    : (e?.message || 'Ocurrió un error.');
-  return h('div', { class: 'pantalla' },
-    h('div', { class: 'vacio' }, h('p', {}, texto),
-      h('button', { type: 'button', class: 'boton', onclick: () => navegar() }, 'Reintentar')));
+  return h('div', { class: 'pantalla' }, estadoError(e, () => navegar()));
+}
+
+// Bloque de error: ícono, qué pasó y un botón para volver a intentar.
+function estadoError(e, alReintentar) {
+  const sinRed = e?.codigo === 'sin_conexion';
+  return h('div', { class: 'estado ' + (sinRed ? 'sin-red' : 'error'), role: 'alert' },
+    h('span', { class: 'estado-ico', 'aria-hidden': 'true' }, icono(sinRed ? 'sin-senal' : 'alerta')),
+    h('h2', {}, sinRed ? 'Sin conexión' : 'Algo salió mal'),
+    h('p', {}, sinRed ? 'Esto todavía no está guardado en este equipo. Revisa tu señal y vuelve a intentar.'
+      : (e?.message || 'No se pudo cargar esta pantalla.')),
+    h('button', { type: 'button', class: 'boton primario', onclick: alReintentar }, icono('recargar'), 'Reintentar'));
 }
 
 // ---------- Por revisar ----------
@@ -1073,7 +1136,8 @@ function etiquetaMedio(id) {
 
 function avisar(texto, tipo = '') {
   document.querySelectorAll('.tostada').forEach((t) => t.remove());
-  const t = h('div', { class: `tostada ${tipo}`.trim(), role: 'status' }, texto);
+  const t = h('div', { class: `tostada ${tipo}`.trim(), role: 'status' }, icono(tipo === 'error' ? 'alerta' : 'check'),
+    h('span', {}, texto), h('i', { class: 'tostada-tiempo', 'aria-hidden': 'true' }));
   document.body.append(t);
   setTimeout(() => t.classList.add('fuera'), 2600);
   setTimeout(() => t.remove(), 3000);
@@ -1111,7 +1175,7 @@ function botonFijo(f, mes, alCambiar) {
     btn.setAttribute('aria-pressed', String(nuevo));
     alCambiar?.(f);
     try {
-      const r = await api.llamar('marcarFijo', { idCliente: uuid(), mes, fila: f.fila, concepto: f.concepto, pagado: nuevo }, { email: emailSesion() });
+      const r = await llamarApi('marcarFijo', { idCliente: uuid(), mes, fila: f.fila, concepto: f.concepto, pagado: nuevo }, { email: emailSesion() });
       f.pagado = !!r.pagado;
       f.pagadoNota = r.pagadoNota || '';
       actualizarCacheFijo(mes, f);
@@ -1205,10 +1269,9 @@ function editarConsumo(t, c) {
     if (inFecha.value && inFecha.value !== (c.fecha || '')) cambios.fecha = inFecha.value;
     if (inNota.value.trim() !== (c.nota || '')) cambios.nota = inNota.value.trim();
     if (!Object.keys(cambios).length) { cerrar(); return; }
-    btn.disabled = true;
-    btn.textContent = 'Guardando…';
+    ocuparBoton(btn, 'Guardando…');
     try {
-      await api.llamar('editarGasto', { ...base, cambios }, { email: emailSesion() });
+      await llamarApi('editarGasto', { ...base, cambios }, { email: emailSesion() });
       cerrar();
       avisar('Cambios guardados', 'ok');
       navegar();
@@ -1225,7 +1288,7 @@ function editarConsumo(t, c) {
         msg.hidden = true;
         confirmarEnLinea(zona, `Se borrará del Sheets: ${limpiarComercio(c.descripcion)}, ${soles(c.monto)}.`, 'Sí, borrar', async () => {
           try {
-            await api.llamar('borrarGasto', base, { email: emailSesion() });
+            await llamarApi('borrarGasto', base, { email: emailSesion() });
             cerrar();
             avisar('Gasto borrado', 'ok');
             navegar();
@@ -1420,19 +1483,19 @@ async function vistaInicio() {
     const resto = orden.slice(5).reduce((s, [, v]) => s + v, 0);
     if (resto > 0) partes.push({ etiqueta: 'Otros conceptos', valor: resto });
     agregar(panel('panel-dona', '¿En qué se fue?', null,
-      partes.length ? dona(partes, 'Total') : h('p', { class: 'vacio' }, 'Todavía no hay consumos este mes.')));
+      partes.length ? dona(partes, 'Total') : vacio('Todavía no hay consumos este mes.')));
 
     const recientes = consumosDe(todas, (t) => t.id !== 'HORMIGA').filter((c) => c.estado !== 'Pagado')
       .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 6);
     agregar(panel('panel-lista', 'Últimos consumos', h('a', { href: '#tarjetas' }, 'Ver todos'),
       recientes.length ? h('ul', { class: 'lista-mov' }, recientes.map((c) => filaMov(c, nombreCortoTC(c.tarjeta))))
-        : h('p', { class: 'vacio' }, 'No hay consumos pendientes.')));
+        : vacio('No hay consumos pendientes.')));
 
     const hormigas = consumosDe(todas, (t) => t.id === 'HORMIGA')
       .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 6);
     agregar(panel('panel-lista panel-hormiga', 'Gastos hormiga', h('a', { href: '#tarjeta-HORMIGA' }, soles(hormiga?.pendiente || 0)),
       hormigas.length ? h('ul', { class: 'lista-mov' }, hormigas.map((c) => filaMov(c, c.medio)))
-        : h('p', { class: 'vacio' }, 'Sin gastos hormiga este mes.')));
+        : vacio('Sin gastos hormiga este mes.')));
     raiz.append(rejilla);
   }
 
@@ -1519,6 +1582,7 @@ async function vistaRegistrar() {
   inMonto.addEventListener('input', () => {
     inMonto.value = inMonto.value.replace(/[^\d.,]/g, '');
     f.monto = inMonto.value;
+    limpiarError(cajaMonto);
   });
   // En la app de gastos del celular el monto se escribe con un teclado propio (sin abrir el del sistema).
   const conTeclado = SOLO_GASTO && matchMedia('(pointer: coarse)').matches;
@@ -1534,6 +1598,7 @@ async function vistaRegistrar() {
       botonesMedio.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.id === m.id)));
       actualizarPrevia();
       plegar();
+      limpiarError(campoMedio);
     } }, h('span', { class: `chip-tc mini tc-${colorMedio(m)}`, 'aria-hidden': 'true' }), m.etiqueta));
 
   const inDesc = h('input', { id: 'descripcion', type: 'text', maxlength: '120', autocomplete: 'off',
@@ -1547,6 +1612,7 @@ async function vistaRegistrar() {
     'aria-pressed': String(f.concepto === c), onclick: () => {
       f.concepto = c; f.conceptoManual = true; pintarConceptos(); sugerencia.textContent = '';
       plegar();
+      limpiarError(campoConcepto);
     } }, catIco(c), c));
   function pintarConceptos() {
     botonesConcepto.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.c === f.concepto)));
@@ -1585,16 +1651,20 @@ async function vistaRegistrar() {
 
   const btnGuardar = h('button', { type: 'submit', class: 'boton primario grande' }, 'Guardar gasto');
 
+  const campoMedio = h('fieldset', { class: 'f-medios' }, h('legend', {}, 'Pagué con'), h('div', { class: 'opciones' }, botonesMedio));
+  const campoConcepto = h('fieldset', { class: 'f-conceptos' }, h('legend', {}, 'Concepto'), h('div', { class: 'opciones chicas' }, botonesConcepto));
+  const campoFecha = h('div', { class: 'campo' }, h('label', { for: 'fecha' }, 'Fecha'), inFecha);
+  inFecha.addEventListener('change', () => limpiarError(campoFecha));
   const form = h('form', { class: 'formulario', novalidate: true },
     (cajaMonto = h('div', { class: 'hero monto-caja' + (conTeclado ? ' con-teclado' : '') }, heroFondo(),
       h('label', { class: 'campo-monto-caja', for: 'monto', onclick: () => cajaMonto.classList.remove('plegado') }, h('span', { class: 'moneda' }, 'S/'), inMonto),
       vistaPrevia,
       conTeclado ? tecladoMonto(inMonto) : null)),
-    h('fieldset', {}, h('legend', {}, 'Pagué con'), h('div', { class: 'opciones' }, botonesMedio)),
+    campoMedio,
     h('div', { class: 'campo' }, h('label', { for: 'descripcion' }, 'Descripción (opcional)'), inDesc, sugerencia),
-    h('fieldset', { class: 'f-conceptos' }, h('legend', {}, 'Concepto'), h('div', { class: 'opciones chicas' }, botonesConcepto)),
+    campoConcepto,
     h('div', { class: 'fila-dos' },
-      h('div', { class: 'campo' }, h('label', { for: 'fecha' }, 'Fecha'), inFecha),
+      campoFecha,
       h('div', { class: 'campo' }, h('label', { for: 'nota' }, 'Nota'), inNota)),
     h('div', { class: 'f-cierre' }, msg, btnGuardar));
 
@@ -1649,22 +1719,26 @@ async function vistaRegistrar() {
     inFecha.max = manana;
     if (!f.fechaManual) { f.fecha = hoyISO(); inFecha.value = f.fecha; actualizarPrevia(); }
     const monto = leerMonto(f.monto);
-    const errores = [];
-    if (!monto) errores.push('Escribe un monto mayor a cero.');
-    if (!f.medio) errores.push('Elige el medio de pago.');
-    if (!f.concepto) errores.push('Elige un concepto.');
-    if (!deISO(f.fecha)) errores.push('Revisa la fecha.');
-    else if (f.fecha > manana) errores.push('La fecha no puede ser futura.');
+    [cajaMonto, campoMedio, campoConcepto, campoFecha].forEach(limpiarError);
     const email = emailSesion();
-    if (!email) errores.push('Inicia sesión para registrar gastos.');
-    if (errores.length) {
-      msg.className = 'mensaje error';
-      msg.replaceChildren(errores[0]);
-      if (!monto) { inMonto.focus(); cajaMonto?.classList.remove('plegado'); }
+    const fallos = [];
+    if (!monto) fallos.push([cajaMonto, 'Escribe cuánto fue.']);
+    if (!f.medio) fallos.push([campoMedio, 'Elige con qué pagaste.']);
+    if (!f.concepto) fallos.push([campoConcepto, 'Elige un concepto.']);
+    if (!deISO(f.fecha)) fallos.push([campoFecha, 'Revisa la fecha.']);
+    else if (f.fecha > manana) fallos.push([campoFecha, 'La fecha no puede ser futura.']);
+    if (fallos.length || !email) {
+      fallos.forEach(([campo, texto]) => marcarError(campo, texto));
+      // La nota va en cada campo; abajo solo se avisa si falta iniciar sesión.
+      msg.className = email ? 'mensaje' : 'mensaje error';
+      msg.replaceChildren(...(email ? [] : ['Inicia sesión para registrar gastos.']));
+      if (fallos.length) fallos[0][0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (!monto) { inMonto.focus({ preventScroll: true }); cajaMonto?.classList.remove('plegado'); }
       return;
     }
-    btnGuardar.disabled = true;
-    btnGuardar.textContent = 'Guardando…';
+    msg.className = 'mensaje';
+    msg.replaceChildren();
+    ocuparBoton(btnGuardar, 'Guardando…');
     const datos = {
       idCliente: uuid(), monto, medio: f.medio, concepto: f.concepto,
       descripcion: (f.descripcion.trim() || f.concepto || '').slice(0, 120), nota: f.nota.trim().slice(0, 200),
@@ -1675,14 +1749,14 @@ async function vistaRegistrar() {
     } catch {
       msg.className = 'mensaje error';
       msg.replaceChildren('No se pudo guardar en este equipo. Intenta de nuevo.');
-      btnGuardar.disabled = false; btnGuardar.textContent = 'Guardar gasto';
+      liberarBoton(btnGuardar, 'Guardar gasto');
       return;
     }
     // Ya está en la cola: se puede registrar el siguiente mientras se envía.
     Object.assign(f, { monto: '', descripcion: '', concepto: null, conceptoManual: false, nota: '' });
     cajaMonto?.classList.remove('plegado');
     inMonto.value = ''; inDesc.value = ''; inNota.value = ''; sugerencia.textContent = ''; pintarConceptos();
-    btnGuardar.disabled = false; btnGuardar.textContent = 'Guardar gasto';
+    liberarBoton(btnGuardar, 'Guardar gasto');
     celebrar(datos.monto);
     const miEnvio = ++ultimoEnvio;
     msg.className = 'mensaje';
@@ -1752,7 +1826,7 @@ async function vistaTarjetas() {
   const proxima = porFecha[0];
   const raiz = h('div', { class: 'pantalla tarjetas' },
     h('header', { class: 'cabecera' }, h('h1', {}, 'Tarjetas')));
-  if (!lista.length) { raiz.append(h('p', { class: 'vacio' }, 'No hay tarjetas para mostrar.')); return raiz; }
+  if (!lista.length) { raiz.append(vacio('No hay tarjetas para mostrar.')); return raiz; }
 
   // Resumen: total, reparto por tarjeta y datos clave
   raiz.append(h('section', { class: 'hero simple' }, heroFondo(),
@@ -1796,7 +1870,7 @@ async function vistaTarjeta(id) {
   marcarDatos(r);
   const t = (r.datos.tarjetas || []).find((x) => x.id === id);
   const volver = h('a', { class: 'volver', href: '#tarjetas' }, icono('atras'), 'Tarjetas');
-  if (!t) return h('div', { class: 'pantalla' }, volver, h('p', { class: 'vacio' }, 'No encontramos esta tarjeta.'));
+  if (!t) return h('div', { class: 'pantalla' }, volver, vacio('No encontramos esta tarjeta.'));
 
   if (estado.selTarjeta !== id) { estado.selTarjeta = id; estado.seleccion = new Set(); }
   const esHormiga = t.id === 'HORMIGA';
@@ -1847,7 +1921,7 @@ async function vistaTarjeta(id) {
 
   const grupos = t.estados || [];
   if (!grupos.length || grupos.every((g) => !(g.consumos || []).length)) {
-    col.append(h('p', { class: 'vacio' }, esHormiga ? 'Sin gastos hormiga este mes.' : 'No hay consumos pendientes.'));
+    col.append(vacio(esHormiga ? 'Sin gastos hormiga este mes.' : 'No hay consumos pendientes.'));
   }
 
   for (const g of grupos) {
@@ -2005,7 +2079,7 @@ async function buscarMeses(mes) {
   for (let k = 1; k <= 24; k++) candidatos.push(sumarMes(mes, -k), sumarMes(mes, k));
   for (let i = 0; i < candidatos.length; i += 6) {
     const lote = candidatos.slice(i, i + 6);
-    const res = await Promise.allSettled(lote.map((c) => api.llamar('presupuesto', { mes: c })));
+    const res = await Promise.allSettled(lote.map((c) => llamarApi('presupuesto', { mes: c })));
     const ok = res.find((x) => x.status === 'fulfilled' && x.value?.meses?.length);
     if (ok) {
       guardarCache('meses', ok.value.meses);
@@ -2026,7 +2100,6 @@ async function vistaPresupuesto() {
     r = await cargar('presupuesto', { mes }, 'presupuesto:' + mes);
   } catch (e) {
     if (e.codigo === 'no_autorizado' || e.codigo === 'sin_configurar') throw e;
-    const reintentar = h('button', { type: 'button', class: 'boton', onclick: () => { estado.mesPres = mes; navegar(); } }, 'Reintentar');
     if (e.codigo === 'datos_invalidos') {
       if (!meses.length) meses = await buscarMeses(mes);
       // El mes de hoy no está: salta al mes disponible más cercano.
@@ -2037,9 +2110,8 @@ async function vistaPresupuesto() {
       return h('div', { class: 'pantalla' },
         h('header', { class: 'cabecera-fila' }, h('div', { class: 'cabecera' }, h('h1', {}, 'Presupuesto')),
           selectorMes(meses, mes, nombreMesClave(mes))),
-        h('div', { class: 'vacio' },
-          h('p', {}, meses.length ? 'Este mes no está en el presupuesto.' : 'Este mes no está en el presupuesto y no se pudo leer la lista de meses.'),
-          meses.length ? null : reintentar));
+        meses.length ? vacio('Este mes no está en el presupuesto.')
+          : estadoError({ message: 'Este mes no está en el presupuesto y no se pudo leer la lista de meses.' }, () => { estado.mesPres = mes; navegar(); }));
     }
     // Sin señal (u otro error) y este mes no está guardado: se muestra el selector con los meses
     // guardados y la próxima vez Presupuesto vuelve al mes actual.
@@ -2047,9 +2119,7 @@ async function vistaPresupuesto() {
     return h('div', { class: 'pantalla' },
       h('header', { class: 'cabecera-fila' }, h('div', { class: 'cabecera' }, h('h1', {}, 'Presupuesto')),
         selectorMes(meses, mes, nombreMesClave(mes))),
-      h('div', { class: 'vacio' },
-        h('p', {}, e.codigo === 'sin_conexion' ? 'Sin conexión: este mes no está guardado en el equipo.' : (e.message || 'Ocurrió un error.')),
-        reintentar));
+      estadoError(e, () => { estado.mesPres = mes; navegar(); }));
   }
   marcarDatos(r);
   const d = r.datos;
@@ -2205,7 +2275,15 @@ async function navegar() {
   let arg;
   if (ruta.startsWith('tarjeta-')) { fn = vistaTarjeta; arg = ruta.slice('tarjeta-'.length); }
   if (!fn) fn = vistaInicio;
-  if (ruta !== 'registrar') mostrar(cargando());
+  if (ruta !== 'registrar') {
+    const actual = vista.querySelector('.pantalla:not(.cargando):not(.login)');
+    if (actual && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      actual.classList.add('saliendo');
+      await esperar(150);
+      if (id !== estado.navId) return;
+    }
+    mostrar(cargando(ruta));
+  }
   let nodo;
   try {
     nodo = await fn(arg);
@@ -2253,6 +2331,7 @@ async function arrancar() {
   document.addEventListener('click', (ev) => { if (!ev.target.closest?.('.cuenta-menu')) cerrarMenusCuenta(); });
   document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') cerrarMenusCuenta(); });
   window.addEventListener('resize', moverIndicador);
+  document.body.append(h('div', { class: 'barra-carga', 'aria-hidden': 'true' }, h('i')));
   // Onda al tocar un botón.
   document.addEventListener('pointerdown', (ev) => {
     const el = ev.target.closest?.('.boton, .opcion, .cuenta-boton');
