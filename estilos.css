@@ -1756,6 +1756,76 @@ body[data-ruta="presupuesto"] { --luz-x: 22%; --luz-2x: 80%; --luz-y: -4%; }
 .nav-marca .logo-marca { transition: transform 420ms var(--suave); }
 .nav-marca:hover .logo-marca { transform: rotate(-6deg) scale(1.08); }
 
+/* ---------- Paneles parejos, detalle de tarjeta, próximo pago y ahorro en cero ---------- */
+
+/* Presupuesto: Ingresos y Ahorros lado a lado con el mismo alto; Gastos a todo lo ancho */
+.rejilla-pres { align-items: stretch; }
+.rejilla-pres > :only-child { grid-column: 1 / -1; }
+.rejilla-pres > .panel { display: flex; flex-direction: column; }
+
+/* Ahorro sin movimiento en el mes */
+.ahorro-vacio { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 14px 8px 6px; }
+.ahorro-vacio > strong { font-size: 1rem; }
+.ahorro-vacio-ico { position: relative; width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; color: var(--marca-tinta); background: var(--marca-suave); }
+.ahorro-vacio-ico::after { content: ''; position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--accion); opacity: 0; animation: onda-meta 2.8s ease-out infinite; }
+.ahorro-vacio-ico .icono, .ahorro-vacio-ico .icono svg { width: 26px; height: 26px; }
+@keyframes onda-meta { 0% { transform: scale(0.8); opacity: 0.5; } 100% { transform: scale(1.7); opacity: 0; } }
+.ahorro-metas { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.ahorro-metas li { font-size: 0.78rem; font-weight: 600; color: var(--tinta-2); padding: 5px 11px; border-radius: 99px; border: 1px dashed var(--borde-fuerte); }
+
+/* Inicio: los paneles de una misma fila miden lo mismo */
+.rejilla-2b, .rejilla-3 { align-items: stretch; }
+.rejilla-3 > .panel, .rejilla-2b > .panel { display: flex; flex-direction: column; }
+.panel-personas .personas { flex: 1; }
+.persona { justify-content: space-between; }
+.panel-accion { margin-top: auto; align-self: stretch; justify-content: center; gap: 8px; }
+.panel-accion .icono, .panel-accion .icono svg { width: 17px; height: 17px; }
+.panel-accion:hover .icono { transform: rotate(90deg); }
+.panel-accion .icono { transition: transform 320ms var(--suave); }
+
+/* Detalle de tarjeta: una franja suave marca qué tan grande es cada consumo */
+.consumo { position: relative; isolation: isolate; }
+.consumo::before {
+  content: ''; position: absolute; z-index: -1; right: 0; top: 7px; bottom: 7px; width: calc(var(--p, 0%) * 0.6);
+  border-radius: 12px 0 0 12px; pointer-events: none; transform-origin: 100% 50%;
+  background: linear-gradient(to left, color-mix(in srgb, var(--accion) 16%, transparent), color-mix(in srgb, var(--accion) 5%, transparent));
+}
+.vista.entrada .consumo::before { animation: franja 900ms var(--suave) 400ms both; }
+@keyframes franja { from { transform: scaleX(0); } }
+.consumo .derecha { min-width: 92px; }
+.consumo .derecha strong { font-size: 0.95rem; }
+
+/* Menú lateral: próximo pago */
+/* Solo en computadora: en celular el menú es la barra de abajo */
+.barra-nav a.nav-proximo { display: none; }
+@media (min-width: 1024px) {
+  .rejilla-pres { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+  /* Gastos: la lista baja por una columna y sigue en la otra */
+  .seccion-gastos .filas-pres { display: block; columns: 2; column-gap: 40px; }
+  .seccion-gastos .filas-pres li { break-inside: avoid; margin-bottom: 4px; }
+
+  .barra-nav a.nav-proximo {
+    display: flex; flex-direction: column; align-items: stretch; gap: 6px; margin-top: auto; padding: 14px;
+    border-radius: 18px; border: 1px solid var(--borde); color: var(--tinta); font-size: 0.86rem;
+    background: linear-gradient(150deg, var(--marca-suave), var(--sup) 70%);
+    transition: transform 320ms var(--suave), box-shadow 320ms var(--suave), border-color 220ms ease;
+    animation: subir 520ms var(--suave) both;
+  }
+  .barra-nav a.nav-proximo:hover { transform: translateY(-3px); box-shadow: var(--sombra); border-color: var(--borde-fuerte); background: linear-gradient(150deg, var(--marca-suave), var(--sup) 70%); }
+  .barra-nav a.nav-proximo.aviso { background: linear-gradient(150deg, var(--aviso-suave), var(--sup) 70%); }
+  .barra-nav a.nav-proximo.mal { background: linear-gradient(150deg, var(--mal-suave), var(--sup) 70%); }
+  .nav-proximo:not([hidden]) + .nav-pie { margin-top: 14px; }
+  .np-cab { display: flex; align-items: center; gap: 7px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--tinta-2); }
+  .np-cab > span:nth-child(2) { flex: 1; }
+  .barra-nav a.nav-proximo .np-cab .icono, .barra-nav a.nav-proximo .np-cab .icono svg { width: 15px; height: 15px; }
+  .np-cab .icono:last-child { transition: transform 300ms var(--suave); }
+  .nav-proximo:hover .np-cab .icono:last-child { transform: translateX(3px); }
+  .np-monto { font-size: 1.35rem; font-weight: 800; letter-spacing: -0.025em; line-height: 1.15; }
+  .np-pie { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--tinta-2); }
+  .np-nombre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nav-proximo .pill { align-self: flex-start; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }

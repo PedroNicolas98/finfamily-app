@@ -78,6 +78,7 @@ const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', '
 const ABREV = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
 const ICONOS = {
+  meta: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.6"/><circle cx="12" cy="12" r="0.9"/></svg>',
   novedad: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9z"/><path d="M18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>',
   'sin-senal': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9a13 13 0 0 1 4.5-3M21 9a13 13 0 0 0-8-3.9M6 12.5a8.5 8.5 0 0 1 3-1.9M18 12.5a8.5 8.5 0 0 0-3.6-2.2M9 16a4 4 0 0 1 6 0M4 4l16 16"/><circle cx="12" cy="19" r=".8"/></svg>',
   recargar: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v5h-5"/></svg>',
@@ -841,7 +842,30 @@ async function procesarHasta(id) {
 
 // ---------- Avisos superiores ----------
 
+// Menú lateral (computadora): la tarjeta que vence primero, tomada de lo último guardado.
+function pintarProximoPago() {
+  const caja = document.querySelector('.nav-proximo');
+  if (!caja) return;
+  const lista = leerCache('tarjetas')?.datos?.tarjetas || [];
+  const prox = lista.filter((t) => t.id !== 'HORMIGA' && t.pendiente > 0 && t.proximoVence)
+    .sort((a, b) => String(a.proximoVence).localeCompare(String(b.proximoVence)))[0];
+  if (!prox || !api.emailGuardado()) { caja.hidden = true; caja.dataset.clave = ''; return; }
+  const e = estadoVence(prox.proximoVence, prox.pendiente);
+  const clave = [prox.id, prox.pendiente, e.texto].join('|');
+  if (caja.dataset.clave === clave) return; // sin cambios: no se vuelve a animar
+  caja.dataset.clave = clave;
+  caja.hidden = false;
+  caja.href = `#tarjeta-${prox.id}`;
+  caja.className = `nav-proximo ${e.clase}`.trim();
+  caja.replaceChildren(
+    h('span', { class: 'np-cab' }, icono('calendario'), h('span', {}, 'Próximo pago'), icono('adelante')),
+    h('strong', { class: 'np-monto' }, soles(prox.pendiente)),
+    h('span', { class: 'np-pie' }, chipTC(prox.id, 'mini'), h('span', { class: 'np-nombre' }, nombreCortoTC(prox))),
+    h('span', { class: `pill ${e.clase}`.trim() }, e.texto));
+}
+
 function pintarAvisos() {
+  pintarProximoPago();
   const partes = [];
   if (!navigator.onLine || estado.tsDatos) {
     partes.push(h('div', { class: 'aviso aviso-red', role: 'status' }, icono('sin-senal'), h('span', {}, textoDatosGuardados())));
@@ -1278,7 +1302,7 @@ function panelPersonas(datos) {
           h('span', { class: 'suave' }, `${Math.round((p.total / total) * 100)}% · ${p.consumos} consumo${p.consumos === 1 ? '' : 's'}`)),
         h('i', { class: `punto d${i}`, 'aria-hidden': 'true' })),
       h('p', { class: 'persona-total', 'data-rico': '', 'data-contar': String(p.total) }, soles(0)),
-      h('ul', { class: 'persona-conceptos' }, (p.conceptos || []).slice(0, 3).map((x) => h('li', {},
+      h('ul', { class: 'persona-conceptos' }, (p.conceptos || []).slice(0, 5).map((x) => h('li', {},
         catIco(x.concepto), h('span', {}, x.concepto), h('strong', {}, soles(x.monto)))))))));
 }
 
@@ -1547,7 +1571,8 @@ async function vistaInicio() {
       .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 6);
     agregar(panel('panel-lista panel-hormiga', 'Gastos hormiga', h('a', { href: '#tarjeta-HORMIGA' }, soles(hormiga?.pendiente || 0)),
       hormigas.length ? h('ul', { class: 'lista-mov' }, hormigas.map((c) => filaMov(c, c.medio)))
-        : vacio('Sin gastos hormiga este mes.')));
+        : vacio('Sin gastos hormiga este mes.'),
+      h('a', { class: 'boton panel-accion', href: '#registrar' }, icono('mas'), 'Registrar gasto')));
     raiz.append(rejilla);
   }
 
@@ -1976,6 +2001,7 @@ async function vistaTarjeta(id) {
     col.append(vacio(esHormiga ? 'Sin gastos hormiga este mes.' : 'No hay consumos pendientes.'));
   }
 
+  const montoMax = Math.max(1, ...grupos.flatMap((g) => (g.consumos || []).map((c) => Math.abs(c.monto) || 0)));
   for (const g of grupos) {
     const consumos = g.consumos || [];
     if (!consumos.length) continue;
@@ -2013,14 +2039,15 @@ async function vistaTarjeta(id) {
         const etiquetaEstado = enEspera(c) ? 'En espera' : c.estado === 'Pagado' ? 'Pagado' : '';
         const sub = [fechaCorta(c.fecha), c.concepto, esHormiga ? c.medio : ''].filter(Boolean).join(' · ');
         return h('li', { 'data-texto': normalizar(`${c.descripcion} ${limpiarComercio(c.descripcion)} ${c.concepto || ''} ${esHormiga ? c.medio || '' : ''}`) },
-          h('label', { class: 'consumo' + (puede ? '' : ' inactivo'), title: c.descripcion },
+          h('label', { class: 'consumo' + (puede ? '' : ' inactivo'), title: c.descripcion,
+            style: `--p: ${Math.round(Math.sqrt(Math.abs(c.monto || 0) / montoMax) * 100)}%` }, // raíz: un consumo muy grande no aplasta a los demás
           esHormiga ? null : caja,
           catIco(c.concepto),
           h('div', { class: 'consumo-texto' }, h('span', {}, limpiarComercio(c.descripcion)), h('span', { class: 'suave' }, sub)),
-          h('div', { class: 'derecha' }, h('strong', {}, soles(c.monto)),
-            etiquetaEstado ? h('span', { class: 'etiqueta-estado' }, etiquetaEstado) : null),
           enEspera(c) ? null : h('button', { type: 'button', class: 'boton-editar', title: 'Editar', 'aria-label': `Editar ${limpiarComercio(c.descripcion)}`,
-            onclick: (ev) => { ev.preventDefault(); ev.stopPropagation(); editarConsumo(t, c); } }, icono('lapiz'))));
+            onclick: (ev) => { ev.preventDefault(); ev.stopPropagation(); editarConsumo(t, c); } }, icono('lapiz')),
+          h('div', { class: 'derecha' }, h('strong', {}, soles(c.monto)),
+            etiquetaEstado ? h('span', { class: 'etiqueta-estado' }, etiquetaEstado) : null)));
       })),
       zona));
   }
@@ -2192,6 +2219,15 @@ async function vistaPresupuesto() {
     if (!filas.length && !total) return null;
     const max = Math.max(...filas.map((f) => Math.abs(f.monto || 0)), 1);
     const ordenadas = clave === 'gastos' ? [...filas].sort((a, b) => (b.monto || 0) - (a.monto || 0)) : filas;
+    if (clave === 'ahorros' && !(total > 0)) {
+      return h('section', { class: 'panel seccion-pres seccion-ahorros sin-ahorro' },
+        h('div', { class: 'panel-cab' }, tituloSeccion(titulo), h('strong', { class: 'cifra-cab' }, soles(0))),
+        h('div', { class: 'ahorro-vacio' },
+          h('span', { class: 'ahorro-vacio-ico', 'aria-hidden': 'true' }, icono('meta')),
+          h('strong', {}, 'Sin ahorro este mes'),
+          libre > 0 ? h('span', { class: 'pill ok' }, `${soles(libre)} libres`) : null,
+          filas.length ? h('ul', { class: 'ahorro-metas' }, filas.map((f) => h('li', {}, f.concepto))) : null));
+    }
     return h('section', { class: `panel seccion-pres seccion-${clave}` },
       h('div', { class: 'panel-cab' }, tituloSeccion(titulo),
         clave === 'gastos' && fijos.length ? resumenFijos : null,
@@ -2276,9 +2312,8 @@ async function vistaPresupuesto() {
       selectorMes(d.meses || meses, d.mes, nombreMesClave(d.mes) || d.etiquetaMes)),
     hero,
     tot.saldo < 0 ? h('p', { class: 'mensaje error' }, `Los gastos y ahorros superan a los ingresos por ${soles(-tot.saldo)}.`) : null,
-    h('div', { class: 'rejilla-pres' },
-      h('div', { class: 'col' }, secciones[0], secciones[1]),
-      secciones[2]));
+    h('div', { class: 'rejilla-pres' }, secciones[0], secciones[1]),
+    secciones[2]);
 }
 
 function cmpMes(a, b) {
@@ -2461,7 +2496,9 @@ function construirNav() {
     enlace('tarjetas', 'Tarjetas'),
     enlace('registrar', 'Registrar gasto', 'central'),
     enlace('presupuesto', 'Presupuesto'),
+    h('a', { class: 'nav-proximo', hidden: true }),
     h('div', { class: 'nav-pie' }, api.emailGuardado() ? botonCuenta('nav') : null));
+  pintarProximoPago();
   marcarNav(location.hash.slice(1) || 'inicio');
 }
 
