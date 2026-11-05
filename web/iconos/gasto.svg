@@ -1,11 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="FinFamily Gasto">
   <defs>
-    <linearGradient id="fondo" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2A56A8"/>
-      <stop offset="1" stop-color="#12264F"/>
-    </linearGradient>
+    <linearGradient id="fondo" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6A89C2"/><stop offset=".55" stop-color="#2A56A8"/><stop offset="1" stop-color="#12264F"/></linearGradient>
+    <radialGradient id="luz" cx=".28" cy=".18" r=".75"><stop offset="0" stop-color="#fff" stop-opacity=".38"/><stop offset=".6" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="blanco" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#DCE6FA"/></linearGradient>
+    <linearGradient id="tinta" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A56A8"/><stop offset="1" stop-color="#12264F"/></linearGradient>
   </defs>
-  <rect width="512" height="512" rx="116" fill="url(#fondo)"/>
-  <path d="M256 156v200M156 256h200" fill="none" stroke="#FFFFFF" stroke-width="44" stroke-linecap="round"/>
-  <circle cx="372" cy="150" r="32" fill="#6BE3C3"/>
+  <path d="M256 0C76.8 0 0 76.8 0 256s76.8 256 256 256 256-76.8 256-256S435.2 0 256 0z" fill="url(#fondo)"/>
+  <path d="M256 0C76.8 0 0 76.8 0 256s76.8 256 256 256 256-76.8 256-256S435.2 0 256 0z" fill="url(#luz)"/>
+  <path d="M256 8C84 8 8 84 8 256s76 248 248 248 248-76 248-248S428 8 256 8z" fill="none" stroke="#fff" stroke-opacity=".2" stroke-width="5"/>
+  <g>
+    <path d="M256 148v216M148 256h216" fill="none" stroke="url(#blanco)" stroke-width="48" stroke-linecap="round"/>
+    <circle cx="376" cy="142" r="40" fill="#12264F" fill-opacity=".35"/>
+    <circle cx="376" cy="142" r="30" fill="#3FD3AE"/>
+  </g>
 </svg>
