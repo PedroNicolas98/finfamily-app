@@ -1879,14 +1879,19 @@ body.menu-chico { --ancho-menu: 76px; }
   .col-pila { gap: 20px; }
   .rejilla-3.dos { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); }
 
-  body { padding-left: var(--ancho-menu); transition: background-color 240ms ease, color 240ms ease, --luz-x 1100ms var(--suave), --luz-2x 1100ms var(--suave), --luz-y 1100ms var(--suave), padding-left 320ms var(--suave); }
-  .barra-nav { width: var(--ancho-menu); transition: width 320ms var(--suave), padding 320ms var(--suave); }
+  /* El ancho cambia de una vez: la animación la hace el navegador con una foto de antes y otra de después */
+  body { padding-left: var(--ancho-menu); }
+  .barra-nav { width: var(--ancho-menu); }
+  .barra-nav .nav-marca { padding-left: 3px; }
+  /* Mismas medidas con el menú abierto u oculto, para que los íconos no se muevan al plegar */
+  .barra-nav a:not(.nav-proximo) { min-height: 44px; }
+  .cuenta-menu.nav .cuenta-boton { padding-left: 5px; }
   .barra-seleccion, .tostada { left: calc(50% + var(--ancho-menu) / 2); }
   .nav-plegar {
     display: grid; place-items: center; position: fixed; z-index: 45; top: 30px; left: calc(var(--ancho-menu) - 13px);
     width: 26px; height: 26px; padding: 0; border-radius: 50%; cursor: pointer;
     border: 1px solid var(--borde); background: var(--sup); color: var(--tinta-2); box-shadow: var(--sombra);
-    transition: left 320ms var(--suave), color 200ms ease, border-color 200ms ease, transform 200ms var(--suave);
+    transition: color 200ms ease, border-color 200ms ease, transform 200ms var(--suave);
   }
   .nav-plegar:hover { color: var(--marca-tinta); border-color: var(--borde-fuerte); transform: scale(1.12); }
   .nav-plegar .icono, .nav-plegar .icono svg { width: 14px; height: 14px; }
@@ -1895,19 +1900,39 @@ body.menu-chico { --ancho-menu: 76px; }
 
   /* Menú oculto: queda una columna de íconos */
   body.menu-chico .barra-nav { padding-inline: 14px; overflow: visible; }
-  body.menu-chico .barra-nav .nav-marca { padding: 2px 0 22px; justify-content: center; }
+  body.menu-chico .barra-nav .nav-marca { padding: 2px 0 22px 5px; }
   body.menu-chico .nav-marca .marca-texto,
   body.menu-chico .barra-nav a > span:not(.icono),
   body.menu-chico .barra-nav a.nav-proximo,
   body.menu-chico .cuenta-boton-texto,
   body.menu-chico .cuenta-menu.nav .cuenta-boton > .icono { display: none; }
-  body.menu-chico .barra-nav a { justify-content: center; padding: 12px 0; }
+  body.menu-chico .barra-nav a { justify-content: center; padding: 11px 0; }
   body.menu-chico .barra-nav a[aria-current="page"]:not(.central)::before { left: -14px; }
-  body.menu-chico .barra-nav a.central { padding: 13px 0; border-radius: 16px; }
-  body.menu-chico .cuenta-menu.nav .cuenta-boton { justify-content: center; padding: 5px; border-radius: 50%; width: 48px; }
+  body.menu-chico .barra-nav a.central { padding: 11px 0; }
+  body.menu-chico .cuenta-menu.nav .cuenta-boton { justify-content: center; padding: 8px 7px; border-radius: 18px; width: 48px; }
   body.menu-chico .cuenta-menu.nav .cuenta-panel { right: auto; left: 0; width: 290px; }
-  body.menu-chico .nav-pie { margin-top: auto; }
+  body.menu-chico .barra-nav .nav-pie { margin-top: auto; }
 }
+
+/* ---------- Ocultar o mostrar el menú: una sola animación ---------- */
+html[data-vt="menu"]::view-transition-old(root) { display: none; }
+html[data-vt="menu"]::view-transition-new(root) { animation: none; }
+::view-transition-group(menu), ::view-transition-group(contenido), ::view-transition-group(plegar), ::view-transition-group(central) {
+  animation-duration: 420ms; animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* El menú: la foto de antes y la de después quedan ancladas arriba a la izquierda; el ancho que cambia las va tapando o destapando */
+/* El fondo del menú se queda firme; solo se funde lo que hay adentro */
+::view-transition-group(menu) { background: var(--sup); box-shadow: 1px 0 0 var(--borde); overflow: clip; }
+::view-transition-old(menu), ::view-transition-new(menu) { width: 100%; height: 100%; object-fit: none; object-position: 0 0; }
+/* Las dos fotos se funden a la vez durante todo el recorrido: lo que no cambia de sitio (logo, íconos, avatar) se ve quieto */
+::view-transition-old(menu), ::view-transition-new(menu), ::view-transition-old(central), ::view-transition-new(central) { animation-duration: 420ms; animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1); }
+/* "Registrar gasto" se encoge desde el centro hasta quedar en el "+" */
+::view-transition-group(central) { border-radius: 14px; overflow: clip; z-index: 2; }
+::view-transition-old(central), ::view-transition-new(central) { width: 100%; height: 100%; object-fit: none; object-position: 50% 50%; }
+::view-transition-group(plegar) { z-index: 3; }
+/* El contenido no se funde: ya con su forma nueva, se desliza hasta su lugar y el borde lo va destapando */
+::view-transition-old(contenido) { display: none; }
+::view-transition-new(contenido) { animation: none; width: 100%; height: 100%; object-fit: none; object-position: 0 0; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

@@ -2494,7 +2494,7 @@ function nombrarParaTransicion(idTarjeta) {
 }
 
 let turnoTransicion = 0;
-function conTransicion(tipo, cambio, idTarjeta) {
+function conTransicion(tipo, cambio, idTarjeta, nombrar = () => nombrarParaTransicion(idTarjeta)) {
   if (!puedeTransicionar()) { cambio(); return; }
   const turno = ++turnoTransicion;
   const raiz = document.documentElement;
@@ -2503,9 +2503,9 @@ function conTransicion(tipo, cambio, idTarjeta) {
     if (hecho) return;
     hecho = true;
     cambio();
-    nombrarParaTransicion(idTarjeta);
+    nombrar();
   };
-  nombrarParaTransicion(idTarjeta);
+  nombrar();
   raiz.dataset.vt = tipo;
   let t;
   try { t = document.startViewTransition(una); } catch { una(); }
@@ -2615,10 +2615,21 @@ function aplicarMenu() {
 function alternarMenu() {
   const chico = !document.body.classList.contains('menu-chico');
   try { localStorage.setItem('ff:menu', chico ? 'chico' : 'ancho'); } catch { /* dura hasta recargar */ }
-  document.body.classList.toggle('menu-chico', chico);
   cerrarMenusCuenta();
-  setTimeout(moverIndicador, 60);
-  setTimeout(moverIndicador, 360);
+  // Una sola animación del navegador: el menú se pliega, el botón viaja con el borde,
+  // "Registrar gasto" se encoge hasta quedar en el "+" y la página se desliza a su lugar.
+  const nombrar = () => {
+    limpiarNombres();
+    const nav = document.getElementById('nav');
+    nav.style.viewTransitionName = 'menu';
+    nav.querySelector('.nav-plegar')?.style.setProperty('view-transition-name', 'plegar');
+    nav.querySelector('a.central')?.style.setProperty('view-transition-name', 'central');
+    vista.style.viewTransitionName = 'contenido';
+  };
+  conTransicion('menu', () => {
+    document.body.classList.toggle('menu-chico', chico);
+    moverIndicador();
+  }, null, nombrar);
 }
 
 function construirNav() {
