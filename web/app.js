@@ -1671,6 +1671,8 @@ async function vistaInicio() {
     h('span', { class: 'hero-pagar-cab' }, 'Por pagar', icono('adelante')),
     h('strong', { class: 'hero-pagar-monto', 'data-rico': '', 'data-contar': String(d.totalPorPagar || 0) }, soles(0)),
     conDeuda.length ? barraPartes(conDeuda.map((t) => ({ etiqueta: nombreCortoTC(t), valor: t.pendiente, clase: `tc-${t.id}` }))) : null,
+    conDeuda.length > 1 ? h('ul', { class: 'hero-leyenda compacta' }, conDeuda.slice(0, 3).map((t) => h('li', {},
+      chipTC(t.id, 'mini'), h('span', {}, nombreCortoTC(t)), h('b', {}, `${Math.round((t.pendiente / (d.totalPorPagar || 1)) * 100)}%`)))) : null,
     h('span', { class: 'hero-pagar-pie' }, icono('calendario'),
       proxima ? `Próximo: ${fechaCorta(proxima.proximoVence)} · ${nombreCortoTC(proxima)}` : 'Sin vencimientos pendientes')));
   if (p && !esHoy) {
@@ -1794,8 +1796,8 @@ async function vistaInicio() {
     if (resto > 0) partes.push({ etiqueta: 'Otros conceptos', valor: resto });
     // Un solo panel con dos vistas del mismo gasto: por día y por concepto.
     agregar(panelPestanas('panel-gasto', [
-      { etiqueta: 'Por día', lado: `${soles(dias.total)} en 30 días`, pista: 'Últimos 30 días. Cuenta lo que falta pagar en tarjetas y los gastos hormiga.', nodo: dias.nodo },
-      { etiqueta: 'Por concepto', lado: soles(orden.reduce((s, [, v]) => s + v, 0)), pista: 'Lo que falta pagar en tarjetas y los gastos hormiga, por concepto.',
+      { etiqueta: 'Gasto por día', lado: `${soles(dias.total)} en 30 días`, pista: 'Últimos 30 días. Cuenta lo que falta pagar en tarjetas y los gastos hormiga.', nodo: dias.nodo },
+      { etiqueta: 'Gasto por concepto', lado: soles(orden.reduce((s, [, v]) => s + v, 0)), pista: 'Lo que falta pagar en tarjetas y los gastos hormiga, por concepto.',
         nodo: h('div', { class: 'dona-ancha' }, partes.length ? dona(partes, 'Total') : vacio('Todavía no hay consumos este mes.')) },
     ]));
 
@@ -2555,42 +2557,62 @@ async function vistaPresupuesto() {
   ];
   const mesNombre = (nombreMesClave(d.mes) || d.etiquetaMes || '').split(' ')[0].toLowerCase();
   const deltas = { ingresos: h('span', { class: 'hero-delta' }), gastos: h('span', { class: 'hero-delta' }), ahorros: h('span', { class: 'hero-delta' }), saldo: h('span', { class: 'hero-delta' }) };
-  // En vez de repetir el panel de Inicio, aquí se compara el saldo de todos los meses del presupuesto.
-  const listaBarras = d.meses || meses;
-  const saldos = new Map([[d.mes, tot.saldo || 0]]);
-  const INICIALES = ['E', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
-  const barrasMes = listaBarras.map((m) => {
-    const nMes = Number(m.clave.slice(5, 7));
-    const b = h('button', { type: 'button', class: 'mb-col' + (m.clave === d.mes ? ' actual' : '') + (m.clave === mesActual() ? ' hoy' : ''),
-      'aria-label': nombreMesClave(m.clave), 'aria-current': m.clave === d.mes ? 'true' : null,
-      onclick: () => {
-        if (m.clave === d.mes) return;
-        estado.sentido = cmpMes(m.clave, d.mes) > 0 ? 'adelante' : 'atras';
-        estado.mesPres = m.clave;
-        navegar();
-      } },
-      h('span', { class: 'mb-barra' }, h('i')),
-      h('span', { class: 'mb-letra' }, INICIALES[nMes - 1] || '', nMes === 1 ? h('small', {}, `'${m.clave.slice(2, 4)}`) : null));
-    return [m.clave, b];
-  });
+  // Gráfico de saldo por mes, pensado para entenderse de un vistazo:
+  //  - pocos meses (los dos anteriores, el elegido y los cuatro siguientes), con su nombre y el monto escrito encima;
+  //  - una línea de cero: lo que sobra sube, lo que falta baja y va en rojo;
+  //  - los meses que todavía no tienen ingresos cargados en el Sheets se marcan como "sin datos" en vez de
+  //    aparecer como una gran pérdida.
+  const todosMeses = d.meses || meses;
+  const CUANTOS = matchMedia('(max-width: 640px)').matches ? 5 : 7;
+  const iElegido = Math.max(0, todosMeses.findIndex((m) => m.clave === d.mes));
+  const desde = Math.max(0, Math.min(iElegido - (CUANTOS === 5 ? 1 : 2), todosMeses.length - CUANTOS));
+  const ventana = todosMeses.slice(desde, desde + CUANTOS);
+  const ABR_MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const datosMes = new Map([[d.mes, { saldo: tot.saldo || 0, ingresos: tot.ingresos || 0 }]]);
+  const plano = h('div', { class: 'mb-plano' });
+  const leyendaMeses = h('ul', { class: 'mb-leyenda' });
   const pintarBarras = () => {
-    const max = Math.max(1, ...[...saldos.values()].map((v) => Math.abs(v)));
-    for (const [clave, b] of barrasMes) {
-      const v = saldos.get(clave);
-      b.classList.toggle('cargando', v == null);
-      if (v == null) continue;
-      b.classList.toggle('negativo', v < 0);
-      b.querySelector('i').style.height = `${Math.max(5, Math.round((Math.abs(v) / max) * 100))}%`;
-      b.title = `${nombreMesClave(clave)}: ${soles(v)}`;
-      b.dataset.valor = solesCorto(v);
-    }
+    const conDatos = ventana.map((m) => datosMes.get(m.clave)).filter((x) => x && x.ingresos > 0).map((x) => x.saldo);
+    const maxSobra = Math.max(0, ...conDatos);
+    const maxFalta = Math.max(0, ...conDatos.map((v) => -v));
+    const rango = (maxSobra + maxFalta) || 1;
+    plano.style.setProperty('--cero', `${((maxFalta / rango) * 100).toFixed(1)}%`); // altura de la línea de cero
+    const vistos = new Set();
+    plano.replaceChildren(...ventana.map((m) => {
+      const x = datosMes.get(m.clave);
+      const nMes = Number(m.clave.slice(5, 7));
+      const tipo = !x ? 'cargando' : !(x.ingresos > 0) ? 'nodato' : x.saldo < 0 ? 'falta' : 'sobra';
+      vistos.add(tipo);
+      const alto = tipo === 'sobra' || tipo === 'falta' ? Math.max(3, (Math.abs(x.saldo) / rango) * 100) : 0;
+      const texto = tipo === 'cargando' ? '…' : tipo === 'nodato' ? 'sin datos'
+        : `${x.saldo < 0 ? '−' : ''}${solesCorto(Math.abs(x.saldo))}`;
+      const explicacion = tipo === 'nodato' ? `${nombreMesClave(m.clave)}: todavía no tiene ingresos cargados en el Sheets`
+        : tipo === 'cargando' ? `${nombreMesClave(m.clave)}: cargando`
+          : `${nombreMesClave(m.clave)}: ${x.saldo < 0 ? 'faltan' : 'sobran'} ${soles(Math.abs(x.saldo))}`;
+      return h('button', { type: 'button', class: `mb-col ${tipo}${m.clave === d.mes ? ' actual' : ''}`, style: `--h: ${alto.toFixed(1)}%`,
+        title: explicacion, 'aria-label': explicacion, 'aria-current': m.clave === d.mes ? 'true' : null,
+        onclick: () => {
+          if (m.clave === d.mes) return;
+          estado.sentido = cmpMes(m.clave, d.mes) > 0 ? 'adelante' : 'atras';
+          estado.mesPres = m.clave;
+          navegar();
+        } },
+        h('span', { class: 'mb-zona' }, h('i', { class: 'mb-barra' }), h('b', { class: 'mb-valor' }, texto)),
+        h('span', { class: 'mb-mes' }, ABR_MES[nMes - 1] || '',
+          nMes === 1 || m === ventana[0] ? h('small', {}, m.clave.slice(0, 4)) : null,
+          m.clave === mesActual() ? h('em', {}, 'hoy') : null));
+    }));
+    // La leyenda solo nombra lo que de verdad aparece en el gráfico.
+    const nombres = { sobra: 'Sobra', falta: 'Falta', nodato: 'Sin ingresos cargados' };
+    leyendaMeses.replaceChildren(...['sobra', 'falta', 'nodato'].filter((t) => vistos.has(t))
+      .map((t) => h('li', {}, h('i', { class: `mb-punto ${t}`, 'aria-hidden': 'true' }), nombres[t])));
   };
   // De los otros meses se usa lo guardado en el equipo; lo que falte se pide de a tres, sin frenar la pantalla.
   const faltan = [];
-  for (const m of listaBarras) {
+  for (const m of ventana) {
     if (m.clave === d.mes) continue;
     const guardado = leerCache('presupuesto:' + m.clave)?.datos?.totales;
-    if (guardado) saldos.set(m.clave, guardado.saldo || 0); else faltan.push(m.clave);
+    if (guardado) datosMes.set(m.clave, { saldo: guardado.saldo || 0, ingresos: guardado.ingresos || 0 }); else faltan.push(m.clave);
   }
   pintarBarras();
   if (faltan.length && navigator.onLine) {
@@ -2599,7 +2621,7 @@ async function vistaPresupuesto() {
       for (let k = 0; k < faltan.length; k += 3) {
         if (navId !== estado.navId) return; // se cambió de pantalla
         await Promise.all(faltan.slice(k, k + 3).map((clave) => cargar('presupuesto', { mes: clave }, 'presupuesto:' + clave)
-          .then((x) => { if (x?.datos?.totales) saldos.set(clave, x.datos.totales.saldo || 0); }).catch(() => {})));
+          .then((x) => { const t = x?.datos?.totales; if (t) datosMes.set(clave, { saldo: t.saldo || 0, ingresos: t.ingresos || 0 }); }).catch(() => {})));
         pintarBarras();
       }
     })();
@@ -2610,9 +2632,9 @@ async function vistaPresupuesto() {
       h('p', { class: 'hero-monto', 'data-rico': '', 'data-contar': String(tot.saldo || 0) }, soles(0)),
       h('p', { class: 'hero-personal' }, h('span', { class: 'avatares' }, avatar('Pedro'), avatar('Britney')),
         h('span', {}, h('strong', {}, soles(tot.saldoPersonal)), ' c/u'))),
-    h('div', { class: 'meses-barras', role: 'group', 'aria-label': 'Saldo de cada mes' },
-      h('span', { class: 'mb-titulo' }, 'Saldo por mes'),
-      h('div', { class: 'mb-fila' }, barrasMes.map(([, b]) => b))),
+    h('div', { class: 'meses-barras', role: 'group', 'aria-label': 'Lo que sobra o falta cada mes' },
+      h('div', { class: 'mb-cab' }, h('span', { class: 'mb-titulo' }, 'Lo que sobra o falta cada mes'), leyendaMeses),
+      plano),
     h('ul', { class: 'hero-datos' },
       heroDato('sube', 'Ingresos', soles(tot.ingresos), deltas.ingresos),
       heroDato('baja', 'Gastos', soles(tot.gastos), deltas.gastos),
