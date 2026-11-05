@@ -487,34 +487,126 @@ function dona(partes, etiquetaCentro) {
 }
 
 // Movimiento que depende del cursor o del scroll: inclinación de tarjetas, luz del panel y aparición al bajar.
-// Carrusel que da la vuelta y avanza solo; se detiene mientras el cursor está encima o se toca.
+// Carrusel de verdad: las tarjetas giran de forma continua y sin fin, a velocidad pareja.
+// Frena suave al poner el cursor encima, se puede arrastrar (con inercia) y las flechas lo llevan una tarjeta.
+// No usa el desplazamiento del navegador: mueve la fila completa con transform, que es lo que lo hace fluido.
 function activarCarrusel(carril) {
+  const pista = carril.querySelector('.carrusel-pista');
   const n = Number(carril.dataset.n) || 0;
-  const tarjetas = [...carril.children];
-  if (!n || tarjetas.length !== n * 3 || carril.dataset.listo) return;
+  if (!pista || !n || carril.dataset.listo) return;
+  const tarjetas = [...pista.children];
+  if (tarjetas.length !== n * 3) return;
   carril.dataset.listo = '1';
-  const juego = () => tarjetas[n].offsetLeft - tarjetas[0].offsetLeft; // lo que mide un juego completo
-  const saltar = (x) => carril.scrollTo({ left: x, behavior: 'instant' });
-  saltar(carril.scrollLeft + juego());
-  const acomodar = () => {
-    const a = juego();
-    if (!a) return;
-    if (carril.scrollLeft < a * 0.5) saltar(carril.scrollLeft + a);
-    else if (carril.scrollLeft > a * 1.5) saltar(carril.scrollLeft - a);
+  const quieto = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const VELOCIDAD = 36; // píxeles por segundo
+  let juego = 0; // lo que mide un juego completo de tarjetas
+  let paso = 0; // de una tarjeta a la siguiente
+  const medir = () => {
+    juego = tarjetas[n].offsetLeft - tarjetas[0].offsetLeft;
+    paso = tarjetas[1].offsetLeft - tarjetas[0].offsetLeft;
   };
-  let reloj;
-  if ('onscrollend' in window) carril.addEventListener('scrollend', acomodar);
-  else carril.addEventListener('scroll', () => { clearTimeout(reloj); reloj = setTimeout(acomodar, 140); }, { passive: true });
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  let pausaHasta = 0;
-  const pausar = () => { pausaHasta = Date.now() + 9000; };
-  ['pointerdown', 'wheel', 'touchstart', 'keydown'].forEach((ev) => carril.addEventListener(ev, pausar, { passive: true }));
-  carril.closest('section')?.querySelectorAll('.seccion-acciones button').forEach((b) => b.addEventListener('click', pausar));
-  const tic = setInterval(() => {
-    if (!carril.isConnected) { clearInterval(tic); return; }
-    if (document.hidden || Date.now() < pausaHasta || carril.matches(':hover, :focus-within')) return;
-    carril.scrollBy({ left: tarjetas[1].offsetLeft - tarjetas[0].offsetLeft, behavior: 'smooth' });
-  }, 3800);
+  medir();
+  if (!juego) return;
+  let x = 0; // avance dentro de un juego, de 0 a juego
+  let vel = 0; // velocidad actual (arranca y frena de a pocos)
+  let meta = quieto ? 0 : VELOCIDAD; // velocidad a la que quiere ir
+  let impulso = 0; // inercia después de arrastrar
+  let destino = null; // posición pedida con las flechas
+  let arrastre = null;
+  let encima = false;
+  let ult = performance.now();
+  const envolver = () => {
+    while (x >= juego) { x -= juego; if (destino !== null) destino -= juego; }
+    while (x < 0) { x += juego; if (destino !== null) destino += juego; }
+  };
+  const pintar = () => { pista.style.transform = `translate3d(${(-(x + paso)).toFixed(2)}px, 0, 0)`; };
+  const cuadro = (t) => {
+    if (!carril.isConnected) return; // se cambió de pantalla: deja de girar
+    const dt = Math.min(0.05, Math.max(0, (t - ult) / 1000));
+    ult = t;
+    if (!arrastre) {
+      if (destino !== null) {
+        const falta = destino - x;
+        x += falta * Math.min(1, dt * 7);
+        if (Math.abs(falta) < 0.4) { x = destino; destino = null; vel = 0; }
+      } else {
+        const quiere = encima || carril.matches(':focus-within') ? 0 : meta;
+        vel += (quiere - vel) * Math.min(1, dt * 4);
+        x += (vel + impulso) * dt;
+        impulso *= Math.pow(0.04, dt);
+        if (Math.abs(impulso) < 2) impulso = 0;
+      }
+    }
+    envolver();
+    pintar();
+    requestAnimationFrame(cuadro);
+  };
+  pintar();
+  requestAnimationFrame(cuadro);
+  window.addEventListener('resize', () => { if (carril.isConnected) medir(); });
+
+  // Cursor encima: frena hasta detenerse; al salir, retoma.
+  carril.addEventListener('pointerenter', (ev) => { if (ev.pointerType === 'mouse') encima = true; });
+  carril.addEventListener('pointerleave', () => { encima = false; });
+
+  // Arrastrar con el mouse o el dedo
+  carril.addEventListener('dragstart', (ev) => ev.preventDefault());
+  carril.addEventListener('pointerdown', (ev) => {
+    if (ev.button > 0) return;
+    arrastre = { x0: ev.clientX, inicio: x, movido: false, ultX: ev.clientX, ultT: performance.now(), v: 0 };
+    destino = null; impulso = 0;
+  });
+  window.addEventListener('pointermove', (ev) => {
+    if (!arrastre) return;
+    const dx = ev.clientX - arrastre.x0;
+    if (!arrastre.movido && Math.abs(dx) < 6) return;
+    if (!arrastre.movido) { arrastre.movido = true; carril.classList.add('arrastrando'); }
+    const ahora = performance.now();
+    const dt = Math.max(1, ahora - arrastre.ultT);
+    arrastre.v = arrastre.v * 0.6 + (-(ev.clientX - arrastre.ultX) / dt) * 1000 * 0.4;
+    arrastre.ultX = ev.clientX; arrastre.ultT = ahora;
+    x = arrastre.inicio - dx;
+    envolver();
+    arrastre.inicio = x + dx; // si dio la vuelta, el origen acompaña
+  });
+  const soltar = () => {
+    if (!arrastre) return;
+    if (arrastre.movido) {
+      impulso = Math.max(-1800, Math.min(1800, arrastre.v));
+      vel = 0;
+      // Lo que empezó como arrastre no cuenta como toque en la tarjeta.
+      const sinClic = (ev) => { ev.preventDefault(); ev.stopPropagation(); };
+      carril.addEventListener('click', sinClic, { capture: true, once: true });
+      setTimeout(() => { carril.removeEventListener('click', sinClic, true); carril.classList.remove('arrastrando'); }, 60);
+    }
+    arrastre = null;
+  };
+  window.addEventListener('pointerup', soltar);
+  window.addEventListener('pointercancel', soltar);
+
+  // Rueda o panel táctil en horizontal
+  carril.addEventListener('wheel', (ev) => {
+    if (Math.abs(ev.deltaX) <= Math.abs(ev.deltaY)) return;
+    ev.preventDefault();
+    destino = null; x += ev.deltaX; vel = 0;
+  }, { passive: false });
+
+  // Flechas: una tarjeta por toque, con movimiento suave
+  carril.moverTarjeta = (dir) => {
+    const base = destino !== null ? destino : x;
+    destino = base + dir * paso; // exactamente una tarjeta desde donde está
+    impulso = 0;
+  };
+  // Con teclado: la tarjeta enfocada se trae a la vista
+  carril.addEventListener('focusin', (ev) => {
+    const el = ev.target.closest?.('.plastico');
+    if (!el || !pista.contains(el)) return;
+    const pos = (el.offsetLeft - tarjetas[0].offsetLeft) % juego;
+    let d = pos - paso;
+    while (d - x > juego / 2) d -= juego;
+    while (x - d > juego / 2) d += juego;
+    destino = d;
+  });
 }
 
 function darVida(raiz) {
@@ -1597,8 +1689,8 @@ async function vistaInicio() {
       el.style.setProperty('--i', String(i));
       return el;
     }));
-    // Con cuatro tarjetas o más el carrusel da la vuelta: se arma con tres juegos iguales y, al llegar
-    // a un extremo, salta sin que se note al juego del medio.
+    // Con cuatro tarjetas o más el carrusel gira sin fin: se arma con tres juegos iguales en fila y,
+    // al completar una vuelta, vuelve al principio sin que se note.
     if (enCarril.length >= 4) {
       const originales = [...carril.children];
       const copia = () => originales.map((el) => {
@@ -1608,11 +1700,15 @@ async function vistaInicio() {
       });
       carril.prepend(...copia());
       carril.append(...copia());
+      // Los tres juegos van en una sola fila, que es la que se mueve.
+      const pista = h('div', { class: 'carrusel-pista' });
+      pista.append(...carril.children);
+      carril.append(pista);
       carril.classList.add('infinito');
       carril.dataset.n = String(originales.length);
     }
     const pasoCarril = () => { const t = carril.children; return t.length > 1 ? t[1].offsetLeft - t[0].offsetLeft : 280; };
-    const mover = (dir) => () => carril.scrollBy({ left: dir * pasoCarril(), behavior: 'smooth' });
+    const mover = (dir) => () => (carril.moverTarjeta ? carril.moverTarjeta(dir) : carril.scrollBy({ left: dir * pasoCarril(), behavior: 'smooth' }));
     raiz.append(h('section', { class: 'tarjetas-inicio' },
       h('div', { class: 'seccion-cab' },
         tituloSeccion('Tus tarjetas'),
