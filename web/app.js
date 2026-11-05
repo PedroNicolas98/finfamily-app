@@ -590,6 +590,8 @@ const estado = {
   mensajeTarjeta: null,
   form: null,
   oneTapIntentado: false,
+  frescoDesde: 0, // lo guardado antes de esta hora no se muestra: se espera al Sheets
+  cambioDesde: 0, // lo guardado antes de esta hora se muestra, pero se vuelve a pedir por detrás
   registroSW: null, // registro del service worker, para buscar versión nueva
   enviando: false, // hay un envío de la cola en curso
 };
@@ -750,14 +752,40 @@ async function cargar(accion, datos, clave) {
   }
 }
 
-// Variante rápida: usa lo guardado al instante y actualiza por detrás.
+// Carga al instante: muestra lo último guardado en el equipo y pregunta al Sheets por detrás
+// (responde en 2 a 5 segundos). Si llegó algo distinto, la pantalla se repinta sola.
+// Solo espera al Sheets cuando no hay nada guardado o cuando se acaba de editar algo en esa pantalla.
+const FRESCO_MS = 30000; // lo traído hace menos de 30 s no se vuelve a pedir
+const refrescos = new Map(); // pedidos por detrás en curso, para no repetirlos
 async function cargarRapido(accion, datos, clave) {
   const c = leerCache(clave);
-  if (c) {
-    cargar(accion, datos, clave).catch(() => {});
-    return { datos: c.datos, ts: null };
-  }
-  return cargar(accion, datos, clave);
+  if (!c || c.ts < estado.frescoDesde) return cargar(accion, datos, clave);
+  if (!navigator.onLine) return { datos: c.datos, ts: c.ts, error: { codigo: 'sin_conexion' } };
+  if (c.ts < estado.cambioDesde || Date.now() - c.ts > FRESCO_MS) refrescarPorDetras(accion, datos, clave, c);
+  return { datos: c.datos, ts: null };
+}
+
+function refrescarPorDetras(accion, datos, clave, c) {
+  if (refrescos.has(clave)) return;
+  const antes = JSON.stringify(c.datos);
+  const navId = estado.navId;
+  refrescos.set(clave, cargar(accion, datos, clave).then((r) => {
+    if (navId !== estado.navId) return; // ya se cambió de pantalla
+    if (r.ts) { marcarDatos(r); pintarAvisos(); return; } // no hubo respuesta: se avisa que son datos guardados
+    if (JSON.stringify(r.datos) !== antes) pedirRepintado();
+  }).catch((e) => {
+    if (e?.codigo !== 'no_autorizado') return;
+    if (e.rechazada) navegar(); else pintarAvisos();
+  }).finally(() => refrescos.delete(clave)));
+}
+
+// Repinta la pantalla actual con los datos nuevos, sin animación de salida ni casa de carga.
+function pedirRepintado() {
+  clearTimeout(pedirRepintado.reloj);
+  pedirRepintado.reloj = setTimeout(() => {
+    if (refrescos.size) { pedirRepintado(); return; } // espera a que lleguen todos los pedidos de esta pantalla
+    if (!hayEdicionAbierta()) navegar({ silencioso: true });
+  }, 80);
 }
 
 function marcarDatos(r) {
@@ -872,9 +900,18 @@ function ocupado(delta) {
   cargasActivas = Math.max(0, cargasActivas + delta);
   document.body.classList.toggle('cargando-datos', cargasActivas > 0);
 }
+const SOLO_LEEN = ['inicio', 'config', 'tarjetas', 'presupuesto', 'personas'];
+const EN_PANTALLA = ['editarGasto', 'borrarGasto', 'marcarPagado']; // después de estos se espera al Sheets para ver el cambio
 async function llamarApi(...args) {
   ocupado(1);
-  try { return await api.llamar(...args); } finally { ocupado(-1); }
+  try { return await api.llamar(...args); } finally {
+    ocupado(-1);
+    const accion = args[0];
+    if (!SOLO_LEEN.includes(accion) && accion !== 'marcarFijo') {
+      estado.cambioDesde = Date.now();
+      if (EN_PANTALLA.includes(accion)) estado.frescoDesde = Date.now();
+    }
+  }
 }
 
 // Mientras llega cada pantalla se ve la casa del logo armándose (la misma del arranque).
@@ -1363,7 +1400,7 @@ function tecladoMonto(inMonto) {
 async function vistaInicio() {
   const mesHoy = mesActual();
   const [r, rt, rp, rf] = await Promise.all([
-    cargar('inicio', { hoy: hoyISO() }, 'inicio'),
+    cargarRapido('inicio', { hoy: hoyISO() }, 'inicio'),
     cargarRapido('tarjetas', { hoy: hoyISO(), incluirPagados: false }, 'tarjetas').catch(() => null),
     cargarRapido('personas', { mes: mesHoy }, 'personas:' + mesHoy).catch(() => null),
     // Si lo guardado es de una versión anterior (sin el dato de "pagado"), se pide de nuevo.
@@ -1798,7 +1835,7 @@ async function vistaRegistrar() {
 // ---------- Pantalla: Tarjetas ----------
 
 function obtenerTarjetas() {
-  return cargar('tarjetas', { hoy: hoyISO(), incluirPagados: false }, 'tarjetas');
+  return cargarRapido('tarjetas', { hoy: hoyISO(), incluirPagados: false }, 'tarjetas');
 }
 
 // Dato dentro de un panel de color: ícono, etiqueta y valor.
@@ -2113,7 +2150,7 @@ async function vistaPresupuesto() {
   let meses = leerCache('meses')?.datos || [];
   let r;
   try {
-    r = await cargar('presupuesto', { mes }, 'presupuesto:' + mes);
+    r = await cargarRapido('presupuesto', { mes }, 'presupuesto:' + mes);
   } catch (e) {
     if (e.codigo === 'no_autorizado' || e.codigo === 'sin_configurar') throw e;
     if (e.codigo === 'datos_invalidos') {
@@ -2275,7 +2312,8 @@ function marcarNav(ruta) {
   moverIndicador();
 }
 
-async function navegar() {
+async function navegar(opciones) {
+  const silencioso = opciones?.silencioso === true; // (los eventos del navegador también llegan aquí como argumento)
   const ruta = SOLO_GASTO ? 'registrar' : (location.hash.slice(1) || 'inicio');
   const id = ++estado.navId;
   estado.tsDatos = null;
@@ -2292,24 +2330,33 @@ async function navegar() {
   if (ruta.startsWith('tarjeta-')) { fn = vistaTarjeta; arg = ruta.slice('tarjeta-'.length); }
   if (!fn) fn = vistaInicio;
   // Nuevo gasto abre al instante si ya tiene guardadas las listas; si no, también muestra la casa.
-  if (ruta !== 'registrar' || !leerCache('config')) {
+  // La pantalla se arma ya. Si tiene datos guardados responde al instante; la casa de carga
+  // solo aparece cuando de verdad hay que esperar al Sheets.
+  let nodo;
+  const armado = Promise.resolve().then(() => fn(arg)).then((n) => { nodo = n; }, (e) => { nodo = vistaError(e); });
+  if (!silencioso && (ruta !== 'registrar' || !leerCache('config'))) {
     const actual = vista.querySelector('.pantalla:not(.cargando):not(.login):not(.arranque)');
     if (actual && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
       actual.classList.add('saliendo');
       await esperar(150);
-      if (id !== estado.navId) return;
+    } else {
+      await Promise.race([armado, esperar(120)]);
     }
-    if (!vista.querySelector('.arranque')) mostrar(cargando());
+    if (id !== estado.navId) return;
+    if (!nodo && !vista.querySelector('.arranque')) mostrar(cargando());
   }
-  let nodo;
-  try {
-    nodo = await fn(arg);
-  } catch (e) {
-    nodo = vistaError(e);
-  }
+  await armado;
   if (id !== estado.navId) return;
+  const altura = window.scrollY;
+  if (silencioso) vista.classList.remove('entrada');
   mostrar(nodo);
   animarVista(vista);
+  if (silencioso) {
+    // Datos nuevos en la misma pantalla: sin animación de entrada y sin mover la página.
+    window.scrollTo(0, altura);
+    pintarAvisos();
+    return;
+  }
   vista.classList.remove('entrada');
   void vista.offsetWidth;
   vista.classList.add('entrada');
