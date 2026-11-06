@@ -2310,7 +2310,7 @@ html[data-modo="oscuro"] :is(.panel, .grupo, .cuenta-panel) { box-shadow: var(--
 
 /* ---------- Guardar al alcance del dedo (celular) ---------- */
 @media (max-width: 1023px) {
-  .f-cierre { position: sticky; bottom: calc(var(--alto-nav) + 22px + env(safe-area-inset-bottom)); z-index: 6; }
+  .f-cierre { position: sticky; bottom: calc(var(--alto-nav) + 36px + env(safe-area-inset-bottom)); z-index: 6; }
   body.solo-gasto .f-cierre { bottom: calc(14px + env(safe-area-inset-bottom)); }
   .f-cierre .boton.primario { box-shadow: 0 16px 30px -12px var(--accion), 0 0 0 6px color-mix(in srgb, var(--fondo, #F3F5FA) 70%, transparent); }
 }
