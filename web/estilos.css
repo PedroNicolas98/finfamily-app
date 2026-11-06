@@ -2192,6 +2192,12 @@ a.plastico:active, .mov:active, a.nav-proximo:active { filter: brightness(0.96);
 .grupo > .acciones:empty { display: none; }
 /* El lápiz de editar se ve siempre (tenue) y se enciende al pasar */
 .boton-editar { opacity: 0.45; }
+/* Movimientos: todos los gastos juntos */
+.pantalla.movimientos { display: flex; flex-direction: column; gap: 14px; }
+.lista-todos .mov { padding: 10px 18px; border-bottom: 1px solid var(--borde); }
+.lista-todos .mov:last-child { border-bottom: 0; }
+.ver-mas { align-self: center; }
+.ver-mas[hidden], .pantalla.movimientos .vacio[hidden] { display: none; }
 /* Visto chico en lo que ya está pagado */
 .mov-pagado { display: inline-grid; place-items: center; width: 14px; height: 14px; margin-right: 4px; border-radius: 50%; background: var(--bien-suave, rgba(31, 184, 148, 0.16)); color: var(--bien, #12916f); vertical-align: -2px; }
 .mov-pagado svg { width: 9px; height: 9px; stroke-width: 3; }

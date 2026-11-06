@@ -1906,7 +1906,7 @@ async function vistaInicio() {
 
     const recientes = consumosDe(completo ? rtodo.datos.tarjetas : todas, (t) => t.id !== 'HORMIGA').filter((c) => completo || c.estado !== 'Pagado')
       .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 6);
-    agregar(panel('panel-lista', 'Últimos consumos', h('a', { href: '#tarjetas' }, 'Ver todos'),
+    agregar(panel('panel-lista', 'Últimos consumos', h('a', { href: '#movimientos' }, 'Ver todos'),
       recientes.length ? h('ul', { class: 'lista-mov' }, recientes.map((c) => {
         const fila = filaMov(c, nombreCortoTC(c.tarjeta));
         if (c.estado === 'Pagado') fila.querySelector('.mov-der .suave')?.prepend(h('i', { class: 'mov-pagado', title: 'Pagado' }, icono('check')));
@@ -1919,6 +1919,67 @@ async function vistaInicio() {
   const revisar = seccionRevisar();
   if (revisar) raiz.append(revisar);
 
+  return raiz;
+}
+
+// ---------- Pantalla: Movimientos (todos los gastos juntos, pagados o no) ----------
+
+async function vistaMovimientos() {
+  const r = await cargarRapido('tarjetas', { hoy: hoyISO(), incluirPagados: true }, 'tarjetas-todo');
+  marcarDatos(r);
+  const todos = consumosDe(r.datos.tarjetas || [], () => true)
+    .sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')));
+  const raiz = h('div', { class: 'pantalla movimientos' },
+    h('a', { class: 'volver', href: '#inicio' }, icono('atras'), 'Inicio'), h('header', { class: 'cabecera' }, h('h1', {}, 'Movimientos')));
+  if (!todos.length) { raiz.append(vacio('Todavía no hay gastos.')); return raiz; }
+  const entrada = h('input', { type: 'search', id: 'buscar-mov', placeholder: 'Buscar gasto', 'aria-label': 'Buscar gasto', autocomplete: 'off' });
+  const cuenta = h('span', { class: 'buscador-cuenta', 'aria-live': 'polite' });
+  const lista = h('ul', { class: 'lista consumos lista-todos' });
+  const mas = h('button', { type: 'button', class: 'boton ver-mas' }, 'Ver más');
+  const nada = vacio('Ningún gasto coincide.');
+  nada.querySelector('.vacio-ico')?.replaceChildren(icono('buscar'));
+  let concepto = null;
+  let tope = 60;
+  const texto = (c) => normalizar(`${c.descripcion} ${limpiarComercio(c.descripcion)} ${c.concepto || ''} ${nombreCortoTC(c.tarjeta)} ${c.medio || ''}`);
+  const indice = todos.map((c) => [c, texto(c)]);
+  const pintar = () => {
+    const q = normalizar(entrada.value);
+    const sal = indice.filter(([c, t]) => (!q || t.includes(q)) && (!concepto || (c.concepto || 'Sin concepto') === concepto)).map(([c]) => c);
+    const suma = sal.reduce((x, c) => x + (Number(c.monto) || 0), 0);
+    cuenta.textContent = `${sal.length} · ${soles(suma)}`;
+    const nodos = [];
+    sal.slice(0, tope).forEach((c, k, arr) => {
+      if (k === 0 || arr[k - 1].fecha !== c.fecha) {
+        const delDia = sal.filter((x) => x.fecha === c.fecha).reduce((x, y) => x + (Number(y.monto) || 0), 0);
+        nodos.push(h('li', { class: 'dia' },
+          h('span', {}, c.fecha ? deISO(c.fecha).toLocaleDateString('es-PE', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : 'Sin fecha'),
+          h('strong', { class: 'dia-total' }, soles(delDia))));
+      }
+      const fila = filaMov(c, nombreCortoTC(c.tarjeta));
+      if (c.estado === 'Pagado') fila.querySelector('.mov-der .suave')?.prepend(h('i', { class: 'mov-pagado', title: 'Pagado' }, icono('check')));
+      nodos.push(fila);
+    });
+    lista.replaceChildren(...nodos);
+    mas.hidden = sal.length <= tope;
+    mas.textContent = `Ver más (${sal.length - tope})`;
+    nada.hidden = sal.length > 0;
+  };
+  entrada.addEventListener('input', () => { tope = 60; pintar(); });
+  mas.addEventListener('click', () => { tope += 120; pintar(); });
+  const porConcepto = new Map();
+  for (const c of todos) porConcepto.set(c.concepto || 'Sin concepto', (porConcepto.get(c.concepto || 'Sin concepto') || 0) + (Number(c.monto) || 0));
+  const chips = [...porConcepto].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([nombre]) => {
+    const chip = h('button', { type: 'button', class: 'chip-filtro', 'aria-pressed': 'false', onclick: () => {
+      concepto = concepto === nombre ? null : nombre;
+      chips.forEach((x) => x.setAttribute('aria-pressed', String(x === chip && concepto === nombre)));
+      tope = 60; pintar();
+    } }, catIco(nombre), h('span', {}, nombre));
+    return chip;
+  });
+  raiz.append(h('div', { class: 'buscador' }, icono('buscar'), entrada, cuenta),
+    h('div', { class: 'chips-filtro', role: 'group', 'aria-label': 'Filtrar por concepto' }, chips),
+    h('section', { class: 'bloque grupo' }, lista), nada, mas);
+  pintar();
   return raiz;
 }
 
@@ -2850,6 +2911,8 @@ function tipoTransicion(antes, ahora) {
   if (antes === ahora) return 'igual';
   const deDetalle = antes.startsWith('tarjeta-');
   const aDetalle = ahora.startsWith('tarjeta-');
+  if (ahora === 'movimientos') return 'adelante';
+  if (antes === 'movimientos') return 'atras';
   if (aDetalle) return deDetalle ? 'igual' : 'entra';
   if (deDetalle && ahora === 'tarjetas') return 'sale';
   const a = ORDEN_RUTAS[deDetalle ? 'tarjetas' : antes] ?? 0;
@@ -2909,10 +2972,10 @@ function conTransicion(tipo, cambio, idTarjeta, nombrar = () => nombrarParaTrans
   t.finished.catch(() => {}).finally(() => { clearTimeout(reloj); terminar(); });
 }
 
-const RUTAS = { inicio: vistaInicio, registrar: vistaRegistrar, tarjetas: vistaTarjetas, presupuesto: vistaPresupuesto };
+const RUTAS = { movimientos: vistaMovimientos, inicio: vistaInicio, registrar: vistaRegistrar, tarjetas: vistaTarjetas, presupuesto: vistaPresupuesto };
 
 function marcarNav(ruta) {
-  const base = ruta.startsWith('tarjeta') ? 'tarjetas' : ruta;
+  const base = ruta.startsWith('tarjeta') ? 'tarjetas' : ruta === 'movimientos' ? 'inicio' : ruta;
   document.querySelectorAll('.barra-nav a').forEach((a) => {
     if (a.dataset.ruta === base) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   });
