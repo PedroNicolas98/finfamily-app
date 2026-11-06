@@ -1718,7 +1718,9 @@ async function vistaInicio() {
   const mesNombre = (nombreMesClave(mes) || '').split(' ')[0].toLowerCase();
   const ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
   const diasQuedan = ultimoDia - hoy.getDate();
-  const raiz = h('div', { class: 'pantalla inicio' });
+  // En computadora con ventana suficiente, Inicio es un tablero que entra completo, sin bajar.
+  const tablero = matchMedia('(min-width: 1280px) and (min-height: 620px)').matches;
+  const raiz = h('div', { class: 'pantalla inicio' + (tablero ? ' tablero' : '') });
 
   raiz.append(h('header', { class: 'cabecera-fila' },
     h('div', { class: 'cabecera' },
@@ -1868,7 +1870,8 @@ async function vistaInicio() {
   if (esHoy && rt?.datos?.tarjetas) {
     const hormigas = consumosDe(rt.datos.tarjetas, (t) => t.id === 'HORMIGA')
       .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 3);
-    extraPanel = panel('panel-lista panel-hormiga revelar', 'Gastos hormiga', h('a', { href: '#tarjeta-HORMIGA' }, soles(hormiga?.pendiente || 0)),
+    // En el tablero los gastos hormiga van como una pestaña más del panel de gasto.
+    if (!tablero) extraPanel = panel('panel-lista panel-hormiga revelar', 'Gastos hormiga', h('a', { href: '#tarjeta-HORMIGA' }, soles(hormiga?.pendiente || 0)),
       hormigas.length ? h('ul', { class: 'lista-mov' }, hormigas.map((c) => filaMov(c, c.medio))) : vacio('Sin gastos hormiga este mes.'),
       h('a', { class: 'boton panel-accion', href: '#registrar' }, icono('mas'), 'Registrar gasto'));
   } else if (!esHoy) {
@@ -1884,7 +1887,7 @@ async function vistaInicio() {
     extraPanel = panel('panel-dona revelar', '¿En qué se fue?', null,
       partes.length ? dona(partes, 'Total') : vacio('No hay consumos con fecha de este mes.'));
   }
-  const fijosPanel = panelFijos(rf?.datos, mes, esHoy ? 7 : 10);
+  const fijosPanel = panelFijos(rf?.datos, mes, tablero ? 30 : esHoy ? 7 : 10);
   const personasPanel = panelPersonas(rp?.datos);
   const pila = personasPanel || extraPanel ? h('div', { class: 'col-pila' }, personasPanel, extraPanel) : null;
   if (fijosPanel || pila) raiz.append(h('div', { class: 'rejilla-2b' }, fijosPanel, pila));
@@ -1911,20 +1914,28 @@ async function vistaInicio() {
     const resto = orden.slice(5).reduce((s, [, v]) => s + v, 0);
     if (resto > 0) partes.push({ etiqueta: 'Otros conceptos', valor: resto });
     // Un solo panel con dos vistas del mismo gasto: por día y por concepto.
-    agregar(panelPestanas('panel-gasto', [
-      { etiqueta: 'Gasto por día', lado: `${soles(dias.total)} en 30 días`, pista: 'Todo lo gastado en los últimos 30 días, pagado o no.', nodo: dias.nodo },
-      { etiqueta: 'Gasto por concepto', lado: soles(orden.reduce((s, [, v]) => s + v, 0)), pista: 'Todo lo gastado en los últimos 30 días, por concepto.',
+    const pestanasGasto = [
+      { etiqueta: tablero ? 'Por día' : 'Gasto por día', lado: `${soles(dias.total)} en 30 días`, pista: 'Todo lo gastado en los últimos 30 días, pagado o no.', nodo: dias.nodo },
+      { etiqueta: tablero ? 'Por concepto' : 'Gasto por concepto', lado: soles(orden.reduce((s, [, v]) => s + v, 0)), pista: 'Todo lo gastado en los últimos 30 días, por concepto.',
         nodo: h('div', { class: 'dona-ancha' }, partes.length ? dona(partes, 'Total') : vacio('Todavía no hay consumos este mes.')) },
-    ]));
+    ];
 
     const recientes = consumosDe(completo ? rtodo.datos.tarjetas : todas, (t) => t.id !== 'HORMIGA').filter((c) => completo || c.estado !== 'Pagado')
       .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 6);
-    agregar(panel('panel-lista', 'Últimos consumos', h('a', { href: '#movimientos' }, 'Ver todos'),
-      recientes.length ? h('ul', { class: 'lista-mov' }, recientes.map((c) => {
-        const fila = filaMov(c, nombreCortoTC(c.tarjeta));
-        if (c.estado === 'Pagado') fila.querySelector('.mov-der .suave')?.prepend(h('i', { class: 'mov-pagado', title: 'Pagado' }, icono('check')));
-        return fila;
-      })) : vacio('Todavía no hay gastos.')));
+    const listaRecientes = recientes.length ? h('ul', { class: 'lista-mov' }, recientes.map((c) => {
+      const fila = filaMov(c, nombreCortoTC(c.tarjeta));
+      if (c.estado === 'Pagado') fila.querySelector('.mov-der .suave')?.prepend(h('i', { class: 'mov-pagado', title: 'Pagado' }, icono('check')));
+      return fila;
+    })) : vacio('Todavía no hay gastos.');
+    if (tablero) {
+      const hormigas = consumosDe(todas, (t) => t.id === 'HORMIGA').sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 6);
+      pestanasGasto.push(
+        { etiqueta: 'Últimos', lado: h('a', { href: '#movimientos' }, 'Ver todos'), nodo: h('div', { class: 'pest-lista' }, listaRecientes) },
+        { etiqueta: 'Hormiga', lado: h('a', { href: '#tarjeta-HORMIGA' }, soles(hormiga?.pendiente || 0)),
+          nodo: h('div', { class: 'pest-lista' }, hormigas.length ? h('ul', { class: 'lista-mov' }, hormigas.map((c) => filaMov(c, c.medio))) : vacio('Sin gastos hormiga este mes.')) });
+    }
+    agregar(panelPestanas('panel-gasto', pestanasGasto));
+    if (!tablero) agregar(panel('panel-lista', 'Últimos consumos', h('a', { href: '#movimientos' }, 'Ver todos'), listaRecientes));
 
     raiz.append(rejilla);
   }
