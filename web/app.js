@@ -878,6 +878,87 @@ function soles(n) {
   return v < 0 ? '-' + s : s;
 }
 
+// Calendario propio con el diseño de la app. Envuelve un campo de fecha (que queda oculto) y muestra un botón
+// con la fecha en palabras; al tocarlo se abre un mes con atajos "Hoy" y "Ayer". Respeta el tope (max) del campo.
+const DIAS_SEMANA = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
+const MESES_LARGO = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+function textoFecha(s) {
+  const d = deISO(s);
+  if (!d) return 'Elegir fecha';
+  const hoy = hoyISO(); const ayer = iso(new Date(Date.now() - 86400000));
+  if (s === hoy) return `Hoy · ${d.getDate()} ${ABREV[d.getMonth()]}`;
+  if (s === ayer) return `Ayer · ${d.getDate()} ${ABREV[d.getMonth()]}`;
+  const dia = d.toLocaleDateString('es-PE', { weekday: 'short' }).replace('.', '');
+  return `${dia} ${d.getDate()} ${ABREV[d.getMonth()]}${d.getFullYear() !== new Date().getFullYear() ? ` ${d.getFullYear()}` : ''}`;
+}
+function selectorFecha(input) {
+  input.type = 'text'; input.classList.add('fecha-oculta'); input.tabIndex = -1; input.setAttribute('aria-hidden', 'true');
+  const boton = h('button', { type: 'button', class: 'fecha-boton', 'aria-haspopup': 'dialog', 'aria-expanded': 'false' }, icono('calendario'), h('span', {}, textoFecha(input.value)));
+  const pop = h('div', { class: 'fecha-pop', role: 'dialog', 'aria-label': 'Elegir fecha', hidden: true });
+  const caja = h('div', { class: 'fecha-caja' }, input, boton, pop);
+  let vista = null; // mes que se muestra (YYYY-MM)
+  const tope = () => input.getAttribute('max') || '';
+  const elegir = (s) => {
+    if (tope() && s > tope()) return;
+    input.value = s;
+    boton.lastChild.textContent = textoFecha(s);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    cerrar();
+  };
+  const pintar = () => {
+    const [a, m] = vista.split('-').map(Number);
+    const primero = new Date(a, m - 1, 1);
+    const dias = new Date(a, m, 0).getDate();
+    const desplaza = (primero.getDay() + 6) % 7; // lunes primero
+    const hoy = hoyISO(); const ayer = iso(new Date(Date.now() - 86400000));
+    const celdas = [];
+    for (let i = 0; i < desplaza; i++) celdas.push(h('i', { 'aria-hidden': 'true' }));
+    for (let d = 1; d <= dias; d++) {
+      const clave = `${a}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const fuera = tope() && clave > tope();
+      celdas.push(h('button', { type: 'button', class: 'fecha-dia' + (clave === input.value ? ' elegido' : '') + (clave === hoy ? ' hoy' : ''), disabled: fuera || null,
+        'aria-label': fechaLarga(clave), 'aria-pressed': String(clave === input.value), onclick: () => elegir(clave) }, String(d)));
+    }
+    const sigDeshabilitado = tope() && `${a}-${String(m).padStart(2, '0')}-01` >= tope().slice(0, 7) + '-01';
+    pop.replaceChildren(
+      h('div', { class: 'fecha-atajos' },
+        h('button', { type: 'button', class: 'chip-filtro' + (input.value === hoy ? ' activo' : ''), 'aria-pressed': String(input.value === hoy), onclick: () => elegir(hoy) }, 'Hoy'),
+        h('button', { type: 'button', class: 'chip-filtro' + (input.value === ayer ? ' activo' : ''), 'aria-pressed': String(input.value === ayer), onclick: () => elegir(ayer) }, 'Ayer')),
+      h('div', { class: 'fecha-cab' },
+        h('button', { type: 'button', class: 'boton icono-solo', 'aria-label': 'Mes anterior', onclick: () => mover(-1) }, icono('atras')),
+        h('strong', {}, `${MESES_LARGO[m - 1]} ${a}`),
+        h('button', { type: 'button', class: 'boton icono-solo', 'aria-label': 'Mes siguiente', disabled: sigDeshabilitado || null, onclick: () => mover(1) }, icono('adelante'))),
+      h('div', { class: 'fecha-semana', 'aria-hidden': 'true' }, DIAS_SEMANA.map((x) => h('span', {}, x))),
+      h('div', { class: 'fecha-grilla' }, celdas));
+  };
+  const mover = (n) => { vista = sumarMes(vista, n); pop.classList.remove('gira'); void pop.offsetWidth; pop.classList.add('gira'); pintar(); };
+  const alClicFuera = (ev) => { if (!caja.contains(ev.target)) cerrar(); };
+  const alTecla = (ev) => { if (ev.key === 'Escape') { ev.stopPropagation(); cerrar(); boton.focus(); } };
+  const abrir = () => {
+    vista = (input.value || hoyISO()).slice(0, 7);
+    pintar();
+    pop.hidden = false; pop.classList.remove('sale-suave');
+    // Si abajo no hay sitio, el calendario se abre hacia arriba.
+    const r = boton.getBoundingClientRect();
+    pop.classList.toggle('arriba', innerWidth > 600 && r.bottom + 400 > innerHeight && r.top > 400);
+    boton.setAttribute('aria-expanded', 'true');
+    setTimeout(() => { document.addEventListener('pointerdown', alClicFuera); document.addEventListener('keydown', alTecla, true); }, 0);
+    pop.querySelector('.fecha-dia.elegido')?.focus();
+  };
+  const cerrar = () => {
+    if (pop.hidden) return;
+    document.removeEventListener('pointerdown', alClicFuera); document.removeEventListener('keydown', alTecla, true);
+    boton.setAttribute('aria-expanded', 'false');
+    salirSuave(pop, () => { pop.hidden = true; });
+  };
+  boton.addEventListener('click', () => (pop.hidden ? abrir() : cerrar()));
+  // Si el campo cambia por código (por ejemplo, al guardar se vuelve a hoy), el botón se actualiza.
+  input.addEventListener('change', () => { boton.lastChild.textContent = textoFecha(input.value); });
+  caja.refrescar = () => { boton.lastChild.textContent = textoFecha(input.value); };
+  return caja;
+}
+
 function fechaLarga(s) {
   const d = deISO(s);
   return d ? `${d.getDate()} ${ABREV[d.getMonth()]} ${d.getFullYear()}` : '';
@@ -1704,7 +1785,7 @@ function editarConsumo(t, c) {
       h('button', { type: 'button', class: 'boton icono-solo', 'aria-label': 'Cerrar', title: 'Cerrar', onclick: cerrar }, icono('cerrar'))),
     h('div', { class: 'modal-cuerpo' },
       cMonto,
-      campo('ed-fecha', 'Fecha', inFecha, 'campo-chico'),
+      campo('ed-fecha', 'Fecha', selectorFecha(inFecha), 'campo-chico'),
       cDesc,
       campo('ed-concepto', 'Concepto', selConcepto),
       campo('ed-nota', 'Nota', inNota)),
@@ -2387,7 +2468,8 @@ async function vistaRegistrar() {
 
   const campoMedio = h('fieldset', { class: 'f-medios' }, h('legend', {}, 'Pagué con'), h('div', { class: 'opciones' }, botonesMedio));
   const campoConcepto = h('fieldset', { class: 'f-conceptos' }, h('legend', {}, 'Concepto'), h('div', { class: 'opciones chicas' }, botonesConcepto));
-  const campoFecha = h('div', { class: 'campo' }, h('label', { for: 'fecha' }, 'Fecha'), inFecha);
+  const cajaFecha = selectorFecha(inFecha);
+  const campoFecha = h('div', { class: 'campo' }, h('label', { for: 'fecha' }, 'Fecha'), cajaFecha);
   inFecha.addEventListener('change', () => limpiarError(campoFecha));
   // Últimos gastos: primero los registrados en esta visita, luego los más recientes que ya están en el Sheets.
   const listaRecientes = h('ul', { class: 'rec-lista' });
@@ -2468,7 +2550,7 @@ async function vistaRegistrar() {
     // Recalcula 'hoy' y 'mañana' por si la app quedó abierta desde otro día.
     manana = iso(new Date(Date.now() + 86400000));
     inFecha.max = manana;
-    if (!f.fechaManual) { f.fecha = hoyISO(); inFecha.value = f.fecha; actualizarPrevia(); }
+    if (!f.fechaManual) { f.fecha = hoyISO(); inFecha.value = f.fecha; cajaFecha.refrescar(); actualizarPrevia(); }
     const monto = leerMonto(f.monto);
     [cajaMonto, campoMedio, campoConcepto, campoFecha].forEach(limpiarError);
     const email = emailSesion();
@@ -2751,7 +2833,15 @@ async function vistaTarjeta(id) {
       h('div', { class: 'grupo-cabecera' },
         h('div', {}, pill, h('h2', {}, titulo),
           h('p', { class: 'suave' }, [!esHormiga && g.pago ? `Pago ${fechaCorta(g.pago)}` : null,
-            `${consumos.length} ${esHormiga ? 'gasto' : 'consumo'}${consumos.length === 1 ? '' : 's'}`].filter(Boolean).join(' · '))),
+            `${consumos.length} ${esHormiga ? 'gasto' : 'consumo'}${consumos.length === 1 ? '' : 's'}`].filter(Boolean).join(' · ')),
+          // Cuánto puso cada persona en este grupo: para saber de qué bolsillo sale el pago.
+          (() => {
+            const porPersona = new Map();
+            for (const c of consumos) { if (esHormiga || c.estado !== 'Pagado') { const n = (c.responsable || '').split(' ')[0] || 'Sin nombre'; porPersona.set(n, (porPersona.get(n) || 0) + (Number(c.monto) || 0)); } }
+            if (!porPersona.size) return null;
+            return h('div', { class: 'grupo-personas' }, [...porPersona].sort((a, b) => b[1] - a[1]).map(([n, v]) =>
+              h('span', { class: 'gp-chip', title: `${n}: ${soles(v)}` }, avatar(n, 'mini'), h('b', {}, n), h('span', {}, soles(v)))));
+          })()),
         h('div', { class: 'derecha' }, h('strong', { class: 'monto-medio' }, soles(esHormiga ? g.total : g.pendiente)),
           !esHormiga && g.total !== g.pendiente ? h('p', { class: 'suave' }, `de ${soles(g.total)}`) : null)),
       zona,
@@ -2777,6 +2867,7 @@ async function vistaTarjeta(id) {
             style: `--p: ${Math.round(Math.sqrt(Math.abs(c.monto || 0) / montoMax) * 100)}%` }, // raíz: un consumo muy grande no aplasta a los demás
           esHormiga ? null : caja,
           catIco(c.concepto),
+          c.responsable ? avatar(c.responsable, 'mini quien') : null,
           h('div', { class: 'consumo-texto', onclick: (ev) => {
             // En pantallas táctiles no hay lápiz: tocar el nombre abre la edición.
             if (enEspera(c) || !matchMedia('(hover: none)').matches) return;
@@ -2842,7 +2933,56 @@ async function vistaTarjeta(id) {
   }
   raiz.append(barra);
   actualizarBarra();
+  activarSeleccionArrastrando(col, todos, marcable, actualizarBarra);
   return raiz;
+}
+
+// Como en una tabla: se aprieta una casilla y se arrastra hacia abajo para marcar varias; con Mayús + clic se marca un rango.
+function activarSeleccionArrastrando(col, todos, marcable, actualizarBarra) {
+  let pintando = null; // { valor, tocadas:Set }
+  let ultima = null;
+  const cajaDe = (el) => el?.closest?.('li[data-fila]')?.querySelector('input[type="checkbox"]:not(:disabled)') || null;
+  const aplicar = (caja, valor) => {
+    if (!caja || pintando.tocadas.has(caja)) return;
+    pintando.tocadas.add(caja);
+    caja.checked = valor;
+    const fila = Number(caja.closest('li').dataset.fila);
+    if (valor) estado.seleccion.add(fila); else estado.seleccion.delete(fila);
+    caja.closest('.consumo')?.classList.add('tocada');
+    setTimeout(() => caja.closest('.consumo')?.classList.remove('tocada'), 260);
+    actualizarBarra();
+  };
+  col.addEventListener('pointerdown', (ev) => {
+    const caja = ev.target.closest?.('input[type="checkbox"]');
+    if (!caja || caja.disabled || ev.button > 0) return;
+    pintando = { valor: !caja.checked, tocadas: new Set(), id: ev.pointerId };
+    aplicar(caja, pintando.valor);
+    try { col.setPointerCapture(ev.pointerId); } catch { /* sin captura */ }
+  });
+  col.addEventListener('pointermove', (ev) => {
+    if (!pintando) return;
+    const el = document.elementFromPoint(ev.clientX, ev.clientY);
+    aplicar(cajaDe(el), pintando.valor);
+  });
+  const soltar = () => { if (pintando) setTimeout(() => { pintando = null; }, 0); };
+  col.addEventListener('pointerup', soltar);
+  col.addEventListener('pointercancel', soltar);
+  col.addEventListener('click', (ev) => {
+    const caja = ev.target.closest?.('input[type="checkbox"]');
+    if (!caja) return;
+    if (pintando?.tocadas.has(caja)) { ev.preventDefault(); return; } // el clic no deshace lo que hizo el arrastre
+    if (ev.shiftKey && ultima && ultima !== caja) {
+      const cajas = [...col.querySelectorAll('li[data-fila] input[type="checkbox"]:not(:disabled)')];
+      const a = cajas.indexOf(ultima), b = cajas.indexOf(caja);
+      if (a >= 0 && b >= 0) {
+        const valor = caja.checked;
+        pintando = { valor, tocadas: new Set() };
+        cajas.slice(Math.min(a, b), Math.max(a, b) + 1).forEach((x) => aplicar(x, valor));
+        pintando = null;
+      }
+    }
+    ultima = caja;
+  });
 }
 
 // Texto para el resultado de marcarPagado, agrupado por motivo de las filas omitidas.

@@ -2633,6 +2633,48 @@ html:not([data-modo="oscuro"]) .estado-pill.al-dia { color: #0F6E50; }
   .monto-caja.con-teclado .campo-monto { caret-color: var(--vivo); cursor: text; }
 }
 
+/* ---------- Calendario propio ---------- */
+.fecha-caja { position: relative; }
+.fecha-oculta { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.fecha-boton { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 0 14px; border-radius: var(--radio-chico); border: 1px solid var(--borde-fuerte);
+  background: var(--sup); color: var(--tinta); font: inherit; font-weight: 600; cursor: pointer; text-align: left; transition: border-color 200ms ease, box-shadow 200ms ease, transform 200ms var(--suave); }
+.fecha-boton:hover { border-color: var(--tinta-3); }
+.fecha-boton[aria-expanded="true"], .fecha-boton:focus-visible { outline: none; border-color: var(--accion); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accion) 25%, transparent); }
+.fecha-boton .icono { color: var(--marca-tinta); }
+.fecha-pop { position: absolute; z-index: 30; left: 0; top: calc(100% + 8px); width: min(320px, calc(100vw - 32px)); padding: 12px; border-radius: 18px;
+  background: var(--sup); border: 1px solid var(--borde); box-shadow: 0 24px 48px -18px rgba(15, 30, 60, 0.4), var(--sombra); animation: menu-entra 240ms var(--suave); }
+.fecha-pop[hidden] { display: none; }
+.fecha-pop.arriba { top: auto; bottom: calc(100% + 8px); }
+.fecha-atajos { display: flex; gap: 8px; margin-bottom: 10px; }
+.fecha-atajos .chip-filtro { padding-inline: 14px; }
+.fecha-atajos .chip-filtro.activo { background: var(--marca-suave); border-color: var(--accion); color: var(--marca-tinta); }
+.fecha-cab { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.fecha-cab strong { font-size: 0.95rem; }
+.fecha-cab .boton.icono-solo { width: 34px; height: 34px; min-height: 0; }
+.fecha-semana, .fecha-grilla { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.fecha-semana span { text-align: center; font-size: 0.7rem; font-weight: 700; color: var(--tinta-3); padding: 4px 0; }
+.fecha-dia { height: 38px; border: 0; border-radius: 10px; background: none; color: var(--tinta); font: inherit; font-weight: 600; cursor: pointer; position: relative; transition: background 160ms ease, transform 160ms var(--suave); }
+.fecha-dia:hover:not(:disabled) { background: var(--sup-2); }
+.fecha-dia:active:not(:disabled) { transform: scale(0.92); }
+.fecha-dia.hoy::after { content: ''; position: absolute; left: 50%; bottom: 4px; width: 4px; height: 4px; border-radius: 50%; background: var(--vivo); translate: -50% 0; }
+.fecha-dia.elegido { background: var(--accion); color: var(--sobre-accion); box-shadow: 0 8px 16px -8px var(--accion); }
+.fecha-dia:disabled { color: var(--tinta-3); opacity: 0.45; cursor: default; }
+.fecha-pop.gira .fecha-grilla { animation: aparecer 220ms ease; }
+@media (max-width: 600px) { .fecha-pop { position: fixed; left: 16px; right: 16px; top: auto; bottom: calc(var(--alto-nav) + 24px + env(safe-area-inset-bottom)); width: auto; } }
+
+/* ---------- Quién gastó en la tarjeta ---------- */
+.avatar.mini.quien { width: 22px; height: 22px; font-size: 0.66rem; flex-shrink: 0; }
+.grupo-personas { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 8px; }
+.gp-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px; border-radius: 99px; background: color-mix(in srgb, var(--sup-2) 70%, transparent); border: 1px solid var(--borde); font-size: 0.78rem; }
+.gp-chip .avatar.mini { width: 20px; height: 20px; font-size: 0.62rem; }
+.gp-chip b { font-weight: 650; }
+.gp-chip span { color: var(--tinta-2); }
+
+/* ---------- Seleccionar arrastrando ---------- */
+.consumo input[type="checkbox"] { touch-action: none; }
+.consumo.tocada { animation: tocada 260ms ease; }
+@keyframes tocada { 40% { background: color-mix(in srgb, var(--vivo) 22%, transparent); } }
+
 /* ---------- Movimiento con criterio: nada se reinicia, todo lo que entra también sale ---------- */
 /* Pantalla que solo se actualizó: lo que ya estaba a la vista no vuelve a entrar */
 .revelar.quieto, .revelar.quieto :is(.dona-arco, .gd-col i, .mov, .fijo, .persona, .ruta-paso), .revelar.quieto .ruta::before { animation: none; }
