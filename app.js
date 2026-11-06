@@ -206,9 +206,9 @@ function botonCuenta(variante) {
     panelApariencia(),
     h('div', { class: 'cuenta-enlaces' },
       SOLO_GASTO
-        ? h('a', { class: 'cuenta-enlace', href: './#inicio' }, icono('presupuesto'), 'Ver el reporte')
+        ? h('a', { class: 'cuenta-enlace', href: './#inicio' }, icono('presupuesto'), 'Ver cómo va el mes')
         : h('a', { class: 'cuenta-enlace', href: 'gasto.html' }, icono('mas'), 'App solo para gastos'),
-      h('button', { type: 'button', class: 'cuenta-enlace instalar', onclick: instalarApp }, icono('descargar'), 'Instalar en este equipo'),
+      h('button', { type: 'button', class: 'cuenta-enlace instalar', onclick: instalarApp }, icono('descargar'), 'Instalar la app'),
       esIphoneSinInstalar() ? h('p', { class: 'cuenta-pista' }, 'En iPhone: Compartir, luego "Agregar a inicio".') : null),
     zonaSesion());
   const caja = h('div', { class: `cuenta-menu ${variante}` });
@@ -414,6 +414,10 @@ function duenioTC(t) {
   return DUENIO_TC[t.id] || (t.responsable ? String(t.responsable).split(' ')[0] : '');
 }
 
+// Nombre de una línea del presupuesto sin los códigos internos de la hoja: "Alimentación (BCP-DEB-PE)" queda "Alimentación".
+function nombreLinea(texto) {
+  return String(texto || '').replace(/\s*\((?:[A-Z0-9]{2,}(?:[-/][A-Z0-9]+)*|S\/\s*[\d.,]+)\)\s*$/, '').trim() || String(texto || '');
+}
 function nombreCortoTC(t) {
   const d = DUENIO_TC[t.id];
   return `${NOMBRE_TC[t.id] || t.nombre}${d ? ' · ' + d : ''}`;
@@ -481,7 +485,7 @@ function tarjetaVisual(t, comoEnlace = true) {
       h('span', { class: 'plastico-titular' }, esH ? 'Yape · Plin · Efectivo' : duenioTC(t)),
       e ? h('span', { class: `plastico-estado ${e.clase}`.trim() }, e.clase === '' && t.proximoVence ? `Vence el ${fechaCorta(t.proximoVence)}` : e.texto) : null));
 }
-function anillo(pct, etiqueta = 'gastado') {
+function anillo(pct, etiqueta = 'del plan') {
   const r = 52;
   const c = 2 * Math.PI * r;
   const caja = h('div', { class: 'anillo', role: 'img', title: `${pct}% del ingreso ya ${etiqueta}`, 'aria-label': `${pct}% del ingreso ya ${etiqueta}` });
@@ -775,7 +779,7 @@ function zonaSesion() {
     h('button', { type: 'button', class: 'boton enlace', onclick: () => {
       const enEspera = estado.cola.length;
       confirmarEnLinea(zona,
-        enEspera ? `Hay ${enEspera} movimiento(s) sin enviar en este equipo; se enviarán cuando vuelvas a entrar con esta misma cuenta.` : '¿Cerrar sesión en este equipo?',
+        enEspera ? `Hay ${enEspera} ${enEspera === 1 ? 'gasto' : 'gastos'} sin enviar; se enviarán cuando vuelvas a entrar con esta misma cuenta.` : '¿Cerrar sesión?',
         'Cerrar sesión', async () => {
           borrarCaches();
           api.cerrarSesion();
@@ -1356,7 +1360,7 @@ function estadoError(e, alReintentar) {
   return h('div', { class: 'estado ' + (sinRed ? 'sin-red' : 'error'), role: 'alert' },
     h('span', { class: 'estado-ico', 'aria-hidden': 'true' }, icono(sinRed ? 'sin-senal' : 'alerta')),
     h('h2', {}, sinRed ? 'Sin conexión' : 'Algo salió mal'),
-    h('p', {}, sinRed ? 'Esto todavía no está guardado en este equipo. Revisa tu señal y vuelve a intentar.'
+    h('p', {}, sinRed ? 'Esto todavía no está guardado. Revisa tu señal y vuelve a intentar.'
       : (e?.message || 'No se pudo cargar esta pantalla.')),
     h('button', { type: 'button', class: 'boton primario', onclick: alReintentar }, icono('recargar'), 'Reintentar'));
 }
@@ -1391,7 +1395,7 @@ function itemRevisar(it) {
     }
   } else {
     li.append(h('div', { class: 'linea' }, h('strong', {}, `Marcar pagado en ${d.hoja}`),
-      h('span', {}, `${d.filas.length} consumo(s)`)));
+      h('span', {}, `${d.filas.length} ${d.filas.length === 1 ? 'gasto' : 'gastos'}`)));
   }
   if (it.error) {
     li.append(h('p', { class: 'nota-revisar' }, it.error));
@@ -1402,7 +1406,7 @@ function itemRevisar(it) {
     } }, 'Reintentar'));
   }
   zona.append(h('button', { type: 'button', class: 'boton', onclick: () => {
-    confirmarEnLinea(zona, 'Se descartará y no se guardará en el Sheets.', 'Sí, descartar', async () => {
+    confirmarEnLinea(zona, 'Se descartará y no se guardará.', 'Sí, descartar', async () => {
       await cola.quitar(it.idCliente);
       await refrescarCola();
       navegar();
@@ -1500,7 +1504,7 @@ function panelFijos(pres, mes, maximo = 6) {
     const li = h('li', { class: 'fijo' + (f.pagado ? ' pagado' : '') });
     li.append(
       botonFijo(f, mes, (x) => { li.classList.toggle('pagado', !!x.pagado); pintar(); }),
-      h('span', { class: 'fijo-nombre' }, f.concepto),
+      h('span', { class: 'fijo-nombre', title: f.concepto }, nombreLinea(f.concepto)),
       h('strong', {}, soles(f.monto)));
     return li;
   }));
@@ -1586,7 +1590,7 @@ function editarConsumo(t, c) {
       btnGuardar,
       h('button', { type: 'button', class: 'boton peligro', onclick: () => {
         msg.hidden = true;
-        confirmarEnLinea(zona, `Se borrará del Sheets: ${limpiarComercio(c.descripcion)}, ${soles(c.monto)}.`, 'Sí, borrar', async () => {
+        confirmarEnLinea(zona, `Se borrará: ${limpiarComercio(c.descripcion)}, ${soles(c.monto)}.`, 'Sí, borrar', async () => {
           try {
             await llamarApi('borrarGasto', base, { email: emailSesion() });
             cerrar();
@@ -1656,7 +1660,7 @@ async function vistaInicio() {
   // (saldo, reparto, gastos fijos, quién gastó y en qué), porque las deudas de tarjeta son siempre las de hoy.
   const mes = estado.mesInicio || mesHoy;
   const esHoy = mes === mesHoy;
-  const [r, rt, rp, rf] = await Promise.all([
+  const [r, rt, rp, rf, rtodo] = await Promise.all([
     cargarRapido('inicio', { hoy: hoyISO() }, 'inicio'),
     cargarRapido('tarjetas', { hoy: hoyISO(), incluirPagados: false }, 'tarjetas').catch(() => null),
     cargarRapido('personas', { mes }, 'personas:' + mes).catch(() => null),
@@ -1664,6 +1668,8 @@ async function vistaInicio() {
     cargarRapido('presupuesto', { mes }, 'presupuesto:' + mes)
       .then((x) => (x?.datos?.filas?.some((f) => f.fila === undefined) ? cargar('presupuesto', { mes }, 'presupuesto:' + mes) : x))
       .catch(() => null),
+    // Todo lo gastado, pagado o no: para que los gráficos no pierdan lo que ya se pagó.
+    esHoy ? cargarRapido('tarjetas', { hoy: hoyISO(), incluirPagados: true }, 'tarjetas-todo').catch(() => null) : null,
   ]);
   marcarDatos(r);
   const d = r.datos;
@@ -1737,7 +1743,7 @@ async function vistaInicio() {
   } else {
     hero.append(h('div', { class: 'hero-principal' },
       h('p', { class: 'hero-etq' }, 'Saldo del mes'),
-      h('p', { class: 'hero-vacio' }, `${nombreMesClave(mes) || 'Este mes'} todavía no está en el presupuesto del Sheets.`)));
+      h('p', { class: 'hero-vacio' }, `${nombreMesClave(mes) || 'Este mes'} todavía no está en el presupuesto.`)));
   }
   if (esHoy) hero.append(h('a', { class: 'hero-pagar', href: '#tarjetas' },
     h('span', { class: 'hero-pagar-cab' }, 'Por pagar', icono('adelante')),
@@ -1850,15 +1856,18 @@ async function vistaInicio() {
 
   if (esHoy && rt?.datos?.tarjetas) {
     const todas = rt.datos.tarjetas;
-    // Consumos por día (últimos 30 días): lo que falta pagar en tarjetas y los gastos hormiga
-    const dias = graficoDias(consumosDe(todas, () => true).filter((c) => c.tarjeta.id === 'HORMIGA' || c.estado !== 'Pagado'), 30);
+    // Lo gastado en los últimos 30 días según su fecha, pagado o no. Si aún no llegó la lista completa, se usa lo pendiente.
+    const completo = !!rtodo?.datos?.tarjetas;
+    const desde30 = iso(new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 29));
+    const gasto30 = consumosDe(completo ? rtodo.datos.tarjetas : todas, () => true)
+      .filter((c) => (completo || c.tarjeta.id === 'HORMIGA' || c.estado !== 'Pagado') && String(c.fecha || '') >= desde30);
+    const dias = graficoDias(gasto30, 30);
     const rejilla = h('div', { class: 'rejilla-3 dos' });
     const agregar = (nodo) => { nodo.classList.add('revelar'); nodo.style.setProperty('--i', String(rejilla.children.length)); rejilla.append(nodo); };
 
     // En qué se fue: consumos por pagar + gastos hormiga, por concepto
     const porConcepto = new Map();
-    for (const c of consumosDe(todas, () => true)) {
-      if (c.estado === 'Pagado' && c.tarjeta.id !== 'HORMIGA') continue;
+    for (const c of gasto30) {
       const k = c.concepto || 'Sin concepto';
       porConcepto.set(k, (porConcepto.get(k) || 0) + (Number(c.monto) || 0));
     }
@@ -1868,16 +1877,19 @@ async function vistaInicio() {
     if (resto > 0) partes.push({ etiqueta: 'Otros conceptos', valor: resto });
     // Un solo panel con dos vistas del mismo gasto: por día y por concepto.
     agregar(panelPestanas('panel-gasto', [
-      { etiqueta: 'Gasto por día', lado: `${soles(dias.total)} en 30 días`, pista: 'Últimos 30 días. Cuenta lo que falta pagar en tarjetas y los gastos hormiga.', nodo: dias.nodo },
-      { etiqueta: 'Gasto por concepto', lado: soles(orden.reduce((s, [, v]) => s + v, 0)), pista: 'Lo que falta pagar en tarjetas y los gastos hormiga, por concepto.',
+      { etiqueta: 'Gasto por día', lado: `${soles(dias.total)} en 30 días`, pista: 'Todo lo gastado en los últimos 30 días, pagado o no.', nodo: dias.nodo },
+      { etiqueta: 'Gasto por concepto', lado: soles(orden.reduce((s, [, v]) => s + v, 0)), pista: 'Todo lo gastado en los últimos 30 días, por concepto.',
         nodo: h('div', { class: 'dona-ancha' }, partes.length ? dona(partes, 'Total') : vacio('Todavía no hay consumos este mes.')) },
     ]));
 
-    const recientes = consumosDe(todas, (t) => t.id !== 'HORMIGA').filter((c) => c.estado !== 'Pagado')
+    const recientes = consumosDe(completo ? rtodo.datos.tarjetas : todas, (t) => t.id !== 'HORMIGA').filter((c) => completo || c.estado !== 'Pagado')
       .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 6);
     agregar(panel('panel-lista', 'Últimos consumos', h('a', { href: '#tarjetas' }, 'Ver todos'),
-      recientes.length ? h('ul', { class: 'lista-mov' }, recientes.map((c) => filaMov(c, nombreCortoTC(c.tarjeta))))
-        : vacio('No hay consumos pendientes.')));
+      recientes.length ? h('ul', { class: 'lista-mov' }, recientes.map((c) => {
+        const fila = filaMov(c, nombreCortoTC(c.tarjeta));
+        if (c.estado === 'Pagado') fila.querySelector('.mov-der .suave')?.prepend(h('i', { class: 'mov-pagado', title: 'Pagado' }, icono('check')));
+        return fila;
+      })) : vacio('Todavía no hay gastos.')));
 
     raiz.append(rejilla);
   }
@@ -2028,8 +2040,8 @@ async function vistaRegistrar() {
     const idc = idCicloDeMedio(m, usuario);
     const { pago, vence } = calcularCiclo(idc, f.fecha, ciclos);
     vistaPrevia.textContent = vence
-      ? `Va a: ${m.hoja} · pago ${fechaLarga(pago)} · vence ${fechaLarga(vence)}`
-      : `Va a: ${m.hoja} · sin fecha de pago`;
+      ? `Se paga el ${fechaLarga(pago)} · vence el ${fechaLarga(vence)}`
+      : 'Sin fecha de pago';
   }
 
   const btnGuardar = h('button', { type: 'submit', class: 'boton primario grande' }, 'Guardar gasto');
@@ -2074,7 +2086,7 @@ async function vistaRegistrar() {
       msg.className = 'mensaje ok';
       msg.replaceChildren(r.datos?.duplicadoId
         ? `Ya estaba guardado en ${r.datos.hoja}.`
-        : `Guardado en ${r.datos?.hoja || 'el Sheets'}: ${datos.descripcion}, ${soles(datos.monto)}.`);
+        : `Guardado en ${r.datos?.hoja || 'tu hoja'}: ${datos.descripcion}, ${soles(datos.monto)}.`);
     } else if (r?.tipo === 'revisar') {
       const c = r.datos?.coincidencia || {};
       const zona = h('div', { class: 'acciones' },
@@ -2082,7 +2094,7 @@ async function vistaRegistrar() {
           ev.currentTarget.disabled = true;
           await cola.confirmarDuplicado(datos.idCliente);
           msg.className = 'mensaje';
-          msg.replaceChildren('Enviando al Sheets…');
+          msg.replaceChildren('Enviando…');
           mostrarResultado(datos, await procesarHasta(datos.idCliente));
         } }, 'Guardar igual'),
         h('button', { type: 'button', class: 'boton', onclick: async () => {
@@ -2100,13 +2112,13 @@ async function vistaRegistrar() {
       msg.replaceChildren(`${r.error.message} Quedó en "Por revisar".`);
     } else if (!cola.persistente()) {
       msg.className = 'mensaje error';
-      msg.replaceChildren('No se pudo guardar en este equipo: no cierres la app hasta que vuelva la señal.');
+      msg.replaceChildren('No se pudo guardar: no cierres la app hasta que vuelva la señal.');
     } else {
       msg.className = 'mensaje';
       msg.replaceChildren(
-        res?.detenido === 'no_autorizado' ? 'Guardado en este equipo. Inicia sesión para enviarlo.'
-          : res?.detenido === 'otro_usuario' ? 'Guardado en este equipo. Se enviará cuando entres con tu cuenta.'
-            : 'Guardado en este equipo. Se enviará cuando vuelva la señal.');
+        res?.detenido === 'no_autorizado' ? 'Guardado aquí. Inicia sesión para enviarlo.'
+          : res?.detenido === 'otro_usuario' ? 'Guardado aquí. Se enviará cuando entres con tu cuenta.'
+            : 'Guardado aquí. Se enviará cuando vuelva la señal.');
     }
   }
 
@@ -2147,7 +2159,7 @@ async function vistaRegistrar() {
       await cola.encolar('registrar', datos, email);
     } catch {
       msg.className = 'mensaje error';
-      msg.replaceChildren('No se pudo guardar en este equipo. Intenta de nuevo.');
+      msg.replaceChildren('No se pudo guardar. Intenta de nuevo.');
       liberarBoton(btnGuardar, 'Guardar gasto');
       return;
     }
@@ -2159,7 +2171,7 @@ async function vistaRegistrar() {
     celebrar(datos.monto);
     const miEnvio = ++ultimoEnvio;
     msg.className = 'mensaje';
-    msg.replaceChildren(cola.persistente() ? 'Guardado en este equipo. Enviando al Sheets…' : 'Enviando al Sheets…');
+    msg.replaceChildren(cola.persistente() ? 'Guardado aquí. Enviando…' : 'Enviando…');
     estado.recienRegistrados = [{ descripcion: datos.descripcion, concepto: datos.concepto, monto: datos.monto, fecha: datos.fecha, nuevo: true },
       ...(estado.recienRegistrados || [])].slice(0, 4);
     pintarRecientes();
@@ -2176,7 +2188,7 @@ async function vistaRegistrar() {
     SOLO_GASTO
       ? h('header', { class: 'cabecera-gasto' }, logoMarca('vivo'), h('h1', {}, 'Nuevo gasto'),
         h('button', { type: 'button', class: 'boton instalar', onclick: instalarApp }, icono('descargar'), 'Instalar'),
-        h('a', { class: 'boton reporte', href: './#inicio' }, icono('presupuesto'), 'Reporte'))
+        h('a', { class: 'boton reporte', href: './#inicio' }, icono('presupuesto'), 'Cómo va el mes'))
       : h('header', { class: 'cabecera' }, h('h1', {}, 'Nuevo gasto')),
     form);
   requestAnimationFrame(() => { if (!f.monto) inMonto.focus({ preventScroll: true }); });
@@ -2332,9 +2344,9 @@ async function vistaTarjeta(id) {
     barra.classList.remove('sale-suave');
     barra.hidden = false;
     barra.replaceChildren(
-      h('span', {}, `${sel.length} seleccionado(s) · ${soles(total)}`),
+      h('span', {}, `${sel.length} ${sel.length === 1 ? 'seleccionado' : 'seleccionados'} · ${soles(total)}`),
       h('button', { type: 'button', class: 'boton primario', onclick: () => {
-        confirmarEnLinea(barra, `Vas a marcar ${sel.length} consumo(s) por ${soles(total)} como pagados.`, 'Marcar pagados',
+        confirmarEnLinea(barra, `Vas a marcar ${sel.length} ${sel.length === 1 ? 'gasto' : 'gastos'} por ${soles(total)} como ${sel.length === 1 ? 'pagado' : 'pagados'}.`, 'Marcar pagados',
           () => marcarPagados(t, sel));
       } }, 'Marcar seleccionados'));
   };
@@ -2360,7 +2372,7 @@ async function vistaTarjeta(id) {
         const lista = aLaVista();
         if (!lista.length) return;
         const suma = lista.reduce((s, c) => s + c.monto, 0);
-        confirmarEnLinea(zona, `Vas a marcar ${lista.length} consumo${lista.length === 1 ? '' : 's'} por ${soles(suma)} como pagado${lista.length === 1 ? '' : 's'}.`, 'Marcar pagado',
+        confirmarEnLinea(zona, `Vas a marcar ${lista.length} gasto${lista.length === 1 ? '' : 's'} por ${soles(suma)} como pagado${lista.length === 1 ? '' : 's'}.`, 'Marcar pagado',
           () => marcarPagados(t, lista));
       } }, 'Marcar pagado');
       zona.append(boton);
@@ -2485,14 +2497,14 @@ function mensajeMarcado(res, id) {
       porMotivo.set(m, (porMotivo.get(m) || 0) + 1);
     }
     const partes = [];
-    if (actualizadas || !porMotivo.size) partes.push(`Listo: ${actualizadas} consumo(s) marcados como pagados.`);
+    if (actualizadas || !porMotivo.size) partes.push((actualizadas === 1 ? 'Listo: 1 gasto marcado como pagado.' : `Listo: ${actualizadas} gastos marcados como pagados.`));
     let hayError = false;
     for (const [motivo, n] of porMotivo) {
       if (motivo === 'ya estaba pagado') {
         partes.push(n === 1 ? '1 ya estaba pagado.' : `${n} ya estaban pagados.`);
       } else {
         hayError = true;
-        const texto = motivo === 'la fila cambió' ? 'la fila cambió en el Sheets; revisa y vuelve a intentar' : motivo;
+        const texto = motivo === 'la fila cambió' ? 'ese gasto cambió mientras tanto; revisa y vuelve a intentar' : motivo;
         partes.push(n === 1 ? `1 no se marcó: ${texto}.` : `${n} no se marcaron: ${texto}.`);
       }
     }
@@ -2500,9 +2512,9 @@ function mensajeMarcado(res, id) {
   }
   if (r?.tipo === 'error') return { tipo: 'error', texto: `${r.error.message} Quedó en "Por revisar".` };
   if (!cola.persistente()) {
-    return { tipo: 'error', texto: 'No se pudo guardar en este equipo: no cierres la app hasta que vuelva la señal.' };
+    return { tipo: 'error', texto: 'No se pudo guardar: no cierres la app hasta que vuelva la señal.' };
   }
-  if (res?.detenido === 'no_autorizado') return { tipo: '', texto: 'Quedó guardado en este equipo. Inicia sesión para enviarlo.' };
+  if (res?.detenido === 'no_autorizado') return { tipo: '', texto: 'Quedó guardado aquí. Inicia sesión para enviarlo.' };
   return { tipo: '', texto: 'Se marcarán como pagados cuando vuelva la señal.' };
 }
 
@@ -2522,7 +2534,7 @@ async function marcarPagados(t, consumos) {
   try {
     await cola.encolar('marcarPagado', datos, email);
   } catch {
-    estado.mensajeTarjeta = { tipo: 'error', texto: 'No se pudo guardar en este equipo. Intenta de nuevo.' };
+    estado.mensajeTarjeta = { tipo: 'error', texto: 'No se pudo guardar. Intenta de nuevo.' };
     navegar();
     return;
   }
@@ -2536,7 +2548,7 @@ async function marcarPagados(t, consumos) {
     navegar();
     return;
   }
-  estado.mensajeTarjeta = { tipo: '', texto: 'Quedó guardado en este equipo. Se está enviando al Sheets…' };
+  estado.mensajeTarjeta = { tipo: '', texto: 'Quedó guardado aquí. Se está enviando…' };
   navegar();
   envio.catch(() => null).then((res) => {
     if (location.hash !== ruta) return;
@@ -2619,7 +2631,7 @@ async function vistaPresupuesto() {
           h('span', { class: 'ahorro-vacio-ico', 'aria-hidden': 'true' }, icono('meta')),
           h('strong', {}, 'Sin ahorro este mes'),
           libre > 0 ? h('span', { class: 'pill ok' }, `${soles(libre)} libres`) : null,
-          filas.length ? h('ul', { class: 'ahorro-metas' }, filas.map((f) => h('li', {}, f.concepto))) : null));
+          filas.length ? h('ul', { class: 'ahorro-metas' }, filas.map((f) => h('li', {}, nombreLinea(f.concepto)))) : null));
     }
     return h('section', { class: `panel seccion-pres seccion-${clave}` },
       h('div', { class: 'panel-cab' }, tituloSeccion(titulo),
@@ -2632,7 +2644,7 @@ async function vistaPresupuesto() {
           h('div', { class: 'fila-pres-top' },
             h('span', { class: 'fila-pres-nombre' },
               marcable ? botonFijo(f, d.mes, (x) => { li.classList.toggle('pagado', !!x.pagado); nota.textContent = x.pagado ? (x.pagadoNota || '') : ''; pintarResumenFijos(); }) : null,
-              h('span', {}, f.concepto, marcable ? nota : null)),
+              h('span', { title: f.concepto }, nombreLinea(f.concepto), marcable ? nota : null)),
             h('span', {}, f.monto && total ? h('small', { class: 'pct' }, `${Math.round((f.monto / total) * 100)}%`) : null, soles(f.monto))),
           h('div', { class: 'barra-pres', 'aria-hidden': 'true' }, h('i', { 'data-w': `${Math.round((Math.abs(f.monto || 0) / max) * 100)}%` })));
         return li;
@@ -2681,7 +2693,7 @@ async function vistaPresupuesto() {
       const alto = tipo === 'sobra' || tipo === 'falta' ? Math.max(3, (Math.abs(x.saldo) / rango) * 100) : 0;
       const texto = tipo === 'cargando' ? '…' : tipo === 'nodato' ? 'sin datos'
         : `${x.saldo < 0 ? '−' : ''}${solesCorto(Math.abs(x.saldo))}`;
-      const explicacion = tipo === 'nodato' ? `${nombreMesClave(m.clave)}: todavía no tiene ingresos cargados en el Sheets`
+      const explicacion = tipo === 'nodato' ? `${nombreMesClave(m.clave)}: todavía no tiene ingresos cargados`
         : tipo === 'cargando' ? `${nombreMesClave(m.clave)}: cargando`
           : `${nombreMesClave(m.clave)}: ${x.saldo < 0 ? 'faltan' : 'sobran'} ${soles(Math.abs(x.saldo))}`;
       return h('button', { type: 'button', class: `mb-col ${tipo}${m.clave === d.mes ? ' actual' : ''}`, style: `--h: ${alto.toFixed(1)}%`,

@@ -2178,6 +2178,13 @@ a.plastico:active, .mov:active, a.nav-proximo:active { filter: brightness(0.96);
 .buscador-cuenta { right: 40px; }
 .pest, .chip-filtro { position: relative; overflow: hidden; }
 .boton[hidden] { display: none; }
+/* Pestañas del gráfico: en una sola línea */
+.pest { white-space: nowrap; }
+.panel-pestanas .panel-cab { flex-wrap: wrap; row-gap: 8px; }
+.pest-lado { white-space: nowrap; }
+/* Visto chico en lo que ya está pagado */
+.mov-pagado { display: inline-grid; place-items: center; width: 14px; height: 14px; margin-right: 4px; border-radius: 50%; background: var(--bien-suave, rgba(31, 184, 148, 0.16)); color: var(--bien, #12916f); vertical-align: -2px; }
+.mov-pagado svg { width: 9px; height: 9px; stroke-width: 3; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
