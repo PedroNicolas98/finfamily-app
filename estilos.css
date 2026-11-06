@@ -2509,8 +2509,10 @@ a.plastico:active, .mov:active, a.nav-proximo:active { filter: brightness(0.96);
 .ver-mas { align-self: center; }
 .ver-mas[hidden], .pantalla.movimientos .vacio[hidden] { display: none; }
 /* Visto chico en lo que ya está pagado */
-.mov-pagado { display: inline-grid; place-items: center; width: 14px; height: 14px; margin-right: 4px; border-radius: 50%; background: var(--bien-suave, rgba(31, 184, 148, 0.16)); color: var(--bien, #12916f); vertical-align: -2px; }
-.mov-pagado svg { width: 9px; height: 9px; stroke-width: 3; }
+.mov-der .suave:has(.mov-pagado) { display: inline-flex; align-items: center; gap: 5px; }
+.mov-pagado { display: grid; place-items: center; flex: none; width: 15px; height: 15px; border-radius: 50%; background: var(--bien, #12916F); color: #fff; }
+.mov-pagado .icono { width: 100%; height: 100%; }
+.mov-pagado .icono svg, .mov-pagado svg { width: 9px; height: 9px; stroke-width: 3.2; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
