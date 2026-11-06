@@ -2182,6 +2182,16 @@ a.plastico:active, .mov:active, a.nav-proximo:active { filter: brightness(0.96);
 .pest { white-space: nowrap; }
 .panel-pestanas .panel-cab { flex-wrap: wrap; row-gap: 8px; }
 .pest-lado { white-space: nowrap; }
+/* Deshacer: la fila se pliega y se va; si se deshace, vuelve a su lugar */
+.consumos li[data-fila] { max-height: 140px; transition: max-height 340ms var(--suave), opacity 240ms ease, transform 340ms var(--suave); }
+.consumos li[data-fila].yendose { max-height: 0; opacity: 0; transform: translateX(28px); overflow: hidden; pointer-events: none; }
+.tostada-accion { font-weight: 750; }
+.consumos li.dia.yendose { display: none; }
+/* El botón de pagar el grupo va arriba, junto a su total */
+.grupo > .acciones { padding: 0 18px 12px; justify-content: flex-end; }
+.grupo > .acciones:empty { display: none; }
+/* El lápiz de editar se ve siempre (tenue) y se enciende al pasar */
+.boton-editar { opacity: 0.45; }
 /* Visto chico en lo que ya está pagado */
 .mov-pagado { display: inline-grid; place-items: center; width: 14px; height: 14px; margin-right: 4px; border-radius: 50%; background: var(--bien-suave, rgba(31, 184, 148, 0.16)); color: var(--bien, #12916f); vertical-align: -2px; }
 .mov-pagado svg { width: 9px; height: 9px; stroke-width: 3; }
