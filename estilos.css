@@ -2403,6 +2403,12 @@ html[data-modo="oscuro"] .ahorro-resumen .ahorro-total { color: var(--vivo); }
 .cierre-caja .gp-barra { display: block; height: 6px; border-radius: 99px; background: var(--sup-2); overflow: hidden; }
 .cierre-caja .gp-barra > i { display: block; height: 100%; width: 0; border-radius: inherit; transition: width 900ms var(--suave); }
 
+/* Carrusel: el arrastre horizontal es del carrusel (la página solo se desplaza en vertical) y no selecciona texto */
+.carrusel.infinito { touch-action: pan-y; user-select: none; -webkit-user-select: none; cursor: grab; }
+.carrusel.infinito.arrastrando { cursor: grabbing; }
+.carrusel.infinito.arrastrando .plastico { pointer-events: none; }
+.carrusel.infinito a.plastico { -webkit-user-drag: none; }
+
 /* ---------- Ajustes de la prueba de tamaños ---------- */
 /* App de gastos: los medios de pago se ven todos, sin tener que deslizar hacia el lado */
 body.solo-gasto .opciones:not(.chicas) { flex-wrap: wrap; overflow: visible; margin: 0; padding: 4px 0 10px; }
