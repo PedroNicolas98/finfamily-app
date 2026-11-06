@@ -2268,7 +2268,7 @@ html[data-modo="oscuro"] :is(.panel, .grupo, .cuenta-panel) { box-shadow: var(--
   .tablero .panel-fijos { overflow: hidden; }
   .tablero .panel-fijos > * { flex-shrink: 0; }
   .tablero .panel-gasto .pest-cuerpo { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; }
-  .tablero .pest-lista { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; align-self: stretch; }
+  .tablero .pest-lista { flex: 1; min-height: 0; overflow: hidden; align-self: stretch; }
   .tablero .gd { padding-top: 26px; }
   .tablero .gd-plano { height: clamp(120px, calc(100dvh - 468px), 300px); }
   .tablero .tarjetas-inicio .seccion-cab { margin-bottom: 8px; }
@@ -2307,6 +2307,47 @@ html[data-modo="oscuro"] :is(.panel, .grupo, .cuenta-panel) { box-shadow: var(--
   .pantalla.presupuesto .panel ::-webkit-scrollbar { width: 6px; }
   .pantalla.presupuesto .panel ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--tinta) 16%, transparent); border-radius: 99px; }
 }
+
+/* ---------- Guardar al alcance del dedo (celular) ---------- */
+@media (max-width: 1023px) {
+  .f-cierre { position: sticky; bottom: calc(var(--alto-nav) + 22px + env(safe-area-inset-bottom)); z-index: 6; }
+  body.solo-gasto .f-cierre { bottom: calc(14px + env(safe-area-inset-bottom)); }
+  .f-cierre .boton.primario { box-shadow: 0 16px 30px -12px var(--accion), 0 0 0 6px color-mix(in srgb, var(--fondo, #F3F5FA) 70%, transparent); }
+}
+
+/* ---------- Ocultar montos (para cuando hay gente mirando) ---------- */
+body.montos-ocultos :is(.hero-monto, .hero-pagar-monto, .plastico-monto, .np-monto, .hero-datos strong, .mov-der strong, .consumo .derecha strong, .gp-total, .monto-medio, .dia-total,
+  .fijo strong, .pila-monto, .cifra-cab, .hero-personal strong, .filas-pres li .fila-pres-top > span:last-child, .mb-valor, .resumen-leyenda strong, .pest-lado, .buscador-cuenta, .llevas, .cierre-caja strong, .cierre-monto) {
+  filter: blur(8px); transition: filter 240ms ease; user-select: none;
+}
+
+/* ---------- Presupuesto: lo gastado de cada línea y la comparación con el mes anterior ---------- */
+.llevas { display: block; font-size: 0.74rem; font-weight: 650; margin-top: 1px; color: var(--bien, #12916f); }
+.llevas.justo { color: #B7791F; } .llevas.pasado { color: var(--mal, #D9543E); }
+.barra-pres { position: relative; }
+.barra-pres b.real { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: inherit; background: var(--bien, #1FB894); transition: width 900ms var(--suave); }
+.barra-pres b.real.justo { background: #E0A030; } .barra-pres b.real.pasado { background: var(--mal, #D9543E); animation: latir-suave 2.4s ease-in-out infinite; }
+.barra-pres:has(b.real) > i { opacity: 0.28; }
+@keyframes latir-suave { 50% { opacity: 0.6; } }
+.delta { font-weight: 700; }
+.hero .delta.bien { color: #A6F3DA; } .hero .delta.mal { color: #FFCDC2; }
+.delta.bien { color: var(--bien, #12916f); } .delta.mal { color: var(--mal, #D9543E); }
+
+/* ---------- Cierre de mes ---------- */
+.boton-cierre { font-size: 0.82rem; }
+.cierre-mes { max-width: 440px; }
+.cierre-caja { display: flex; flex-direction: column; gap: 10px; padding: 26px 24px 20px; text-align: center; }
+.cierre-etq { font-weight: 700; color: var(--tinta-2); letter-spacing: 0.02em; }
+.cierre-monto { font-size: 2.6rem; font-weight: 750; letter-spacing: -0.03em; line-height: 1; color: var(--marca-tinta); animation: subir 600ms var(--suave) both; }
+.cierre-monto.mal { color: var(--mal, #D9543E); }
+.cierre-gasto { display: flex; align-items: baseline; justify-content: center; gap: 10px; flex-wrap: wrap; padding: 12px; border-radius: var(--radio-chico); background: var(--sup-2); animation: subir 600ms var(--suave) 120ms both; }
+.cierre-gasto strong { font-size: 1.25rem; }
+.cierre-personas, .cierre-top { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 9px; text-align: left; }
+.cierre-personas li, .cierre-top li { display: grid; grid-template-columns: 30px minmax(0, 1fr) 90px auto; align-items: center; gap: 10px; font-size: 0.88rem; animation: subir 520ms var(--suave) both; animation-delay: calc(220ms + var(--i, 0) * 70ms); }
+.cierre-top { padding-top: 10px; border-top: 1px solid var(--borde); }
+.cierre-top .cat-ico { width: 30px; height: 30px; }
+.cierre-caja .gp-barra { display: block; height: 6px; border-radius: 99px; background: var(--sup-2); overflow: hidden; }
+.cierre-caja .gp-barra > i { display: block; height: 100%; width: 0; border-radius: inherit; transition: width 900ms var(--suave); }
 
 /* ---------- Movimiento con criterio: nada se reinicia, todo lo que entra también sale ---------- */
 /* Pantalla que solo se actualizó: lo que ya estaba a la vista no vuelve a entrar */
