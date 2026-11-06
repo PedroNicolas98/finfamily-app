@@ -1432,9 +1432,32 @@ function avisar(texto, tipo = '', opciones = {}) {
     h('span', {}, texto),
     opciones.accion ? h('button', { type: 'button', class: 'tostada-accion', onclick: () => { cerrar(); opciones.alAccion?.(); } }, opciones.accion) : null,
     opciones.fijo ? h('button', { type: 'button', class: 'tostada-cerrar', 'aria-label': 'Cerrar aviso', title: 'Cerrar', onclick: cerrar }, icono('cerrar'))
-      : h('i', { class: 'tostada-tiempo', 'aria-hidden': 'true' }));
+      : h('i', { class: 'tostada-tiempo', 'aria-hidden': 'true', style: opciones.dura ? `animation-duration: ${opciones.dura}ms` : null }));
   document.body.append(t);
-  if (!opciones.fijo) setTimeout(cerrar, 2600);
+  if (!opciones.fijo) setTimeout(cerrar, opciones.dura || 2600);
+}
+
+// Deshacer: el cambio se ve aplicado al instante, pero se envía recién a los 6 segundos.
+// Mientras tanto el aviso trae el botón "Deshacer". Si se cierra o se cambia de pantalla antes, se envía ya (no se pierde).
+let porDeshacer = null;
+function enviarPendiente() { porDeshacer?.enviar(); }
+function conDeshacer(texto, filas, enviar) {
+  enviarPendiente();
+  const filasLi = () => filas.map((f) => vista.querySelector(`li[data-fila="${f}"]`)).filter(Boolean);
+  // La franja de un día se oculta si todos sus gastos se están yendo.
+  const franjas = () => vista.querySelectorAll('.consumos').forEach((ul) => ul.querySelectorAll('li.dia').forEach((d) => {
+    const suyos = [...ul.querySelectorAll(`li[data-fila][data-dia="${d.dataset.dia}"]`)];
+    d.classList.toggle('yendose', suyos.length > 0 && suyos.every((li) => li.hidden || li.classList.contains('yendose')));
+  }));
+  filasLi().forEach((li) => li.classList.add('yendose'));
+  franjas();
+  const p = { hecho: false };
+  const cerrar = () => { p.hecho = true; clearTimeout(p.reloj); if (porDeshacer === p) porDeshacer = null; };
+  p.enviar = () => { if (p.hecho) return; cerrar(); enviar(); };
+  p.deshacer = () => { if (p.hecho) return; cerrar(); filasLi().forEach((li) => li.classList.remove('yendose')); franjas(); avisar('Deshecho', '', { ico: 'atras' }); };
+  p.reloj = setTimeout(p.enviar, 6000);
+  porDeshacer = p;
+  avisar(texto, 'ok', { accion: 'Deshacer', alAccion: p.deshacer, dura: 6000 });
 }
 
 function mensajeError(e, porDefecto) {
@@ -1590,15 +1613,14 @@ function editarConsumo(t, c) {
       btnGuardar,
       h('button', { type: 'button', class: 'boton peligro', onclick: () => {
         msg.hidden = true;
-        confirmarEnLinea(zona, `Se borrará: ${limpiarComercio(c.descripcion)}, ${soles(c.monto)}.`, 'Sí, borrar', async () => {
+        cerrar();
+        conDeshacer(`Borrado: ${limpiarComercio(c.descripcion)}, ${soles(c.monto)}`, [c.fila], async () => {
           try {
             await llamarApi('borrarGasto', base, { email: emailSesion() });
-            cerrar();
-            avisar('Gasto borrado', 'ok');
-            navegar();
           } catch (e) {
-            fallar(e, 'No se pudo borrar. Intenta de nuevo.');
+            avisar(mensajeError(e, 'No se pudo borrar. Intenta de nuevo.'), 'error');
           }
+          navegar({ silencioso: true });
         });
       } }, icono('papelera'), 'Borrar'),
       h('button', { type: 'button', class: 'boton', onclick: cerrar }, 'Cancelar'));
@@ -2346,8 +2368,10 @@ async function vistaTarjeta(id) {
     barra.replaceChildren(
       h('span', {}, `${sel.length} ${sel.length === 1 ? 'seleccionado' : 'seleccionados'} · ${soles(total)}`),
       h('button', { type: 'button', class: 'boton primario', onclick: () => {
-        confirmarEnLinea(barra, `Vas a marcar ${sel.length} ${sel.length === 1 ? 'gasto' : 'gastos'} por ${soles(total)} como ${sel.length === 1 ? 'pagado' : 'pagados'}.`, 'Marcar pagados',
-          () => marcarPagados(t, sel));
+        estado.seleccion = new Set();
+        col.querySelectorAll('.consumo input[type="checkbox"]').forEach((x) => { x.checked = false; });
+        actualizarBarra();
+        conDeshacer(`${sel.length === 1 ? '1 gasto marcado como pagado' : `${sel.length} gastos marcados como pagados`} · ${soles(total)}`, sel.map((c) => c.fila), () => marcarPagados(t, sel));
       } }, 'Marcar seleccionados'));
   };
 
@@ -2367,19 +2391,20 @@ async function vistaTarjeta(id) {
     const zona = h('div', { class: 'acciones' });
     if (pendientes.length && !esHormiga) {
       // Con búsqueda o filtro puesto, el botón actúa solo sobre lo que se ve.
-      const aLaVista = () => pendientes.filter((c) => !zona.parentElement?.querySelector(`li[data-fila="${c.fila}"]`)?.hidden);
+      const aLaVista = () => pendientes.filter((c) => { const li = zona.parentElement?.querySelector(`li[data-fila="${c.fila}"]`); return !li?.hidden && !li?.classList.contains('yendose'); });
       const boton = h('button', { type: 'button', class: 'boton', onclick: () => {
         const lista = aLaVista();
         if (!lista.length) return;
         const suma = lista.reduce((s, c) => s + c.monto, 0);
-        confirmarEnLinea(zona, `Vas a marcar ${lista.length} gasto${lista.length === 1 ? '' : 's'} por ${soles(suma)} como pagado${lista.length === 1 ? '' : 's'}.`, 'Marcar pagado',
-          () => marcarPagados(t, lista));
-      } }, 'Marcar pagado');
+        boton.hidden = true;
+        conDeshacer(`${lista.length === 1 ? '1 gasto marcado como pagado' : `${lista.length} gastos marcados como pagados`} · ${soles(suma)}`, lista.map((c) => c.fila), () => marcarPagados(t, lista));
+        setTimeout(() => { if (boton.isConnected) botonesGrupo.forEach((f) => f()); }, 6400);
+      } }, 'Marcar todo pagado');
       zona.append(boton);
       botonesGrupo.push(() => {
         const lista = aLaVista();
         boton.hidden = !lista.length;
-        boton.textContent = lista.length === pendientes.length ? 'Marcar pagado'
+        boton.textContent = lista.length === pendientes.length ? 'Marcar todo pagado'
           : `Marcar ${lista.length === 1 ? 'este' : `estos ${lista.length}`} · ${soles(lista.reduce((s, c) => s + c.monto, 0))}`;
       });
     }
@@ -2395,6 +2420,7 @@ async function vistaTarjeta(id) {
             `${consumos.length} consumo${consumos.length === 1 ? '' : 's'}`].filter(Boolean).join(' · '))),
         h('div', { class: 'derecha' }, h('strong', { class: 'monto-medio' }, soles(esHormiga ? g.total : g.pendiente)),
           !esHormiga && g.total !== g.pendiente ? h('p', { class: 'suave' }, `de ${soles(g.total)}`) : null)),
+      zona,
       h('ul', { class: 'lista consumos' }, consumos.flatMap((c, k) => {
         // Antes del primer consumo de cada día va una franja con la fecha y lo gastado ese día.
         const nuevoDia = k === 0 || consumos[k - 1].fecha !== c.fecha;
@@ -2427,8 +2453,7 @@ async function vistaTarjeta(id) {
           h('div', { class: 'derecha' }, h('strong', {}, soles(c.monto)),
             etiquetaEstado ? h('span', { class: 'etiqueta-estado' }, etiquetaEstado) : null)));
         return franja ? [franja, fila] : [fila];
-      })),
-      zona));
+      }))));
   }
   if (todos.length > 6) {
     const cuenta = h('span', { class: 'buscador-cuenta', 'aria-live': 'polite' });
@@ -3081,6 +3106,9 @@ async function arrancar() {
       avisar('Hay una versión nueva', '', { ico: 'novedad', fijo: true, accion: 'Actualizar', alAccion: () => location.reload() });
     });
   }
+  window.addEventListener('hashchange', enviarPendiente);
+  window.addEventListener('pagehide', enviarPendiente);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') enviarPendiente(); });
   window.addEventListener('hashchange', navegar);
   window.addEventListener('foto-cambio', () => document.querySelectorAll('.avatar').forEach((el) => ponerFoto(el, fotoDe(el.title))));
   window.addEventListener('online', async () => {
