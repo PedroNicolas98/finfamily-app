@@ -1887,7 +1887,7 @@ async function vistaInicio() {
     extraPanel = panel('panel-dona revelar', '¿En qué se fue?', null,
       partes.length ? dona(partes, 'Total') : vacio('No hay consumos con fecha de este mes.'));
   }
-  const fijosPanel = panelFijos(rf?.datos, mes, tablero ? 30 : esHoy ? 7 : 10);
+  const fijosPanel = panelFijos(rf?.datos, mes, tablero ? Math.max(4, Math.min(10, Math.floor((innerHeight - 356) / 45))) : esHoy ? 7 : 10);
   const personasPanel = panelPersonas(rp?.datos);
   const pila = personasPanel || extraPanel ? h('div', { class: 'col-pila' }, personasPanel, extraPanel) : null;
   if (fijosPanel || pila) raiz.append(h('div', { class: 'rejilla-2b' }, fijosPanel, pila));
