@@ -246,7 +246,7 @@ async function enviar(accion, datos) {
     } catch {
       throw new ErrorApi('sin_conexion', 'Sin conexión.');
     }
-    if (!resp.ok) throw new ErrorApi('sin_conexion', 'El servidor no respondió. Intenta en un momento.');
+    if (!resp.ok) throw new ErrorApi('servidor', 'El servidor no respondió. Intenta en un momento.');
     try {
       return await resp.json();
     } catch {

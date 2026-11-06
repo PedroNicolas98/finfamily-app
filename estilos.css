@@ -1409,7 +1409,7 @@ body.solo-gasto .pantalla { max-width: 560px; padding-bottom: 28px; }
 body.instalable .boton.instalar { display: inline-flex; background: var(--accion); color: var(--sobre-accion); border-color: transparent; }
 body.solo-gasto .formulario { display: flex; flex-direction: column; gap: 18px; }
 body.solo-gasto .formulario > .f-conceptos { background: none; border: 0; box-shadow: none; padding: 0; border-radius: 0; }
-body.solo-gasto .opciones.chicas { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+body.solo-gasto .opciones.chicas { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 body.solo-gasto .opcion.chica { flex-direction: column; justify-content: center; align-items: center; text-align: center; gap: 6px; min-height: 84px; padding: 10px 6px; font-size: 0.76rem; border-radius: 16px; }
 body.solo-gasto .opcion.chica .cat-ico { width: 38px; height: 38px; border-radius: 12px; }
 body.solo-gasto .opcion.chica .cat-ico svg { width: 19px; height: 19px; }
@@ -1630,7 +1630,7 @@ body.cargando-datos .barra-carga { opacity: 1; }
   body:not(.solo-gasto) .monto-caja .vista-previa { padding: 8px 12px; }
   /* El panel de conceptos ocupa el mismo alto que la columna del monto */
   body:not(.solo-gasto) .formulario > .f-conceptos { padding: 14px 16px 16px; align-self: stretch; display: flex; flex-direction: column; min-inline-size: 0; }
-  body:not(.solo-gasto) .opciones.chicas { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: minmax(46px, 1fr); gap: 8px; flex: 1; }
+  body:not(.solo-gasto) .opciones.chicas { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); grid-auto-rows: minmax(46px, 1fr); gap: 8px; flex: 1; }
   body:not(.solo-gasto) .opcion.chica { min-height: 46px; padding: 0 8px; font-size: 0.8rem; }
   body:not(.solo-gasto) .opcion.chica .cat-ico { width: 28px; height: 28px; border-radius: 9px; }
   body:not(.solo-gasto) .opcion.medio { min-height: 42px; }
@@ -2459,6 +2459,178 @@ body.solo-gasto .opciones:not(.chicas) { flex-wrap: wrap; overflow: visible; mar
 @media (max-width: 340px) {
   .google-flecha { display: none; }
   .google-texto b { font-size: 0.88rem; }
+}
+
+/* ---------- Revisión de detalles en computadora ---------- */
+/* 1. Dona "Por concepto" en el tablero: leyenda más junta para que entre */
+.tablero .dona-ancha .dona { gap: 8px; }
+.tablero .dona-ancha .dona-leyenda { gap: 4px; }
+/* 2. Barra de seleccionados en el detalle: centrada sobre la lista, no sobre el panel de la izquierda */
+@media (min-width: 1024px) {
+  .detalle .barra-seleccion { left: calc(50% + (var(--ancho-menu) + var(--menu-aire) + 6px) / 2 + 184px); max-width: 600px; }
+}
+/* 3. Calendario de pagos: todas las fechas a la misma altura */
+.ruta-paso { align-content: start; align-items: start; }
+/* 4. Franja de Inicio en el tablero: los cuatro datos en dos columnas parejas */
+.tablero .hero-datos li:nth-child(odd) { padding-left: 0; border-left: 0; }
+.inicio .hero-datos li { align-content: start; }
+/* 5. Presupuesto: un nombre largo baja a dos líneas en vez de pisar el porcentaje */
+.fila-pres-nombre { flex: 1 1 0; }
+.fila-pres-nombre > span { flex: 1 1 0; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.fila-pres-top > span:last-child { display: inline-flex; align-items: baseline; justify-content: flex-end; gap: 8px; flex-shrink: 0; white-space: nowrap; }
+@media (min-width: 1024px) { .fila-pres-top > span:last-child { display: inline-grid; grid-template-columns: 2.4em minmax(6.3em, auto); justify-items: end; column-gap: 6px; }
+  .nota-pagado, .llevas { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; } .fila-pres-top .pct { margin-right: 0; } }
+/* 6. Gráfico de meses: "sin datos" una sola vez cuando hay varios meses seguidos sin datos */
+.mb-col.nodato + .mb-col.nodato .mb-valor { visibility: hidden; }
+/* 7. Menú de cuenta: el enlace a la app de gastos igual que los demás renglones */
+.barra-nav a.cuenta-enlace { padding: 0 8px; gap: 10px; min-height: 36px; font-size: 0.86rem; color: var(--tinta); border-radius: 10px; }
+.barra-nav a.cuenta-enlace .icono, .barra-nav a.cuenta-enlace .icono svg { width: 16px; height: 16px; }
+/* 8. El correo completo, en dos líneas si hace falta */
+.cuenta-quien .suave { white-space: normal; overflow-wrap: anywhere; text-overflow: clip; }
+/* 9. Filtros por concepto: en computadora se ven todos, en varias filas */
+@media (min-width: 1024px) { .chips-filtro { flex-wrap: wrap; overflow: visible; } }
+/* 10 y 11. Cierre de mes: barras alineadas, avatares centrados, botón centrado */
+.cierre-personas li, .cierre-top li { grid-template-columns: 30px minmax(0, 1fr) 90px 5.8em; }
+.cierre-personas strong, .cierre-top strong { text-align: right; }
+.cierre-personas .avatar { justify-self: center; }
+.cierre-mes .modal-acciones { justify-content: center; }
+/* 12. La franja del botón "Marcar todo pagado" con el mismo fondo que la cabecera */
+.grupo > .acciones { background: color-mix(in srgb, var(--sup-2) 55%, transparent); }
+/* 14 y 15. Presupuesto: porcentajes y nombres en columna */
+.fila-pres-top .pct { min-width: 2.3em; text-align: right; }
+.seccion-gastos .fila-pres-nombre:not(:has(.check-fijo)) { padding-left: 36px; }
+/* 16. Aviso con Deshacer en una sola línea */
+@media (min-width: 1024px) { .tostada { max-width: 560px; } }
+/* 17. Separadores rectos entre filas */
+.lista-todos .mov { border-radius: 0; }
+.panel-fijos .fijo, .lista-mov .mov { border-radius: 0; }
+/* 18. La casilla de editar no se pega a la etiqueta */
+.meta-pie .monto-entrada { margin-left: 6px; }
+/* 19. Contraste en modo claro: grises y colores de aviso más oscuros */
+html:not([data-modo="oscuro"]) .fila-pres-top .pct, html:not([data-modo="oscuro"]) .gd-eje span, html:not([data-modo="oscuro"]) .gd-rejilla span b, html:not([data-modo="oscuro"]) .f-recientes-etq { color: var(--tinta-2); }
+html:not([data-modo="oscuro"]) .llevas.justo { color: #8A5A10; }
+html:not([data-modo="oscuro"]) .llevas.bien { color: #0E7A5E; }
+
+/* ---------- Revisión de detalles en celular ---------- */
+/* 1. Inicio: el selector de mes baja a su propia línea; nada se sale de la pantalla */
+@media (max-width: 759px) {
+  .mes-inicio { width: 100%; flex-wrap: wrap; }
+  .mes-inicio .selector-mes { flex: 1 1 100%; min-width: 0; max-width: none; justify-content: space-between; }
+  .mes-inicio .selector-mes strong { min-width: 0; flex: 1; text-align: center; }
+}
+/* 2. Menú de cuenta con fondo sólido donde no hay desenfoque */
+@media (max-width: 1023px) { .cuenta-panel { background: var(--sup); } }
+/* 3. Cierre de mes en pantallas angostas: nombre y monto arriba, barra debajo */
+@media (max-width: 480px) {
+  .cierre-personas li, .cierre-top li { grid-template-columns: 30px minmax(0, 1fr) auto; grid-template-areas: 'ico nombre monto' 'ico barra barra'; row-gap: 4px; }
+  .cierre-personas li > .avatar, .cierre-top li > .cat-ico { grid-area: ico; }
+  .cierre-personas li > span:not(.avatar), .cierre-top li > span:not(.cat-ico) { grid-area: nombre; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cierre-caja li .gp-barra { grid-area: barra; }
+  .cierre-personas li > strong, .cierre-top li > strong { grid-area: monto; }
+}
+/* 4. Cabecera del panel de Gastos en 360 px: el título no se corta y la píldora pasa abajo */
+.panel-cab h2 { flex-shrink: 0; white-space: nowrap; }
+@media (max-width: 400px) { .panel-cab { flex-wrap: wrap; row-gap: 6px; } .pill.resumen-fijos { order: 3; } }
+/* 5. Aviso con Deshacer: usa todo el ancho que le toca y el texto no se parte en cinco líneas */
+.tostada { width: max-content; }
+.tostada > span { flex: 1 1 auto; min-width: 0; }
+/* 6. Barra de seleccionados: botón a todo el ancho cuando baja de línea; en oscuro, colores del modo */
+@media (max-width: 480px) { .barra-seleccion { padding: 12px 14px; } .barra-seleccion .boton.primario { flex: 1 1 100%; } }
+html[data-modo="oscuro"] .barra-seleccion { background: var(--sup); color: var(--tinta); border: 1px solid var(--borde); }
+html[data-modo="oscuro"] .barra-seleccion .boton.primario { background: var(--accion); color: var(--sobre-accion); }
+/* 7. La etiqueta del promedio no tapa barras: la línea queda y el texto va debajo del gráfico */
+.gd-prom { z-index: 0; }
+.gd-prom b { display: none; }
+.gd-nota { display: flex; align-items: center; gap: 6px; margin: 2px 0 0; font-size: 0.74rem; color: var(--tinta-2); }
+.gd-nota i { width: 14px; border-top: 2px dashed currentColor; opacity: 0.7; }
+/* 8. Editar gasto en 360 px: la fecha completa y botones parejos */
+@media (max-width: 374px) {
+  .modal-cuerpo .campo input { padding-inline: 10px; }
+  .modal-cuerpo { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); }
+  .modal-acciones .boton { flex: 1 1 auto; }
+}
+/* 9. Conceptos: no se parten palabras por la mitad */
+.opciones.chicas .opcion { overflow-wrap: break-word; hyphens: manual; }
+.opcion-texto { min-width: 0; overflow-wrap: break-word; }
+@media (max-width: 374px) { .opcion.chica { font-size: 0.78rem; padding: 0 8px; gap: 6px; } }
+/* 10. "Próximo pago" entra completo en 360 px */
+.pantalla.tarjetas .hero-datos li { padding-inline: 10px; }
+/* 11 y 12. Presupuesto en celular: el nombre baja de línea donde haga falta y los porcentajes forman columna */
+.fila-pres-top span:first-child > span { display: block; overflow-wrap: anywhere; word-break: break-word; }
+@media (max-width: 1023px) { .fila-pres-top > span:last-child { display: inline-grid; grid-template-columns: 2.4em minmax(5.6em, auto); justify-items: end; column-gap: 6px; } .fila-pres-top .pct { margin-right: 0; } }
+/* 13. Listas en celular: nombre y detalle en hasta dos líneas en vez de cortarse */
+@media (max-width: 759px) {
+  .mov-texto > span:first-child, .mov-texto .suave, .consumo-texto .suave { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.25; overflow: hidden; }
+  .consumo-texto span:first-child { hyphens: none; overflow-wrap: normal; }
+}
+/* 14. App de gastos: el botón de arriba en una línea; solo ícono hasta 400 px */
+.cabecera-gasto .boton { white-space: nowrap; min-height: 40px; }
+@media (max-width: 470px) { .boton.reporte { font-size: 0; gap: 0; padding-inline: 12px; min-height: 40px; } .boton.reporte .icono, .boton.reporte .icono svg { width: 18px; height: 18px; } }
+/* 15. Botón Guardar flotante con fondo: no se ven trozos del formulario debajo */
+@media (max-width: 1023px) {
+  .f-cierre { margin: 0 -16px; padding: 10px 16px 12px; background: linear-gradient(to top, var(--fondo) 72%, transparent); bottom: calc(var(--alto-nav) + 14px + env(safe-area-inset-bottom)); }
+  body.solo-gasto .f-cierre { bottom: calc(env(safe-area-inset-bottom)); }
+  .f-cierre .boton.primario { box-shadow: 0 16px 30px -12px var(--accion); }
+}
+/* 16. La casilla de monto con letra de 16 px (sin zoom en iPhone) */
+@media (max-width: 1023px) { .monto-entrada { font-size: 16px; padding: 6px 8px; margin: -6px -8px -6px 0; } }
+/* 17. Pantalla de ingreso sin scroll */
+body.sin-sesion .vista { padding-bottom: 0; }
+/* 18. Todo lo que se toca mide al menos 40 px */
+.check-fijo { position: relative; }
+.check-fijo::before { content: ''; position: absolute; inset: -8px; }
+.monto-editable { position: relative; }
+.monto-editable::before { content: ''; position: absolute; inset: -8px 0; }
+.pres-orden button { min-height: 36px; }
+.chip-filtro { padding-block: 7px; }
+.pest { padding-block: 10px; }
+.volver, .boton-cierre, .cuenta-enlace, .cuenta-panel .zona-sesion .boton.enlace { min-height: 40px; }
+.seccion-acciones a, .panel-enlace, .panel-cab > a { display: inline-flex; align-items: center; min-height: 40px; }
+.cuenta-panel .segmentos button { min-height: 36px; width: 40px; }
+.cuenta-panel .color-op { width: 26px; height: 26px; }
+.cuenta-panel .colores { gap: 14px; }
+.tostada-accion { padding: 10px 14px; }
+/* 19. Menores: contraste de "Faltan N días", vista previa balanceada, filas parejas en compacta, select a medida */
+html:not([data-modo="oscuro"]) .estado-pill.al-dia { color: #0F6E50; }
+.vista-previa { text-wrap: balance; }
+.seccion-pres.compacta .filas-pres li .fila-pres-top { min-height: 26px; align-items: center; }
+.modal-cuerpo select { appearance: none; -webkit-appearance: none; padding-right: 34px; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23667' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>"); background-repeat: no-repeat; background-position: right 12px center; background-size: 16px; }
+
+/* ---------- Revisión de casos raros ---------- */
+/* 1. Tablero de Inicio con avisos de vencimiento: los avisos van en una franja arriba y nada se desordena */
+.tablero > .avisos-inicio { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 10px; }
+.tablero > .avisos-inicio > * { flex: 1 1 260px; }
+.tablero:has(> .avisos-inicio) { grid-template-rows: auto auto auto auto minmax(0, 1fr); }
+.tablero:has(> .avisos-inicio) > .tarjetas-inicio { grid-row: 4; }
+.tablero:has(> .avisos-inicio) .panel-personas { grid-row: 5; }
+.tablero:has(> .avisos-inicio):not(:has(> .tarjetas-inicio)) .panel-personas { grid-row: 4 / span 2; }
+.tablero:has(> .avisos-inicio) .panel-fijos, .tablero:has(> .avisos-inicio) .panel-gasto, .tablero:has(> .avisos-inicio) .panel-dona { grid-row: 4 / span 2; }
+/* 4. Calendario de pagos: cada paso con ancho mínimo; si no entran, se desplaza de lado */
+@media (min-width: 1400px) { .ruta { flex-wrap: wrap; row-gap: 14px; } .ruta-paso { min-width: 118px; } }
+/* Entre 1024 y 1399 px el calendario vuelve a la lista vertical: en fila no entran las fechas */
+@media (min-width: 1024px) and (max-width: 1399px) {
+  .ruta { flex-direction: column; align-items: stretch; gap: 0; }
+  .ruta::before { left: 22px; right: auto; top: 26px; bottom: 26px; width: 2px; height: auto; background: linear-gradient(var(--tinta-3), var(--borde-fuerte)); }
+}
+/* 6, 7 y 9. Computadoras angostas (1024 a 1199 px): detalle en una columna, panel de color sin apretar, gastos en una columna */
+@media (min-width: 1024px) and (max-width: 1199px) {
+  .pantalla.detalle { grid-template-columns: minmax(0, 1fr); }
+  .pantalla.detalle .lateral { max-width: 520px; }
+  .pantalla:not(.presupuesto) > .hero:not(.monto-caja) { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'principal anillo' 'pagar pagar' 'datos datos'; }
+  .seccion-gastos .filas-pres { columns: 1; }
+  .nota-pagado, .llevas { white-space: normal; }
+}
+/* 8. Cabecera de Gastos: la píldora baja de línea también en 390 a 480 px */
+@media (max-width: 480px) { .panel-cab { flex-wrap: wrap; row-gap: 6px; } .pill.resumen-fijos { order: 3; } }
+/* 13. Con letra grande, la etiqueta del dato baja de línea en vez de cortarse */
+@media (max-width: 420px) { .pantalla.tarjetas .hero-dato-etq { white-space: normal; overflow: visible; text-overflow: clip; } }
+/* Teclado de números en computadora: compacto, en cuatro columnas dentro del panel del monto */
+@media (min-width: 1024px) {
+  body:not(.solo-gasto) .hero.monto-caja { flex-wrap: wrap; }
+  body:not(.solo-gasto) .monto-caja .teclado { flex-basis: 100%; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; max-height: 160px; }
+  body:not(.solo-gasto) .monto-caja .tecla { min-height: 40px; border-radius: 12px; font-size: 1.05rem; }
+  .monto-caja .tecla:hover { background: rgba(255, 255, 255, 0.22); }
+  .monto-caja.con-teclado .campo-monto { caret-color: var(--vivo); cursor: text; }
 }
 
 /* ---------- Movimiento con criterio: nada se reinicia, todo lo que entra también sale ---------- */
