@@ -2242,7 +2242,7 @@ html[data-modo="oscuro"] :is(.panel, .grupo, .cuenta-panel) { box-shadow: var(--
 }
 
 /* ---------- Inicio como tablero: entra completo en la ventana de computadora, sin bajar ---------- */
-@media (min-width: 1280px) and (min-height: 620px) {
+@media (min-width: 1400px) and (min-height: 620px) {
   .pantalla.inicio.tablero {
     display: grid; box-sizing: border-box; height: 100dvh; padding-top: 20px; padding-bottom: 18px; gap: 14px 16px;
     grid-template-columns: 318px minmax(0, 1fr) minmax(0, 1.12fr); grid-template-rows: auto auto auto minmax(0, 1fr);
@@ -2363,6 +2363,53 @@ body.montos-ocultos :is(.hero-monto, .hero-pagar-monto, .plastico-monto, .np-mon
 .cierre-top .cat-ico { width: 30px; height: 30px; }
 .cierre-caja .gp-barra { display: block; height: 6px; border-radius: 99px; background: var(--sup-2); overflow: hidden; }
 .cierre-caja .gp-barra > i { display: block; height: 100%; width: 0; border-radius: inherit; transition: width 900ms var(--suave); }
+
+/* ---------- Ajustes de la prueba de tamaños ---------- */
+/* App de gastos: los medios de pago se ven todos, sin tener que deslizar hacia el lado */
+body.solo-gasto .opciones:not(.chicas) { flex-wrap: wrap; overflow: visible; margin: 0; padding: 4px 0 10px; }
+/* Conceptos: el nombre usa dos líneas antes que cortarse */
+.opciones.chicas .opcion { white-space: normal; overflow-wrap: anywhere; line-height: 1.15; text-overflow: clip; }
+/* Computadoras angostas (1024 a 1399 px): las cifras del panel de color no se cortan */
+@media (min-width: 1024px) and (max-width: 1399px) {
+  .hero-datos strong { font-size: 0.82rem; white-space: nowrap; overflow: visible; text-overflow: clip; }
+  .hero-datos li { padding: 10px; gap: 8px; min-width: 0; }
+  .hero-datos .hero-dato-etq { font-size: 0.7rem; }
+}
+/* Tarjetas: nombres largos en dos líneas en vez de cortados */
+.ruta-paso strong, .hero-leyenda span, .hero-extra strong { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+@media (max-width: 360px) {
+  .app-cab .boton.reporte, .boton.reporte { font-size: 0.74rem; padding-inline: 10px; }
+}
+
+/* Computadoras angostas (1024 a 1279 px): Tarjetas en una sola columna, sin apretar el panel de la derecha */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .pantalla.tarjetas .rejilla-billetera { display: flex; flex-direction: column; gap: 18px; }
+  .pantalla.tarjetas .rejilla-billetera > * { width: 100%; min-width: 0; }
+  .pantalla.tarjetas .billetera { max-width: 520px; align-self: center; order: -1; }
+}
+.ruta-paso strong, .hero-leyenda span, .hero-extra strong { overflow-wrap: normal; word-break: normal; }
+.hero-extra span, .hero-extra small, .hero-extra p { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.15; }
+/* App de gastos en pantallas de 360 px o menos: el botón de arriba queda solo con su ícono */
+@media (max-width: 360px) {
+  .boton.reporte { font-size: 0; gap: 0; padding-inline: 12px; }
+  .boton.reporte .icono, .boton.reporte .icono svg { width: 18px; height: 18px; }
+}
+
+/* ---------- Pantallas muy angostas (menos de 400 px): el ingreso no se corta ---------- */
+.google-texto { flex: 1 1 auto; }
+.google-texto b { overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 400px) {
+  .google-envoltura { height: 60px; }
+  .google-arte { gap: 10px; padding: 0 10px; }
+  .google-g { width: 38px; height: 38px; border-radius: 12px; }
+  .google-texto b { font-size: 0.92rem; }
+  .google-flecha { width: 28px; height: 28px; }
+  .login-caja h2 { font-size: 1.45rem; }
+}
+@media (max-width: 340px) {
+  .google-flecha { display: none; }
+  .google-texto b { font-size: 0.88rem; }
+}
 
 /* ---------- Movimiento con criterio: nada se reinicia, todo lo que entra también sale ---------- */
 /* Pantalla que solo se actualizó: lo que ya estaba a la vista no vuelve a entrar */
