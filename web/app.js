@@ -105,6 +105,7 @@ const ICONOS = {
   presupuesto: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
   atras: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>',
   adelante: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>',
+  ojo: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></svg>',
   alerta: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 2.5 20h19z"/><path d="M12 10v4.5M12 17.5v.01"/></svg>',
   sube: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>',
   baja: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 7 7 17M15 17H7V9"/></svg>',
@@ -208,6 +209,12 @@ function botonCuenta(variante) {
       SOLO_GASTO
         ? h('a', { class: 'cuenta-enlace', href: './#inicio' }, icono('presupuesto'), 'Ver cómo va el mes')
         : h('a', { class: 'cuenta-enlace', href: 'gasto.html' }, icono('mas'), 'App solo para gastos'),
+      h('button', { type: 'button', class: 'cuenta-enlace', 'aria-pressed': String(document.body.classList.contains('montos-ocultos')), onclick: (ev) => {
+        const oculto = document.body.classList.toggle('montos-ocultos');
+        try { localStorage.setItem('ff:ocultar', oculto ? '1' : ''); } catch { /* nada */ }
+        ev.currentTarget.setAttribute('aria-pressed', String(oculto));
+        ev.currentTarget.lastChild.textContent = oculto ? 'Mostrar montos' : 'Ocultar montos';
+      } }, icono('ojo'), document.body.classList.contains('montos-ocultos') ? 'Mostrar montos' : 'Ocultar montos'),
       h('button', { type: 'button', class: 'cuenta-enlace instalar', onclick: instalarApp }, icono('descargar'), 'Instalar la app'),
       esIphoneSinInstalar() ? h('p', { class: 'cuenta-pista' }, 'En iPhone: Compartir, luego "Agregar a inicio".') : null),
     zonaSesion());
@@ -359,7 +366,7 @@ function leerPref(clave, porDefecto) {
 
 function aplicarApariencia() {
   const raiz = document.documentElement;
-  const modo = leerPref('ff:modo', 'claro') === 'oscuro' ? 'oscuro' : 'claro';
+  const modo = leerPref('ff:modo', matchMedia('(prefers-color-scheme: dark)').matches ? 'oscuro' : 'claro') === 'oscuro' ? 'oscuro' : 'claro';
   const color = COLORES.some(([id]) => id === leerPref('ff:color', 'marino')) ? leerPref('ff:color', 'marino') : 'marino';
   raiz.dataset.modo = modo;
   raiz.dataset.color = color;
@@ -1588,11 +1595,15 @@ function editarConsumo(t, c) {
   const msg = h('p', { class: 'mensaje error', hidden: true });
   const zona = h('div', { class: 'acciones modal-acciones' });
   const dlg = h('dialog', { class: 'hoja-modal', 'aria-label': 'Editar gasto' });
-  const cerrar = () => {
+  const alVolver = () => cerrar(true);
+  const cerrar = (porAtras = false) => {
     if (dlg.classList.contains('cerrando')) return;
     dlg.classList.add('cerrando');
+    window.removeEventListener('popstate', alVolver);
+    if (porAtras !== true && history.state?.ventana) history.back();
     setTimeout(() => { if (dlg.open) dlg.close(); dlg.remove(); }, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 190);
   };
+  try { history.pushState({ ventana: true }, ''); window.addEventListener('popstate', alVolver); } catch { /* sin historial */ }
   const base = { idCliente: uuid(), hoja: t.hoja, fila: c.fila, verificar: { monto: c.monto, descripcion: c.descripcion } };
   const fallar = (e, porDefecto) => { msg.textContent = mensajeError(e, porDefecto); msg.hidden = false; pintarZona(); };
 
@@ -1727,6 +1738,8 @@ async function vistaInicio() {
       h('p', { class: 'sobretitulo' }, fechaHoy),
       h('h1', {}, nombre ? `${saludo}, ${nombre}` : saludo)),
     h('div', { class: 'mes-inicio' },
+      esHoy ? h('button', { type: 'button', class: 'boton boton-hoy boton-cierre', title: 'Cómo cerró el mes pasado', onclick: () => abrirCierre(sumarMes(mesHoy, -1)) },
+        icono('check'), `Cierre de ${(nombreMesClave(sumarMes(mesHoy, -1)) || '').slice(0, 3).toLowerCase()}.`) : null,
       esHoy ? null : h('button', { type: 'button', class: 'boton boton-hoy', title: 'Volver al mes en curso', onclick: () => {
         estado.sentido = cmpMes(mesHoy, mes) > 0 ? 'adelante' : 'atras';
         estado.mesInicio = null;
@@ -1921,14 +1934,14 @@ async function vistaInicio() {
     ];
 
     const recientes = consumosDe(completo ? rtodo.datos.tarjetas : todas, (t) => t.id !== 'HORMIGA').filter((c) => completo || c.estado !== 'Pagado')
-      .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 6);
+      .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, tablero ? Math.max(3, Math.min(6, Math.floor((innerHeight - 380) / 60))) : 6);
     const listaRecientes = recientes.length ? h('ul', { class: 'lista-mov' }, recientes.map((c) => {
       const fila = filaMov(c, nombreCortoTC(c.tarjeta));
       if (c.estado === 'Pagado') fila.querySelector('.mov-der .suave')?.prepend(h('i', { class: 'mov-pagado', title: 'Pagado' }, icono('check')));
       return fila;
     })) : vacio('Todavía no hay gastos.');
     if (tablero) {
-      const hormigas = consumosDe(todas, (t) => t.id === 'HORMIGA').sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 6);
+      const hormigas = consumosDe(todas, (t) => t.id === 'HORMIGA').sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, Math.max(3, Math.min(6, Math.floor((innerHeight - 380) / 60))));
       pestanasGasto.push(
         { etiqueta: 'Últimos', lado: h('a', { href: '#movimientos' }, 'Ver todos'), nodo: h('div', { class: 'pest-lista' }, listaRecientes) },
         { etiqueta: 'Hormiga', lado: h('a', { href: '#tarjeta-HORMIGA' }, soles(hormiga?.pendiente || 0)),
@@ -1943,7 +1956,58 @@ async function vistaInicio() {
   const revisar = seccionRevisar();
   if (revisar) raiz.append(revisar);
 
+  try {
+    const pasado = sumarMes(mesHoy, -1);
+    if (esHoy && hoy.getDate() <= 7 && localStorage.getItem('ff:cierre') !== pasado && leerCache('presupuesto:' + pasado)) {
+      localStorage.setItem('ff:cierre', pasado);
+      setTimeout(() => { if (location.hash.slice(1) === 'inicio' || !location.hash) abrirCierre(pasado); }, 1800);
+    }
+  } catch { /* sin almacenamiento */ }
   return raiz;
+}
+
+// ---------- Cierre de mes: cómo terminó el mes anterior y si se gastó más o menos que el de antes ----------
+
+async function abrirCierre(mes) {
+  const antes = sumarMes(mes, -1);
+  const [rp, rg, rgAntes] = await Promise.all([
+    cargarRapido('presupuesto', { mes }, 'presupuesto:' + mes).catch(() => null),
+    cargarRapido('personas', { mes }, 'personas:' + mes).catch(() => null),
+    cargarRapido('personas', { mes: antes }, 'personas:' + antes).catch(() => null),
+  ]);
+  const tot = rp?.datos?.totales;
+  const personas = (rg?.datos?.personas || []).filter((x) => x.total > 0);
+  const gastado = personas.reduce((x, y) => x + y.total, 0);
+  const gastadoAntes = (rgAntes?.datos?.personas || []).reduce((x, y) => x + (y.total || 0), 0);
+  if (!tot && !gastado) { avisar(`Todavía no hay datos de ${nombreMesClave(mes) || 'ese mes'}`); return; }
+  const nombre = (nombreMesClave(mes) || '').split(' ')[0].toLowerCase();
+  const nombreAntes = (nombreMesClave(antes) || '').split(' ')[0].toLowerCase();
+  const porConcepto = new Map();
+  for (const per of personas) for (const x of per.conceptos || []) porConcepto.set(x.concepto, (porConcepto.get(x.concepto) || 0) + (Number(x.monto) || 0));
+  const top = [...porConcepto].sort((a, b) => b[1] - a[1]).slice(0, 4);
+  const maxTop = top[0]?.[1] || 1;
+  const dif = gastadoAntes > 0 ? ((gastado - gastadoAntes) / gastadoAntes) * 100 : null;
+  const dlg = h('dialog', { class: 'hoja-modal cierre-mes', 'aria-label': `Cierre de ${nombre}` });
+  const cerrar = () => { if (dlg.classList.contains('cerrando')) return; dlg.classList.add('cerrando'); setTimeout(() => { if (dlg.open) dlg.close(); dlg.remove(); }, sinMovimiento() ? 0 : 190); };
+  dlg.addEventListener('cancel', (ev) => { ev.preventDefault(); cerrar(); });
+  dlg.addEventListener('click', (ev) => { if (ev.target === dlg) cerrar(); });
+  const falta = tot && tot.saldo < 0;
+  dlg.append(h('div', { class: 'cierre-caja' },
+    h('p', { class: 'cierre-etq' }, `Así cerró ${nombre}`),
+    tot ? h('p', { class: 'cierre-monto' + (falta ? ' mal' : ''), 'data-rico': '', 'data-contar': String(Math.abs(tot.saldo)) }, soles(0)) : null,
+    tot ? h('p', { class: 'suave' }, falta ? 'faltó para cubrir el mes' : 'quedó libre según el plan') : null,
+    gastado ? h('div', { class: 'cierre-gasto' },
+      h('span', {}, 'Se gastó'), h('strong', { 'data-contar': String(gastado) }, soles(0)),
+      dif == null ? null : Math.abs(dif) < 0.5 ? h('span', { class: 'suave' }, `igual que en ${nombreAntes}`)
+        : h('span', { class: 'delta ' + (dif <= 0 ? 'bien' : 'mal') }, `${dif > 0 ? '▲' : '▼'} ${Math.abs(dif).toFixed(0)}% vs ${nombreAntes}`)) : null,
+    personas.length ? h('ul', { class: 'cierre-personas' }, personas.map((per, i) => h('li', {}, avatar(per.nombre, 'chico'),
+      h('span', {}, per.nombre.split(' ')[0]), h('i', { class: 'gp-barra' }, h('i', { class: `d${i}`, 'data-w': `${Math.round((per.total / (gastado || 1)) * 100)}%` })), h('strong', {}, soles(per.total))))) : null,
+    top.length ? h('ul', { class: 'cierre-top' }, top.map(([c, v], i) => h('li', { style: `--i: ${i}` }, catIco(c), h('span', {}, c),
+      h('i', { class: 'gp-barra' }, h('i', { class: 'd0', 'data-w': `${Math.round((v / maxTop) * 100)}%` })), h('strong', {}, soles(v))))) : null,
+    h('div', { class: 'acciones modal-acciones' }, h('button', { type: 'button', class: 'boton primario', onclick: cerrar }, 'Listo'))));
+  document.body.append(dlg);
+  dlg.showModal();
+  animarVista(dlg);
 }
 
 // ---------- Pantalla: Movimientos (todos los gastos juntos, pagados o no) ----------
@@ -2190,6 +2254,7 @@ async function vistaRegistrar() {
   function mostrarResultado(datos, res) {
     const r = res?.resultados?.[datos.idCliente];
     if (r?.tipo === 'enviado') {
+      if (!r.datos?.duplicadoId) celebrar(datos.monto); // la celebración sale cuando de verdad quedó guardado
       msg.className = 'mensaje ok';
       msg.replaceChildren(r.datos?.duplicadoId
         ? `Ya estaba guardado en ${r.datos.hoja}.`
@@ -2275,7 +2340,7 @@ async function vistaRegistrar() {
     cajaMonto?.classList.remove('plegado');
     inMonto.value = ''; inDesc.value = ''; inNota.value = ''; sugerencia.textContent = ''; pintarConceptos();
     liberarBoton(btnGuardar, 'Guardar gasto');
-    celebrar(datos.monto);
+    try { localStorage.removeItem('ff:borrador'); } catch { /* nada */ }
     const miEnvio = ++ultimoEnvio;
     msg.className = 'mensaje';
     msg.replaceChildren(cola.persistente() ? 'Guardado aquí. Enviando…' : 'Enviando…');
@@ -2289,6 +2354,22 @@ async function vistaRegistrar() {
     mostrarResultado(datos, res);
   });
 
+  try {
+    const b = JSON.parse(localStorage.getItem('ff:borrador') || 'null');
+    if (b && Date.now() - (b.t || 0) < 12 * 3600 * 1000 && !f.monto && !f.descripcion) {
+      f.monto = b.monto || ''; f.descripcion = b.descripcion || ''; f.nota = b.nota || '';
+      if (b.concepto) { f.concepto = b.concepto; f.conceptoManual = true; }
+      inMonto.value = f.monto; inDesc.value = f.descripcion; inNota.value = f.nota;
+    }
+  } catch { /* sin borrador */ }
+  const guardarBorrador = () => setTimeout(() => {
+    try {
+      if (f.monto || f.descripcion || f.nota) localStorage.setItem('ff:borrador', JSON.stringify({ t: Date.now(), monto: f.monto, descripcion: f.descripcion, nota: f.nota, concepto: f.conceptoManual ? f.concepto : null }));
+      else localStorage.removeItem('ff:borrador');
+    } catch { /* nada */ }
+  }, 0);
+  form.addEventListener('input', guardarBorrador);
+  form.addEventListener('click', guardarBorrador);
   actualizarPrevia();
   pintarConceptos();
   const raiz = h('div', { class: 'pantalla registrar' },
@@ -2750,7 +2831,7 @@ async function vistaPresupuesto() {
       h('ul', { class: 'filas-pres' }, ordenadas.map((f) => {
         const marcable = fijos.includes(f);
         const nota = h('small', { class: 'nota-pagado' }, f.pagadoNota || '');
-        const li = h('li', { class: [f.monto ? '' : 'cero', f.pagado && marcable ? 'pagado' : ''].join(' ').trim() },
+        const li = h('li', { class: [f.monto ? '' : 'cero', f.pagado && marcable ? 'pagado' : ''].join(' ').trim(), 'data-linea': clave === 'gastos' && !f.esTarjeta ? normalizar(nombreLinea(f.concepto)) : null, 'data-plan': String(Math.abs(f.monto || 0)) },
           h('div', { class: 'fila-pres-top' },
             h('span', { class: 'fila-pres-nombre' },
               marcable ? botonFijo(f, d.mes, (x) => { li.classList.toggle('pagado', !!x.pagado); nota.textContent = x.pagado ? (x.pagadoNota || '') : ''; pintarResumenFijos(); }) : null,
@@ -2760,6 +2841,27 @@ async function vistaPresupuesto() {
         return li;
       })));
   };
+
+  // Lo gastado de verdad en el mes, por concepto: se cruza con cada línea del plan que tenga el mismo nombre.
+  const pintarLlevas = (raizPres) => cargarRapido('personas', { mes: d.mes }, 'personas:' + d.mes).then((rp) => {
+    const real = new Map();
+    for (const per of rp?.datos?.personas || []) for (const x of per.conceptos || []) {
+      const k = normalizar(x.concepto || '');
+      real.set(k, (real.get(k) || 0) + (Number(x.monto) || 0));
+    }
+    raizPres.querySelectorAll('li[data-linea]').forEach((li) => {
+      const linea = li.dataset.linea; const plan = Number(li.dataset.plan) || 0;
+      if (!linea || !plan || li.querySelector('.llevas')) return;
+      const clave = [...real.keys()].find((k) => k === linea || (linea.length >= 5 && k.startsWith(linea)) || (k.length >= 5 && linea.startsWith(k)));
+      if (!clave) return;
+      const gastado = real.get(clave); const pct = (gastado / plan) * 100;
+      const tono = pct > 100 ? 'pasado' : pct >= 80 ? 'justo' : 'bien';
+      li.querySelector('.fila-pres-nombre > span:last-child')?.append(h('small', { class: `llevas ${tono}` }, pct > 100 ? `Te pasaste: ${soles(gastado)} de ${soles(plan)}` : `Llevas ${soles(gastado)} de ${soles(plan)}`));
+      const barra = li.querySelector('.barra-pres');
+      const ancho = parseFloat(barra?.querySelector('i')?.dataset.w) || 0;
+      if (barra) { const b = h('b', { class: `real ${tono}` }); barra.append(b); requestAnimationFrame(() => requestAnimationFrame(() => { b.style.width = `${Math.min(100, (ancho * Math.min(pct, 100)) / 100)}%`; })); }
+    });
+  }).catch(() => {});
 
   // Cómo se reparte el ingreso: gastos, ahorros y lo que queda libre.
   const gastos = Math.max(tot.gastos || 0, 0);
@@ -2867,13 +2969,15 @@ async function vistaPresupuesto() {
       const antes = rp?.datos?.totales;
       if (!antes) return;
       const corto = (nombreMesClave(previo.clave) || '').slice(0, 3).toLowerCase();
-      const poner = (el, ahora, anterior) => {
+      const poner = (el, ahora, anterior, subirEsBueno = true) => {
         if (!anterior || !Number.isFinite(ahora)) return;
         const dif = ((ahora - anterior) / Math.abs(anterior)) * 100;
-        el.textContent = Math.abs(dif) < 0.5 ? `Igual que en ${corto}.` : `${dif > 0 ? '+' : '−'}${Math.abs(dif).toFixed(0)}% vs ${corto}.`;
+        if (Math.abs(dif) < 0.5) { el.textContent = `Igual que en ${corto}`; return; }
+        el.textContent = `${dif > 0 ? '▲' : '▼'} ${Math.abs(dif).toFixed(0)}% vs ${corto}`;
+        el.classList.add('delta', (dif > 0) === subirEsBueno ? 'bien' : 'mal');
       };
       poner(deltas.ingresos, tot.ingresos, antes.ingresos);
-      poner(deltas.gastos, tot.gastos, antes.gastos);
+      poner(deltas.gastos, tot.gastos, antes.gastos, false);
       poner(deltas.ahorros, tot.ahorros, antes.ahorros);
       poner(deltas.saldo, libre, Math.max(antes.saldo || 0, 0));
     }).catch(() => {});
@@ -2886,6 +2990,7 @@ async function vistaPresupuesto() {
   ];
   secciones.forEach((el, i) => { if (el) { el.classList.add('revelar'); el.style.setProperty('--i', String(i)); } });
 
+  if (secciones[2]) pintarLlevas(secciones[2]);
   return h('div', { class: 'pantalla presupuesto' },
     h('header', { class: 'cabecera-fila' },
       h('div', { class: 'cabecera' }, h('h1', {}, 'Presupuesto')),
@@ -3004,6 +3109,8 @@ function marcarNav(ruta) {
     if (a.dataset.ruta === base) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   });
   document.body.dataset.ruta = base;
+  const titulos = { inicio: 'Inicio', tarjetas: 'Tarjetas', registrar: 'Nuevo gasto', presupuesto: 'Presupuesto', movimientos: 'Movimientos' };
+  document.title = SOLO_GASTO ? 'FinFamily Gasto' : `${titulos[ruta] || titulos[base] || 'Inicio'} · FinFamily`;
   moverIndicador();
 }
 
@@ -3170,6 +3277,16 @@ async function arrancar() {
     if (tocada) estado.plasticoClic = tocada;
   }, true);
   document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') cerrarMenusCuenta(); });
+  try { if (localStorage.getItem('ff:ocultar')) document.body.classList.add('montos-ocultos'); } catch { /* nada */ }
+  // Atajos de teclado en computadora: N nuevo gasto, 1 Inicio, 2 Tarjetas, 3 Presupuesto, M movimientos, / buscar.
+  document.addEventListener('keydown', (ev) => {
+    if (ev.ctrlKey || ev.metaKey || ev.altKey || SOLO_GASTO || document.querySelector('dialog[open]')) return;
+    const en = ev.target;
+    if (en?.closest?.('input, textarea, select, [contenteditable]')) return;
+    const destino = { n: '#registrar', 1: '#inicio', 2: '#tarjetas', 3: '#presupuesto', m: '#movimientos' }[ev.key.toLowerCase()];
+    if (destino) { ev.preventDefault(); location.hash = destino; return; }
+    if (ev.key === '/') { const b = vista.querySelector('input[type="search"]'); if (b) { ev.preventDefault(); b.focus(); } }
+  });
   window.addEventListener('resize', moverIndicador);
   document.body.append(h('div', { class: 'barra-carga', 'aria-hidden': 'true' }, h('i')));
   // El brillo de los paneles de vidrio sigue al cursor.
@@ -3225,6 +3342,10 @@ async function arrancar() {
     avisar('Sin conexión. Lo que registres se envía al volver la señal.', '', { ico: 'sin-senal' });
   });
   window.addEventListener('cola-cambio', () => { refrescarCola(); });
+  // Lo que quedó en espera de envío se vuelve a intentar solo: cada 45 segundos y al volver a la app.
+  const reintentar = () => { if (navigator.onLine && document.visibilityState === 'visible' && api.emailGuardado()) procesarCola().catch(() => {}); };
+  setInterval(reintentar, 45000);
+  document.addEventListener('visibilitychange', reintentar);
   // Al volver a la app: se envía lo pendiente, se busca versión nueva y, si pasó un buen rato, se traen los datos de nuevo.
   let ocultaDesde = 0;
   document.addEventListener('visibilitychange', () => {

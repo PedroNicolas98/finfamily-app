@@ -9,7 +9,7 @@
   <script>
     // Aplica el modo y el color elegidos antes de pintar, para que no parpadee.
     try {
-      document.documentElement.dataset.modo = localStorage.getItem('ff:modo') === 'oscuro' ? 'oscuro' : 'claro';
+      document.documentElement.dataset.modo = (localStorage.getItem('ff:modo') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'oscuro' : 'claro')) === 'oscuro' ? 'oscuro' : 'claro';
       document.documentElement.dataset.color = localStorage.getItem('ff:color') || 'marino';
     } catch (e) { document.documentElement.dataset.modo = 'claro'; }
   </script>
