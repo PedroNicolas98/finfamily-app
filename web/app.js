@@ -629,11 +629,11 @@ function activarCarrusel(carril) {
         x += falta * Math.min(1, dt * 7);
         if (Math.abs(falta) < 0.4) { x = destino; destino = null; vel = 0; }
       } else {
-        const quiere = encima || carril.matches(':focus-within') ? 0 : meta;
+        const quiere = encima || (!conPuntero && carril.matches(':focus-within')) ? 0 : meta;
         vel += (quiere - vel) * Math.min(1, dt * 4);
         x += (vel + impulso) * dt;
-        impulso *= Math.pow(0.04, dt);
-        if (Math.abs(impulso) < 2) impulso = 0;
+        impulso *= Math.pow(0.12, dt);
+        if (Math.abs(impulso) < 0.5) impulso = 0;
       }
     }
     envolver();
@@ -650,19 +650,31 @@ function activarCarrusel(carril) {
 
   // Arrastrar con el mouse o el dedo
   carril.addEventListener('dragstart', (ev) => ev.preventDefault());
+  // conPuntero: el último gesto fue con mouse o dedo. Así el foco que deja un clic no cuenta como foco de teclado.
+  let conPuntero = false;
+  window.addEventListener('keydown', (ev) => { if (ev.key === 'Tab') conPuntero = false; });
   carril.addEventListener('pointerdown', (ev) => {
     if (ev.button > 0) return;
-    arrastre = { x0: ev.clientX, inicio: x, movido: false, ultX: ev.clientX, ultT: performance.now(), v: 0 };
+    conPuntero = true;
+    arrastre = { x0: ev.clientX, inicio: x, movido: false, ultX: ev.clientX, ultT: performance.now(), v: 0, muestras: [] };
     destino = null; impulso = 0;
   });
   window.addEventListener('pointermove', (ev) => {
     if (!arrastre) return;
+    if (!arrastre.movido) {
+      if (Math.abs(ev.clientX - arrastre.x0) < 6) return;
+      // Empieza a arrastrar desde donde está el dedo ahora: sin el salto de los primeros píxeles.
+      arrastre.movido = true;
+      arrastre.x0 = ev.clientX; arrastre.inicio = x; arrastre.ultX = ev.clientX; arrastre.ultT = performance.now();
+      carril.classList.add('arrastrando');
+      try { carril.setPointerCapture(ev.pointerId); } catch { /* sin captura */ }
+      return;
+    }
     const dx = ev.clientX - arrastre.x0;
-    if (!arrastre.movido && Math.abs(dx) < 6) return;
-    if (!arrastre.movido) { arrastre.movido = true; carril.classList.add('arrastrando'); }
     const ahora = performance.now();
-    const dt = Math.max(1, ahora - arrastre.ultT);
-    arrastre.v = arrastre.v * 0.6 + (-(ev.clientX - arrastre.ultX) / dt) * 1000 * 0.4;
+    // Velocidad del gesto: se mide con lo recorrido en los últimos 90 ms, no con un solo evento.
+    arrastre.muestras.push([ahora, ev.clientX]);
+    while (arrastre.muestras.length > 2 && ahora - arrastre.muestras[0][0] > 90) arrastre.muestras.shift();
     arrastre.ultX = ev.clientX; arrastre.ultT = ahora;
     x = arrastre.inicio - dx;
     envolver();
@@ -671,8 +683,17 @@ function activarCarrusel(carril) {
   const soltar = () => {
     if (!arrastre) return;
     if (arrastre.movido) {
-      impulso = Math.max(-1800, Math.min(1800, arrastre.v));
-      vel = 0;
+      const m = arrastre.muestras; const ahora = performance.now();
+      let v = 0;
+      // Si el dedo se quedó quieto antes de soltar, no hay lanzamiento.
+      if (m.length >= 2 && ahora - m[m.length - 1][0] < 80) {
+        const dtm = Math.max(16, m[m.length - 1][0] - m[0][0]);
+        v = (-(m[m.length - 1][1] - m[0][1]) / dtm) * 1000;
+      }
+      impulso = Math.max(-2400, Math.min(2400, v));
+      destino = null; // nada pendiente: manda el impulso del lanzamiento
+      // Sigue girando a su paso normal en el mismo sentido en que venía, sin frenar a cero.
+      vel = Math.abs(impulso) > 60 ? 0 : vel;
       // Lo que empezó como arrastre no cuenta como toque en la tarjeta.
       const sinClic = (ev) => { ev.preventDefault(); ev.stopPropagation(); };
       carril.addEventListener('click', sinClic, { capture: true, once: true });
@@ -699,7 +720,7 @@ function activarCarrusel(carril) {
   // Con teclado: la tarjeta enfocada se trae a la vista
   carril.addEventListener('focusin', (ev) => {
     const el = ev.target.closest?.('.plastico');
-    if (!el || !pista.contains(el)) return;
+    if (!el || !pista.contains(el) || conPuntero || arrastre) return;
     const pos = (el.offsetLeft - tarjetas[0].offsetLeft) % juego;
     let d = pos - paso;
     while (d - x > juego / 2) d -= juego;
