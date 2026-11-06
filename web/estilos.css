@@ -2348,6 +2348,30 @@ body.montos-ocultos :is(.hero-monto, .hero-pagar-monto, .plastico-monto, .np-mon
 .hoja-modal form.cierre-caja { text-align: left; }
 .hoja-modal form.cierre-caja .cierre-etq { font-size: 1.1rem; color: var(--tinta); }
 
+/* ---------- Monto que se edita con un clic, y controles de orden y densidad ---------- */
+.monto-editable { font: inherit; font-weight: inherit; color: inherit; background: none; border: 0; padding: 3px 7px; margin: -3px -7px -3px 0; border-radius: 9px; cursor: text;
+  box-shadow: inset 0 0 0 1px transparent; transition: background 200ms ease, box-shadow 200ms ease, transform 240ms var(--suave); }
+.monto-editable:hover, .monto-editable:focus-visible { background: color-mix(in srgb, var(--marca) 9%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--marca) 30%, transparent); outline: none; }
+.monto-editable:active { transform: scale(0.97); }
+.monto-editable.guardando { opacity: 0.6; pointer-events: none; animation: latir-suave 900ms ease-in-out infinite; }
+.monto-entrada { font: inherit; font-weight: 700; color: var(--tinta); width: 7.2em; text-align: right; padding: 3px 7px; margin: -3px -7px -3px 0; border-radius: 9px;
+  border: 0; background: var(--sup); box-shadow: 0 0 0 2px var(--accion), 0 8px 18px -8px var(--accion); outline: none; animation: entrada-monto 220ms var(--suave); }
+.monto-entrada.mal { box-shadow: 0 0 0 2px var(--mal, #D9543E); animation: sacudir 320ms ease; }
+@keyframes entrada-monto { from { transform: scale(0.94); opacity: 0.4; } }
+@keyframes sacudir { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+.pres-controles { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: -2px 0 8px; }
+.pres-orden { padding: 2px; border-radius: 10px; }
+.pres-orden button { min-height: 28px; padding: 0 11px; font-size: 0.78rem; font-weight: 650; border-radius: 8px; white-space: nowrap; }
+.pres-densidad { width: 32px; height: 32px; min-height: 0; }
+.pres-densidad[aria-pressed="true"] { background: var(--marca-suave); color: var(--marca-tinta); }
+.pres-densidad .icono { transition: transform 300ms var(--suave); }
+.pres-densidad[aria-pressed="true"] .icono { transform: scaleY(0.7); }
+.filas-pres li { transition: padding 260ms var(--suave); }
+.seccion-pres.compacta .filas-pres li { padding-block: 5px; }
+.seccion-pres.compacta .barra-pres { height: 2px; margin-top: 3px; }
+.seccion-pres.compacta .nota-pagado, .seccion-pres.compacta .llevas { display: none; }
+.seccion-pres.compacta .fila-pres-top { font-size: 0.9rem; }
+
 /* ---------- Cierre de mes ---------- */
 .boton-cierre { font-size: 0.82rem; }
 .cierre-mes { max-width: 440px; }
