@@ -1431,7 +1431,7 @@ body.solo-gasto .f-cierre .mensaje { box-shadow: var(--sombra-alta); }
   .barra-nav a[aria-current="page"]:not(.central) { background: none; }
   body.solo-gasto { padding-left: 0; padding-bottom: 0; }
   body.solo-gasto .pantalla { padding-top: 26px; }
-  body.solo-gasto .formulario { display: flex; }
+  body.solo-gasto .formulario { display: flex; align-items: stretch; }
   body.solo-gasto .opciones:not(.chicas) { margin: 0; padding: 4px 0 10px; flex-wrap: wrap; overflow: visible; }
   body.solo-gasto .cuenta-menu.movil { right: 40px; top: 26px; }
   body.solo-gasto .cabecera-gasto { padding-right: 54px; }
@@ -1671,8 +1671,8 @@ body.cargando-datos .barra-carga { opacity: 1; }
 .tostada-cerrar { border: 0; background: none; color: inherit; cursor: pointer; width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; padding: 0; opacity: 0.7; transition: opacity 200ms ease, background 200ms ease; }
 .tostada-cerrar:hover { opacity: 1; background: rgba(127, 127, 127, 0.25); }
 .tostada-cerrar .icono, .tostada-cerrar .icono svg { width: 15px; height: 15px; }
-.tostada.fija > .icono { color: var(--vivo); animation: destello 2.4s ease-in-out infinite; }
-@keyframes destello { 50% { transform: scale(1.22) rotate(12deg); } }
+.tostada.fija > .icono { color: var(--vivo); animation: titilar 2.4s ease-in-out infinite; }
+@keyframes titilar { 50% { transform: scale(1.22) rotate(12deg); } }
 
 /* Editor de gasto: se cierra con animación */
 .hoja-modal.cerrando { animation: modal-sale 190ms ease forwards; }
@@ -2145,6 +2145,39 @@ html[data-vt] .carrusel-pista > .plastico[style*="view-transition-name"] { anima
   .cuenta-menu.nav .cuenta-panel { padding: 8px; width: auto; }
   body.menu-chico .cuenta-menu.nav .cuenta-panel { width: 268px; }
 }
+
+/* ---------- Movimiento con criterio: nada se reinicia, todo lo que entra también sale ---------- */
+/* Pantalla que solo se actualizó: lo que ya estaba a la vista no vuelve a entrar */
+.revelar.quieto, .revelar.quieto :is(.dona-arco, .gd-col i, .mov, .fijo, .persona, .ruta-paso), .revelar.quieto .ruta::before { animation: none; }
+/* La cifra que cambió se enciende un instante */
+[data-contar].cambio { animation: cifra-cambio 1200ms ease; }
+@keyframes cifra-cambio { 30% { text-shadow: 0 0 18px color-mix(in srgb, var(--vivo) 75%, transparent); } }
+/* Mes en negativo: se dice "Falta" y el monto va en tono coral */
+.hero-principal.en-falta .hero-monto { color: #FFD9D0; }
+.hero-principal.en-falta .hero-etq .icono, .hero-principal.en-falta .hero-etq .icono svg { width: 15px; height: 15px; vertical-align: -2px; }
+/* Salida suave (menú de cuenta, barra de seleccionados, confirmaciones) */
+.sale-suave { animation: sale-suave 160ms ease forwards !important; pointer-events: none; }
+@keyframes sale-suave { to { opacity: 0; translate: 0 6px; } }
+/* El globo del gráfico aparece con fundido y se desliza de barra en barra */
+.gd-tip { transition: left 160ms var(--suave), opacity 160ms ease; }
+.gd-tip.fuera { opacity: 0; }
+/* Respuesta al dedo: lo que se toca se encoge un poco mientras está presionado */
+html { -webkit-tap-highlight-color: transparent; }
+.pest, .chip-filtro, .mb-col, .barra-nav a .icono { transition-property: background, color, box-shadow, border-color, transform, opacity; transition-duration: 200ms; }
+.pest:active, .chip-filtro:active, .mb-col:active, .selector-mes .boton:active { transform: scale(0.95); }
+.barra-nav a:active .icono { transform: scale(0.86); }
+.barra-nav a:active { opacity: 0.8; }
+a.plastico:active, .mov:active, a.nav-proximo:active { filter: brightness(0.96); }
+/* Celular: el nombre del consumo usa el ancho completo y hasta dos líneas; se edita tocando el nombre */
+@media (max-width: 700px) {
+  .consumo .derecha { min-width: 0; }
+  .consumo .boton-editar { display: none; }
+  .consumo-texto span:first-child { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.25; }
+}
+/* Buscador: el contador no se monta sobre la X de limpiar */
+.buscador-cuenta { right: 40px; }
+.pest, .chip-filtro { position: relative; overflow: hidden; }
+.boton[hidden] { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

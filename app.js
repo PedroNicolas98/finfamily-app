@@ -183,12 +183,14 @@ function pintarMonto(el, valor) {
 }
 
 // Anima un número de 0 al valor final (respeta "reducir movimiento").
-function contar(el, valor) {
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches || !Number.isFinite(valor)) { pintarMonto(el, valor); return; }
-  const t0 = performance.now(); const dur = 900;
+function contar(el, valor, desde = 0, dur = 900) {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches || !Number.isFinite(valor) || desde === valor) { pintarMonto(el, valor); return; }
+  const t0 = performance.now();
+  pintarMonto(el, desde);
   const paso = (t) => {
+    if (!el.isConnected) return;
     const p = Math.min((t - t0) / dur, 1);
-    pintarMonto(el, valor * (1 - Math.pow(1 - p, 3)));
+    pintarMonto(el, desde + (valor - desde) * (1 - Math.pow(1 - p, 3)));
     if (p < 1) requestAnimationFrame(paso);
   };
   requestAnimationFrame(paso);
@@ -212,9 +214,10 @@ function botonCuenta(variante) {
   const caja = h('div', { class: `cuenta-menu ${variante}` });
   const disparador = h('button', { type: 'button', class: 'cuenta-boton', 'aria-haspopup': 'dialog', 'aria-expanded': 'false',
     'aria-label': 'Tu cuenta y apariencia', onclick: () => {
-      const abrir = panel.hidden;
+      const abrir = panel.hidden || !caja.classList.contains('abierto');
       cerrarMenusCuenta();
       if (!abrir) return;
+      panel.classList.remove('sale-suave');
       panel.hidden = false;
       caja.classList.add('abierto');
       disparador.setAttribute('aria-expanded', 'true');
@@ -226,10 +229,18 @@ function botonCuenta(variante) {
   return caja;
 }
 
+// Todo lo que entra con animación también sale con una: se desvanece y baja un poco antes de quitarse.
+function salirSuave(el, alTerminar) {
+  if (!el || el.hidden || !el.isConnected || matchMedia('(prefers-reduced-motion: reduce)').matches) { alTerminar(); return; }
+  el.classList.add('sale-suave');
+  setTimeout(() => { el.classList.remove('sale-suave'); alTerminar(); }, 160);
+}
+
 function cerrarMenusCuenta() {
   document.querySelectorAll('.cuenta-menu.abierto').forEach((m) => {
     m.classList.remove('abierto');
-    m.querySelector('.cuenta-panel').hidden = true;
+    const panel = m.querySelector('.cuenta-panel');
+    salirSuave(panel, () => { if (!m.classList.contains('abierto')) panel.hidden = true; });
     m.querySelector('.cuenta-boton').setAttribute('aria-expanded', 'false');
   });
 }
@@ -267,6 +278,7 @@ function graficoDias(consumos, dias = 30) {
     tip.replaceChildren(h('span', {}, x.hoy ? `${fecha(x)} · hoy` : fecha(x)), h('strong', {}, soles(x.valor)),
       h('span', {}, x.n === 0 ? 'Sin consumos' : `${x.n} consumo${x.n === 1 ? '' : 's'}`));
     tip.hidden = false;
+    tip.classList.remove('fuera');
     tip.style.left = `${Math.max(62, Math.min(barras.offsetWidth - 62, col.offsetLeft + col.offsetWidth / 2))}px`;
     quitarActiva();
     col.classList.add('activa');
@@ -280,7 +292,7 @@ function graficoDias(consumos, dias = 30) {
     col.addEventListener('click', () => mostrarTip(col, x));
     barras.append(col);
   });
-  barras.addEventListener('pointerleave', () => { tip.hidden = true; quitarActiva(); });
+  barras.addEventListener('pointerleave', () => { tip.classList.add('fuera'); quitarActiva(); });
   const eje = h('div', { class: 'gd-eje', 'aria-hidden': 'true' },
     serie.map((x, i) => h('span', {}, (dias - 1 - i) % 7 === 0 ? (x.hoy ? 'Hoy' : fecha(x)) : '')));
   const nodo = h('div', { class: 'gd' },
@@ -295,13 +307,46 @@ function graficoDias(consumos, dias = 30) {
 }
 
 // Tras pintar una pantalla: barras que crecen y montos que cuentan.
-function animarVista(raiz) {
-  raiz.querySelectorAll('[data-contar]').forEach((el) => contar(el, Number(el.dataset.contar)));
+// "previo" es la foto de lo que mostraba la misma pantalla (ver fotoDeCifras): con ella cada cifra, barra y anillo
+// sigue desde donde estaba en vez de volver a empezar de cero.
+function claveCifra(el, cuenta) {
+  const base = el.dataset.clave || `${el.tagName}.${el.className}`;
+  const n = cuenta.get(base) || 0;
+  cuenta.set(base, n + 1);
+  return `${base}#${n}`;
+}
+function fotoDeCifras(raiz) {
+  const foto = new Map();
+  for (const [sel, leer] of [['[data-contar]', (el) => Number(el.dataset.contar)], ['[data-w]', (el) => el.dataset.w], ['[data-offset]', (el) => el.dataset.offset]]) {
+    const cuenta = new Map();
+    raiz.querySelectorAll(sel).forEach((el) => foto.set(sel + claveCifra(el, cuenta), leer(el)));
+  }
+  return foto;
+}
+function animarVista(raiz, previo = null) {
+  const cuenta = [new Map(), new Map(), new Map()];
+  const antes = (sel, el, i) => (previo ? previo.get(sel + claveCifra(el, cuenta[i])) : undefined);
+  raiz.querySelectorAll('[data-contar]').forEach((el) => {
+    const valor = Number(el.dataset.contar);
+    const desde = antes('[data-contar]', el, 0);
+    if (!previo) { contar(el, valor); return; }
+    if (desde === undefined || desde === valor) { pintarMonto(el, valor); return; }
+    contar(el, valor, desde, 520);
+    el.classList.add('cambio');
+    setTimeout(() => el.classList.remove('cambio'), 1300);
+  });
+  const barras = [...raiz.querySelectorAll('[data-w]')];
+  const arcos = [...raiz.querySelectorAll('[data-offset]')];
+  if (previo) {
+    // Arrancan en la medida que ya tenían; dos cuadros después van a la nueva.
+    barras.forEach((el) => { const v = antes('[data-w]', el, 1); if (v !== undefined) el.style.width = v; });
+    arcos.forEach((el) => { const v = antes('[data-offset]', el, 2); if (v !== undefined) el.style.strokeDashoffset = v; });
+  }
   requestAnimationFrame(() => requestAnimationFrame(() => {
-    raiz.querySelectorAll('[data-w]').forEach((el) => { el.style.width = el.dataset.w; });
-    raiz.querySelectorAll('[data-offset]').forEach((el) => { el.style.strokeDashoffset = el.dataset.offset; });
+    barras.forEach((el) => { el.style.width = el.dataset.w; });
+    arcos.forEach((el) => { el.style.strokeDashoffset = el.dataset.offset; });
   }));
-  darVida(raiz);
+  darVida(raiz, !!previo);
 }
 
 // ---------- Apariencia (modo claro/oscuro y color de la app) ----------
@@ -547,9 +592,12 @@ function activarCarrusel(carril) {
   };
   medir();
   if (!juego) return;
-  let x = 0; // avance dentro de un juego, de 0 a juego
-  let vel = 0; // velocidad actual (arranca y frena de a pocos)
+  // Si la pantalla solo se actualizó, el carrusel sigue girando desde donde iba.
+  const sigue = Number.isFinite(estado.giroCarrusel) && !quieto;
+  let x = sigue ? estado.giroCarrusel % juego : 0; // avance dentro de un juego, de 0 a juego
+  let vel = sigue ? VELOCIDAD : 0; // velocidad actual (arranca y frena de a pocos)
   let meta = quieto ? 0 : VELOCIDAD; // velocidad a la que quiere ir
+  carril.posicion = () => x;
   let impulso = 0; // inercia después de arrastrar
   let destino = null; // posición pedida con las flechas
   let arrastre = null;
@@ -649,8 +697,10 @@ function activarCarrusel(carril) {
   });
 }
 
-function darVida(raiz) {
+function darVida(raiz, yaVisto = false) {
   raiz.querySelectorAll('.carrusel.infinito').forEach(activarCarrusel);
+  // Pantalla que solo se actualizó: lo que ya se veía queda a la vista, sin volver a entrar.
+  if (yaVisto) raiz.querySelectorAll('.revelar').forEach((el) => el.classList.add('visible', 'quieto'));
   const calmado = matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (!calmado && matchMedia('(hover: hover) and (pointer: fine)').matches) {
     raiz.querySelectorAll('a.plastico').forEach((el) => {
@@ -668,7 +718,7 @@ function darVida(raiz) {
       hero.style.setProperty('--my', `${Math.round(ev.clientY - r.top)}px`);
     });
   }
-  const pendientes = [...raiz.querySelectorAll('.revelar')];
+  const pendientes = [...raiz.querySelectorAll('.revelar:not(.visible)')];
   if (!pendientes.length) return;
   const mostrarTodo = () => pendientes.forEach((el) => el.classList.add('visible'));
   if (calmado || !('IntersectionObserver' in window)) { mostrarTodo(); return; }
@@ -676,7 +726,6 @@ function darVida(raiz) {
     for (const e of entradas) if (e.isIntersecting) { e.target.classList.add('visible'); io.unobserve(e.target); }
   }, { rootMargin: '0px 0px -6% 0px' });
   pendientes.forEach((el) => io.observe(el));
-  setTimeout(mostrarTodo, 4000); // por si el navegador no avisa: nada se queda oculto
 }
 
 // Barra partida en proporciones (cada parte con su clase de color y su texto al pasar el cursor).
@@ -1153,7 +1202,7 @@ function dato(etiqueta, valor) {
 // Reemplaza una zona por una confirmación en la misma pantalla.
 function confirmarEnLinea(zona, texto, etiquetaSi, alConfirmar) {
   const previo = [...zona.childNodes];
-  const cancelar = () => zona.replaceChildren(...previo);
+  const cancelar = () => salirSuave(zona.querySelector('.confirmacion'), () => zona.replaceChildren(...previo));
   const si = h('button', { type: 'button', class: 'boton primario', onclick: async () => {
     ocuparBoton(si, 'Procesando…'); no.disabled = true;
     await alConfirmar();
@@ -1670,14 +1719,20 @@ async function vistaInicio() {
     extra || null);
   const hero = h('section', { class: 'hero' },
     h('div', { class: 'hero-fondo', 'aria-hidden': 'true' }, h('i'), h('i'), h('i')));
-  if (p) {
-    const pct = p.ingresos > 0 ? Math.max(0, Math.min(100, Math.round((p.gastos / p.ingresos) * 100))) : 0;
+  if (p && !(p.ingresos > 0)) {
+    // Mes sin ingresos cargados en la hoja: no es una pérdida, solo faltan datos.
+    hero.append(h('div', { class: 'hero-principal' },
+      h('p', { class: 'hero-etq' }, `Saldo de ${mesNombre}`),
+      h('p', { class: 'hero-vacio' }, `${nombreMesClave(mes) || 'Este mes'} aún no tiene ingresos cargados.`)));
+  } else if (p) {
+    const pct = Math.max(0, Math.min(100, Math.round((p.gastos / p.ingresos) * 100)));
+    const falta = p.saldo < 0;
     hero.append(
-      h('div', { class: 'hero-principal' },
-        h('p', { class: 'hero-etq' }, `Saldo de ${mesNombre}`),
-        h('p', { class: 'hero-monto', 'data-rico': '', 'data-contar': String(p.saldo) }, soles(0)),
+      h('div', { class: 'hero-principal' + (falta ? ' en-falta' : '') },
+        h('p', { class: 'hero-etq' }, falta ? [icono('alerta'), ` Falta en ${mesNombre}`] : `Saldo de ${mesNombre}`),
+        h('p', { class: 'hero-monto', 'data-rico': '', 'data-contar': String(Math.abs(p.saldo)) }, soles(0)),
         h('p', { class: 'hero-personal' }, h('span', { class: 'avatares' }, avatar('Pedro'), avatar('Britney')),
-          h('span', {}, h('strong', {}, soles(p.saldoPersonal)), ' c/u'))),
+          h('span', {}, h('strong', {}, soles(Math.abs(p.saldoPersonal))), ' c/u'))),
       anillo(pct));
   } else {
     hero.append(h('div', { class: 'hero-principal' },
@@ -2269,8 +2324,12 @@ async function vistaTarjeta(id) {
   const barra = h('div', { class: 'barra-seleccion', hidden: true });
   const actualizarBarra = () => {
     const sel = todos.filter((c) => estado.seleccion.has(c.fila) && marcable(c));
-    if (!sel.length) { barra.hidden = true; barra.replaceChildren(); return; }
+    if (!sel.length) {
+      salirSuave(barra, () => { if (!todos.some((c) => estado.seleccion.has(c.fila) && marcable(c))) { barra.hidden = true; barra.replaceChildren(); } });
+      return;
+    }
     const total = sel.reduce((s, c) => s + c.monto, 0);
+    barra.classList.remove('sale-suave');
     barra.hidden = false;
     barra.replaceChildren(
       h('span', {}, `${sel.length} seleccionado(s) · ${soles(total)}`),
@@ -2285,6 +2344,7 @@ async function vistaTarjeta(id) {
     col.append(vacio(esHormiga ? 'Sin gastos hormiga este mes.' : 'No hay consumos pendientes.'));
   }
 
+  const botonesGrupo = [];
   const montoMax = Math.max(1, ...grupos.flatMap((g) => (g.consumos || []).map((c) => Math.abs(c.monto) || 0)));
   for (const g of grupos) {
     const consumos = g.consumos || [];
@@ -2294,11 +2354,22 @@ async function vistaTarjeta(id) {
     const titulo = esHormiga ? nombreMesClave(mesActual()) : g.vence ? `Vence ${fechaCorta(g.vence)}` : 'Sin fecha de vencimiento';
     const zona = h('div', { class: 'acciones' });
     if (pendientes.length && !esHormiga) {
-      const totalPend = pendientes.reduce((s, c) => s + c.monto, 0);
-      zona.append(h('button', { type: 'button', class: 'boton', onclick: () => {
-        confirmarEnLinea(zona, `Vas a marcar ${pendientes.length} consumo(s) por ${soles(totalPend)} como pagados.`, 'Marcar pagado',
-          () => marcarPagados(t, pendientes));
-      } }, 'Marcar pagado'));
+      // Con búsqueda o filtro puesto, el botón actúa solo sobre lo que se ve.
+      const aLaVista = () => pendientes.filter((c) => !zona.parentElement?.querySelector(`li[data-fila="${c.fila}"]`)?.hidden);
+      const boton = h('button', { type: 'button', class: 'boton', onclick: () => {
+        const lista = aLaVista();
+        if (!lista.length) return;
+        const suma = lista.reduce((s, c) => s + c.monto, 0);
+        confirmarEnLinea(zona, `Vas a marcar ${lista.length} consumo${lista.length === 1 ? '' : 's'} por ${soles(suma)} como pagado${lista.length === 1 ? '' : 's'}.`, 'Marcar pagado',
+          () => marcarPagados(t, lista));
+      } }, 'Marcar pagado');
+      zona.append(boton);
+      botonesGrupo.push(() => {
+        const lista = aLaVista();
+        boton.hidden = !lista.length;
+        boton.textContent = lista.length === pendientes.length ? 'Marcar pagado'
+          : `Marcar ${lista.length === 1 ? 'este' : `estos ${lista.length}`} · ${soles(lista.reduce((s, c) => s + c.monto, 0))}`;
+      });
     }
     const dias = !esHormiga && g.vence ? diasEntre(hoyISO(), g.vence) : null;
     const pill = dias == null ? null
@@ -2328,13 +2399,17 @@ async function vistaTarjeta(id) {
         });
         const etiquetaEstado = enEspera(c) ? 'En espera' : c.estado === 'Pagado' ? 'Pagado' : '';
         const sub = [c.concepto, esHormiga ? c.medio : ''].filter(Boolean).join(' · ');
-        const fila = h('li', { 'data-dia': c.fecha || '', 'data-concepto': c.concepto || 'Sin concepto', 'data-monto': String(Number(c.monto) || 0),
+        const fila = h('li', { 'data-fila': String(c.fila), 'data-dia': c.fecha || '', 'data-concepto': c.concepto || 'Sin concepto', 'data-monto': String(Number(c.monto) || 0),
           'data-texto': normalizar(`${c.descripcion} ${limpiarComercio(c.descripcion)} ${c.concepto || ''} ${esHormiga ? c.medio || '' : ''}`) },
           h('label', { class: 'consumo' + (puede ? '' : ' inactivo'), title: c.descripcion,
             style: `--p: ${Math.round(Math.sqrt(Math.abs(c.monto || 0) / montoMax) * 100)}%` }, // raíz: un consumo muy grande no aplasta a los demás
           esHormiga ? null : caja,
           catIco(c.concepto),
-          h('div', { class: 'consumo-texto' }, h('span', {}, limpiarComercio(c.descripcion)), h('span', { class: 'suave' }, sub)),
+          h('div', { class: 'consumo-texto', onclick: (ev) => {
+            // En pantallas táctiles no hay lápiz: tocar el nombre abre la edición.
+            if (enEspera(c) || !matchMedia('(hover: none)').matches) return;
+            ev.preventDefault(); editarConsumo(t, c);
+          } }, h('span', {}, limpiarComercio(c.descripcion)), h('span', { class: 'suave' }, sub)),
           enEspera(c) ? null : h('button', { type: 'button', class: 'boton-editar', title: 'Editar', 'aria-label': `Editar ${limpiarComercio(c.descripcion)}`,
             onclick: (ev) => { ev.preventDefault(); ev.stopPropagation(); editarConsumo(t, c); } }, icono('lapiz')),
           h('div', { class: 'derecha' }, h('strong', {}, soles(c.monto)),
@@ -2371,8 +2446,11 @@ async function vistaTarjeta(id) {
         grupo.hidden = enGrupo === 0;
         visibles += enGrupo;
       });
-      cuenta.textContent = q || conceptoElegido ? `${visibles} de ${todos.length}` : '';
+      // Con filtro se ve cuánto suma lo encontrado, no solo cuántos son.
+      const sumaVisible = [...col.querySelectorAll('li[data-texto]')].reduce((s, li) => s + (li.hidden ? 0 : Number(li.dataset.monto)), 0);
+      cuenta.textContent = q || conceptoElegido ? `${visibles} de ${todos.length} · ${soles(sumaVisible)}` : '';
       sinResultados.hidden = visibles > 0;
+      botonesGrupo.forEach((f) => f());
     };
     entrada.addEventListener('input', filtrar);
     // Conceptos de esta tarjeta, del que más pesa al que menos
@@ -2846,24 +2924,31 @@ async function navegar(opciones) {
   if (silencioso) {
     // Datos nuevos en la misma pantalla: se funden con los anteriores, sin mover la página.
     const altura = window.scrollY;
-    conTransicion('igual', () => {
-      if (id !== estado.navId) return;
-      vista.classList.remove('entrada');
-      mostrar(nodo);
-      animarVista(vista);
-      window.scrollTo(0, altura);
-      pintarAvisos();
-    });
+    const previo = fotoDeCifras(vista);
+    const giro = vista.querySelector('.carrusel.infinito')?.posicion?.();
+    if (id !== estado.navId) return;
+    // Sin foto de transición: nada desaparece ni vuelve a entrar; solo se mueve lo que cambió.
+    vista.classList.remove('entrada');
+    vista.classList.add('quieta');
+    estado.giroCarrusel = giro ?? null;
+    mostrar(nodo);
+    animarVista(vista, previo);
+    estado.giroCarrusel = null;
+    window.scrollTo(0, altura);
+    pintarAvisos();
     return;
   }
   const antes = estado.rutaVista;
   const tipo = tipoTransicion(antes, ruta);
+  // Misma pantalla con otros datos (cambio de mes): las cifras siguen desde lo que mostraban.
+  const previoMes = antes === ruta ? fotoDeCifras(vista) : null;
+  vista.classList.remove('quieta');
   const idTarjeta = tipo === 'entra' ? ruta.slice('tarjeta-'.length) : tipo === 'sale' && antes?.startsWith('tarjeta-') ? antes.slice('tarjeta-'.length) : null;
   conTransicion(tipo, () => {
     if (id !== estado.navId) return;
     mostrar(nodo);
     estado.rutaVista = nodo.classList?.contains('login') ? null : ruta;
-    animarVista(vista);
+    animarVista(vista, previoMes && previoMes.size ? new Map([...previoMes].filter(([k]) => k.startsWith('[data-contar]'))) : null);
     vista.classList.remove('entrada');
     void vista.offsetWidth;
     vista.classList.add('entrada');
@@ -2965,7 +3050,7 @@ async function arrancar() {
   document.body.append(h('div', { class: 'barra-carga', 'aria-hidden': 'true' }, h('i')));
   // Onda al tocar un botón.
   document.addEventListener('pointerdown', (ev) => {
-    const el = ev.target.closest?.('.boton, .opcion, .cuenta-boton');
+    const el = ev.target.closest?.('.boton, .opcion, .cuenta-boton, .pest, .chip-filtro');
     if (!el || el.disabled || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const r = el.getBoundingClientRect();
     const onda = h('span', { class: 'onda', 'aria-hidden': 'true',
