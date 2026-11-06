@@ -2372,6 +2372,21 @@ body.montos-ocultos :is(.hero-monto, .hero-pagar-monto, .plastico-monto, .np-mon
 .seccion-pres.compacta .nota-pagado, .seccion-pres.compacta .llevas { display: none; }
 .seccion-pres.compacta .fila-pres-top { font-size: 0.9rem; }
 
+/* ---------- Ahorros: cuánto llevas guardado y en qué ---------- */
+.ahorro-resumen { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 2px 0 12px; }
+.ahorro-resumen > div { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--radio-chico); background: var(--sup-2); }
+.ahorro-resumen span { font-size: 0.74rem; }
+.ahorro-resumen strong { font-size: 1.05rem; letter-spacing: -0.01em; }
+.ahorro-resumen .ahorro-total { color: var(--marca-tinta); }
+html[data-modo="oscuro"] .ahorro-resumen .ahorro-total { color: var(--vivo); }
+.metas .meta { gap: 6px; padding-bottom: 10px; border-bottom: 1px solid var(--borde); }
+.metas .meta:last-child { border-bottom: 0; padding-bottom: 0; }
+.meta-nombre { font-weight: 650; }
+.meta-pie { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 0.8rem; }
+.meta-pie b, .meta-pie .monto-editable { font-weight: 700; margin: -3px 0; }
+.metas .meta.vacia .meta-top, .metas .meta.vacia .gp-barra { opacity: 0.55; }
+.seccion-ahorros .cifra-cab { display: none; }
+
 /* ---------- Cierre de mes ---------- */
 .boton-cierre { font-size: 0.82rem; }
 .cierre-mes { max-width: 440px; }

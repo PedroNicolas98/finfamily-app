@@ -3122,19 +3122,44 @@ async function vistaPresupuesto() {
   secciones.forEach((el, i) => { if (el) { el.classList.add('revelar'); el.style.setProperty('--i', String(i)); } });
 
   if (secciones[2]) { pintarLlevas(secciones[2]); controlesGastos(secciones[2]); }
-  // Metas de ahorro: cuánto lleva guardado cada una, sumando los meses del presupuesto hasta este.
+  // Ahorros: una sola lista por meta. De cada una se ve cuánto lleva guardado en total, cuánto se puso este mes
+  // (se cambia con un clic) y en cuántos meses se aportó. Arriba, lo ahorrado este mes y el total guardado.
   if (secciones[1] && motorNuevo()) {
     cargarRapido('ahorros', { mes: d.mes }, 'ahorros:' + d.mes).then((ra) => {
-      const metas = (ra?.datos?.metas || []).filter((m) => m.acumulado > 0 || m.delMes > 0);
-      if (!metas.length || secciones[1].querySelector('.metas')) return;
-      const mayor = Math.max(...metas.map((m) => m.acumulado), 1);
-      secciones[1].querySelector('.ahorro-metas')?.remove();
-      secciones[1].append(h('ul', { class: 'metas' }, metas.map((m, i) => h('li', { style: `--i: ${i}`, title: (m.meses || []).filter((x) => x.monto).map((x) => `${x.etiqueta}: ${soles(x.monto)}`).join('\n') },
-        h('div', { class: 'meta-top' }, h('span', {}, nombreLinea(m.concepto)), h('strong', { 'data-contar': String(m.acumulado) }, soles(0))),
-        h('div', { class: 'gp-barra' }, h('i', { class: 'd1', 'data-w': `${Math.round((m.acumulado / mayor) * 100)}%` })),
-        h('small', { class: 'suave' }, m.delMes > 0 ? `+${soles(m.delMes)} este mes` : 'Sin aporte este mes')))),
-        h('p', { class: 'suave metas-pie' }, `Guardado según el plan: ${soles(ra.datos.total || 0)}`));
-      animarVista(secciones[1].querySelector('.metas'));
+      const sec = secciones[1];
+      if (!ra?.datos?.metas || sec.querySelector('.metas')) return;
+      const lineas = (d.filas || []).filter((f) => f.seccion === 'ahorros');
+      const porNombre = new Map(ra.datos.metas.map((m) => [normalizar(m.concepto), m]));
+      const metas = lineas.map((f) => ({ f, m: porNombre.get(normalizar(f.concepto)) || { acumulado: f.monto || 0, delMes: f.monto || 0, meses: [] } }));
+      for (const m of ra.datos.metas) if (!lineas.some((f) => normalizar(f.concepto) === normalizar(m.concepto))) metas.push({ f: null, m });
+      if (!metas.length) return;
+      const total = metas.reduce((x, y) => x + (y.m.acumulado || 0), 0);
+      const delMes = metas.reduce((x, y) => x + (y.m.delMes || 0), 0);
+      const mayor = Math.max(...metas.map((y) => y.m.acumulado || 0), 1);
+      const editable = emailSesion();
+      // Se quita lo anterior (lista del mes, estado vacío y etiquetas sueltas) y queda solo la cabecera.
+      [...sec.children].forEach((el) => { if (!el.classList.contains('panel-cab')) el.remove(); });
+      sec.classList.remove('sin-ahorro');
+      sec.append(
+        h('div', { class: 'ahorro-resumen' },
+          h('div', {}, h('span', { class: 'suave' }, 'Este mes'), h('strong', { 'data-contar': String(delMes) }, soles(0))),
+          h('div', {}, h('span', { class: 'suave' }, 'Guardado en total'), h('strong', { class: 'ahorro-total', 'data-contar': String(total) }, soles(0)))),
+        h('ul', { class: 'metas' }, metas.sort((a, b) => (b.m.acumulado || 0) - (a.m.acumulado || 0)).map(({ f, m }, k) => {
+          const aportes = (m.meses || []).filter((x) => x.monto > 0);
+          const nombre = nombreLinea(f?.concepto || m.concepto);
+          const vacia = !(m.acumulado > 0);
+          return h('li', { class: vacia ? 'meta vacia' : 'meta', style: `--i: ${k}`, title: aportes.map((x) => `${x.etiqueta}: ${soles(x.monto)}`).join('\n') },
+            h('div', { class: 'meta-top' }, h('span', { class: 'meta-nombre' }, nombre),
+              h('strong', { 'data-contar': String(m.acumulado || 0) }, soles(0))),
+            h('div', { class: 'gp-barra' }, h('i', { 'data-w': `${Math.round(((m.acumulado || 0) / mayor) * 100)}%` })),
+            h('div', { class: 'meta-pie' },
+              h('span', {}, 'Este mes ',
+                f && editable && !(f.monto < 0)
+                  ? h('button', { type: 'button', class: 'monto-editable', title: 'Clic para cambiar lo de este mes', 'aria-label': `Cambiar el ahorro de este mes en ${nombre}`, onclick: (ev) => editarEnLinea(ev.currentTarget, d.mes, f) }, soles(f.monto || 0))
+                  : h('b', {}, soles(m.delMes || 0))),
+              h('span', { class: 'suave' }, vacia ? 'Aún sin aportes' : aportes.length === 1 ? `1 aporte (${aportes[0].etiqueta.replace('-', ' ')})` : aportes.length ? `${aportes.length} aportes desde ${aportes[0].etiqueta.replace('-', ' ')}` : '')));
+        })));
+      animarVista(sec);
     }).catch(() => {});
   }
   return h('div', { class: 'pantalla presupuesto' },
