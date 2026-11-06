@@ -1737,7 +1737,7 @@ async function vistaInicio() {
   const ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
   const diasQuedan = ultimoDia - hoy.getDate();
   // En computadora con ventana suficiente, Inicio es un tablero que entra completo, sin bajar.
-  const tablero = matchMedia('(min-width: 1280px) and (min-height: 620px)').matches;
+  const tablero = matchMedia('(min-width: 1400px) and (min-height: 620px)').matches;
   const raiz = h('div', { class: 'pantalla inicio' + (tablero ? ' tablero' : '') });
 
   raiz.append(h('header', { class: 'cabecera-fila' },
