@@ -2176,6 +2176,71 @@ html[data-vt] .carrusel-pista > .plastico[style*="view-transition-name"] { anima
   .barra-nav a.nav-proximo, .cuenta-menu.nav .cuenta-boton { background: color-mix(in srgb, var(--sup) 60%, transparent); border-color: color-mix(in srgb, var(--tinta) 8%, transparent); }
 }
 
+/* ---------- Vidrio en toda la app ---------- */
+/* Luces de color que flotan despacio detrás de todo: son las que se ven a través del vidrio */
+body::before, body::after { content: ''; position: fixed; z-index: -1; pointer-events: none; border-radius: 50%; filter: blur(70px); opacity: 0.5; }
+body::before { width: 46vmax; height: 46vmax; top: -14vmax; right: -10vmax; background: color-mix(in srgb, var(--vivo) 34%, transparent); animation: luz-flota 26s ease-in-out infinite alternate; }
+body::after { width: 40vmax; height: 40vmax; bottom: -16vmax; left: 8vmax; background: color-mix(in srgb, var(--marca) 26%, transparent); animation: luz-flota 32s ease-in-out infinite alternate-reverse; }
+@keyframes luz-flota { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(-6vmax, 5vmax, 0) scale(1.15); } }
+html[data-modo="oscuro"] body::before, html[data-modo="oscuro"] body::after { opacity: 0.28; }
+body.sin-sesion::before, body.sin-sesion::after { display: none; }
+
+/* Paneles, grupos, buscador y selector de mes: vidrio con borde de luz. El brillo sigue al cursor (--px, --py). */
+.panel, .grupo, .buscador input, .selector-mes, .cuenta-panel, .chip-filtro, .pestanas {
+  --vidrio: linear-gradient(165deg, color-mix(in srgb, var(--sup) 88%, transparent), color-mix(in srgb, var(--sup) 64%, transparent));
+  background: var(--vidrio);
+  border-color: color-mix(in srgb, #fff 62%, transparent);
+}
+.panel, .grupo, .cuenta-panel { box-shadow: var(--sombra), inset 0 1px 0 rgba(255, 255, 255, 0.65); }
+html[data-modo="oscuro"] :is(.panel, .grupo, .buscador input, .selector-mes, .cuenta-panel, .chip-filtro, .pestanas) { border-color: rgba(255, 255, 255, 0.09); }
+html[data-modo="oscuro"] :is(.panel, .grupo, .cuenta-panel) { box-shadow: var(--sombra), inset 0 1px 0 rgba(255, 255, 255, 0.06); }
+.panel:hover, .grupo:hover {
+  background: radial-gradient(320px circle at var(--px, 50%) var(--py, 0%), color-mix(in srgb, var(--vivo) 11%, transparent), transparent 70%), var(--vidrio);
+}
+.chip-filtro[aria-pressed="true"] { background: var(--marca-suave); }
+.grupo > .acciones { padding: 10px 18px; border-top: 0; border-bottom: 1px solid var(--borde); background: none; }
+.grupo-cabecera, .consumos li.dia { background: color-mix(in srgb, var(--sup-2) 55%, transparent); }
+@media (min-width: 1024px) {
+  /* El desenfoque de fondo solo en computadora: en celular gasta batería */
+  .panel, .grupo, .cuenta-panel, .selector-mes { -webkit-backdrop-filter: blur(18px) saturate(1.5); backdrop-filter: blur(18px) saturate(1.5); }
+}
+.tostada { -webkit-backdrop-filter: blur(16px) saturate(1.6); backdrop-filter: blur(16px) saturate(1.6); border: 1px solid rgba(255, 255, 255, 0.22); }
+
+/* Filas con respuesta: se encienden, se deslizan un poco y muestran una marca de color al lado */
+.mov, .fijo, .lista-todos .mov { position: relative; border-radius: 12px; transition: transform 260ms var(--suave), background 220ms ease; }
+.lista-mov .mov:hover, .lista-todos .mov:hover, .fijo:hover { background: color-mix(in srgb, var(--marca) 6%, transparent); }
+.consumo { transition: background 220ms ease, box-shadow 220ms ease; }
+.consumo:hover { background: color-mix(in srgb, var(--marca) 6%, transparent); box-shadow: inset 3px 0 0 var(--accion); }
+.consumo:has(input:checked) { background: color-mix(in srgb, var(--vivo) 12%, transparent); box-shadow: inset 3px 0 0 var(--vivo); }
+.consumo .derecha strong, .mov-der strong { transition: transform 260ms var(--suave); }
+.consumo:hover .derecha strong, .mov:hover .mov-der strong { transform: scale(1.05); transform-origin: right center; }
+
+/* Globo de aviso en el menú: cuántas tarjetas vencen en 7 días */
+.nav-globo { position: absolute; top: 6px; right: 8px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; display: grid; place-items: center;
+  font-size: 0.66rem; font-weight: 750; line-height: 1; color: #fff; background: var(--mal, #D9543E); box-shadow: 0 0 0 2px var(--sup), 0 6px 12px -4px var(--mal, #D9543E); animation: globo-entra 420ms var(--suave) both, globo-late 2.6s ease-in-out 1s infinite; }
+.nav-globo[hidden] { display: none; }
+@keyframes globo-entra { from { transform: scale(0); } }
+@keyframes globo-late { 50% { box-shadow: 0 0 0 2px var(--sup), 0 0 0 6px color-mix(in srgb, var(--mal, #D9543E) 22%, transparent); } }
+@media (min-width: 1024px) {
+  .nav-globo { top: 50%; right: 12px; translate: 0 -50%; }
+  body.menu-chico .nav-globo { top: 4px; right: 4px; translate: none; opacity: 1 !important; visibility: visible !important; }
+}
+
+/* Celular: la barra de abajo flota como una píldora de vidrio */
+@media (max-width: 1023px) {
+  .barra-nav {
+    left: 12px; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom)); height: var(--alto-nav); padding: 0 6px;
+    border: 1px solid color-mix(in srgb, #fff 65%, transparent); border-radius: 26px;
+    background: linear-gradient(165deg, color-mix(in srgb, var(--sup) 80%, transparent), color-mix(in srgb, var(--sup) 58%, transparent));
+    -webkit-backdrop-filter: blur(22px) saturate(1.7); backdrop-filter: blur(22px) saturate(1.7);
+    box-shadow: 0 18px 40px -16px color-mix(in srgb, var(--marca) 55%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  }
+  html[data-modo="oscuro"] .barra-nav { border-color: rgba(255, 255, 255, 0.1); box-shadow: 0 18px 40px -16px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.08); }
+  .barra-nav a[aria-current="page"]:not(.central)::before { display: none; }
+  .vista { padding-bottom: 18px; }
+  .tostada, .barra-seleccion { margin-bottom: 14px; }
+}
+
 /* ---------- Movimiento con criterio: nada se reinicia, todo lo que entra también sale ---------- */
 /* Pantalla que solo se actualizó: lo que ya estaba a la vista no vuelve a entrar */
 .revelar.quieto, .revelar.quieto :is(.dona-arco, .gd-col i, .mov, .fijo, .persona, .ruta-paso), .revelar.quieto .ruta::before { animation: none; }
