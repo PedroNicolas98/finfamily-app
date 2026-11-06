@@ -1700,8 +1700,8 @@ html.cambiando, html.cambiando *, html.cambiando *::before, html.cambiando *::af
 ::view-transition-image-pair(root) { isolation: auto; }
 ::view-transition-old(root), ::view-transition-new(root) { mix-blend-mode: normal; }
 /* Primero se va la pantalla anterior y enseguida entra la nueva, para que no se lean una encima de la otra */
-::view-transition-old(root) { animation: vt-sale 140ms cubic-bezier(0.4, 0, 1, 1) both; }
-::view-transition-new(root) { animation: vt-entra 460ms cubic-bezier(0.22, 1, 0.36, 1) 80ms both; }
+::view-transition-old(root) { animation: vt-sale 320ms cubic-bezier(0.4, 0, 0.6, 1) both; }
+::view-transition-new(root) { animation: vt-entra 860ms cubic-bezier(0.22, 1, 0.36, 1) 200ms both; }
 @keyframes vt-sale { to { opacity: 0; transform: translate3d(calc(var(--vt-x, 0) * -44px), calc(var(--vt-y, 0) * -10px), 0) scale(var(--vt-sale, 1)); } }
 @keyframes vt-entra { from { opacity: 0; transform: translate3d(calc(var(--vt-x, 0) * 64px), calc(var(--vt-y, 0) * 22px), 0) scale(var(--vt-entra, 1)); } }
 html[data-vt="adelante"] { --vt-x: 1; }
@@ -1709,8 +1709,8 @@ html[data-vt="atras"] { --vt-x: -1; }
 html[data-vt="abre"] { --vt-y: 1; }
 html[data-vt="entra"] { --vt-sale: 1.05; --vt-entra: 0.95; }
 html[data-vt="sale"] { --vt-sale: 0.95; --vt-entra: 1.05; }
-html[data-vt="igual"]::view-transition-old(root) { animation-duration: 160ms; }
-html[data-vt="igual"]::view-transition-new(root) { animation-duration: 280ms; }
+html[data-vt="igual"]::view-transition-old(root) { animation-duration: 300ms; }
+html[data-vt="igual"]::view-transition-new(root) { animation-duration: 560ms; }
 
 /* Lo que no se mueve: menú, barra de avance y aviso breve */
 ::view-transition-group(nav), ::view-transition-group(carga), ::view-transition-group(aviso) { animation: none; }
@@ -1718,11 +1718,11 @@ html[data-vt="igual"]::view-transition-new(root) { animation-duration: 280ms; }
 ::view-transition-new(nav), ::view-transition-new(carga), ::view-transition-new(aviso) { animation: none; mix-blend-mode: normal; }
 
 /* El panel de color cambia de forma de una página a la otra; la tarjeta elegida viaja hasta su detalle */
-::view-transition-group(hero), ::view-transition-group(tarjeta) { animation-duration: 480ms; animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1); }
+::view-transition-group(hero), ::view-transition-group(tarjeta) { animation-duration: 900ms; animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1); }
 ::view-transition-group(hero) { overflow: clip; border-radius: 20px; }
 ::view-transition-old(hero), ::view-transition-new(hero) { width: 100%; height: 100%; object-fit: none; object-position: 0 0; }
-::view-transition-old(hero) { animation-duration: 150ms; }
-::view-transition-new(hero) { animation-duration: 380ms; animation-delay: 90ms; animation-fill-mode: both; }
+::view-transition-old(hero) { animation-duration: 320ms; }
+::view-transition-new(hero) { animation-duration: 700ms; animation-delay: 200ms; animation-fill-mode: both; }
 ::view-transition-group(tarjeta) { z-index: 2; }
 /* Durante la transición el panel no repite su propia entrada */
 html[data-vt] .vista.entrada .pantalla > .hero, html[data-vt] .vista.entrada .formulario > .hero { animation: none; }
