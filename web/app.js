@@ -1965,7 +1965,7 @@ async function vistaInicio() {
       .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, tablero ? Math.max(3, Math.min(6, Math.floor((innerHeight - 380) / 60))) : 6);
     const listaRecientes = recientes.length ? h('ul', { class: 'lista-mov' }, recientes.map((c) => {
       const fila = filaMov(c, nombreCortoTC(c.tarjeta));
-      if (c.estado === 'Pagado') fila.querySelector('.mov-der .suave')?.prepend(h('i', { class: 'mov-pagado', title: 'Pagado' }, icono('check')));
+      if (c.estado === 'Pagado' && c.tarjeta?.id !== 'HORMIGA') fila.querySelector('.mov-der .suave')?.prepend(h('i', { class: 'mov-pagado', title: 'Pagado', 'aria-label': 'Pagado' }, icono('check')));
       return fila;
     })) : vacio('Todavía no hay gastos.');
     if (tablero) {
@@ -2182,7 +2182,7 @@ async function vistaMovimientos() {
           h('strong', { class: 'dia-total' }, soles(delDia))));
       }
       const fila = filaMov(c, nombreCortoTC(c.tarjeta));
-      if (c.estado === 'Pagado') fila.querySelector('.mov-der .suave')?.prepend(h('i', { class: 'mov-pagado', title: 'Pagado' }, icono('check')));
+      if (c.estado === 'Pagado' && c.tarjeta?.id !== 'HORMIGA') fila.querySelector('.mov-der .suave')?.prepend(h('i', { class: 'mov-pagado', title: 'Pagado', 'aria-label': 'Pagado' }, icono('check')));
       if (c.estado === 'Pagado' && c.tarjeta.id !== 'HORMIGA' && c.fila && motorNuevo() && emailSesion()) {
         fila.append(h('button', { type: 'button', class: 'boton-editar mov-devolver', title: 'Devolver a pendiente', 'aria-label': `Devolver a pendiente ${limpiarComercio(c.descripcion)}`, onclick: async (ev) => {
           const b = ev.currentTarget; b.disabled = true;
