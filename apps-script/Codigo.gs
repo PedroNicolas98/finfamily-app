@@ -13,13 +13,21 @@
  *   SHEET_ID   ID del Google Sheets (si falta, se usa SHEET_ID_DEFECTO).
  *   CLIENT_ID  ID de cliente OAuth web de Google (el mismo de la PWA).
  *   USUARIOS   JSON {"correo@gmail.com":{"nombre":"Pedro Nicolás","clave":"P"}, ...}
+ *   FINFAMILY_AVISOS  (la escribe el propio script) avisos de vencimiento ya enviados hoy.
  */
 
-var VERSION = '1.1.0';
+var VERSION = '1.2.0';
 var SHEET_ID_DEFECTO = '1KEHSUJXu9lJ1HjnYgF-mKBpOQq0V2qPOlEXSnUgRyp4';
 var ZONA_HORARIA = 'America/Lima';
 var DIAS_AVISO = 3;
 var SEGUNDOS_CACHE_TOKEN = 300;
+var PROPIEDAD_AVISOS = 'FINFAMILY_AVISOS';
+var FUNCION_AVISOS = 'avisosDeVencimiento';
+var HORA_AVISOS = 8; // hora (de Lima) a la que corre el aviso diario
+
+/** Acciones que entiende este motor (la acción 'version' las devuelve). */
+var ACCIONES = ['inicio', 'tarjetas', 'presupuesto', 'config', 'registrar', 'marcarPagado', 'marcarFijo',
+  'editarGasto', 'borrarGasto', 'personas', 'desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version'];
 
 var HOJAS_TC = ['TC IBK', 'TC BCP', 'TC Ripley', 'TC SIP'];
 var HOJA_HORMIGA = 'Gastos Hormiga';
@@ -68,6 +76,10 @@ function doPost(e) {
       case 'editarGasto': resultado = accionEditarGasto_(usuario, datos); break;
       case 'borrarGasto': resultado = accionBorrarGasto_(usuario, datos); break;
       case 'personas': resultado = accionPersonas_(usuario, datos); break;
+      case 'desmarcarPagado': resultado = accionDesmarcarPagado_(usuario, datos); break;
+      case 'editarPresupuesto': resultado = accionEditarPresupuesto_(usuario, datos); break;
+      case 'ahorros': resultado = accionAhorros_(usuario, datos); break;
+      case 'version': resultado = accionVersion_(usuario, datos); break;
       default: throw errorApp_('datos_invalidos', 'Acción no reconocida.');
     }
     return responderJSON_({ ok: true, datos: resultado });
@@ -328,6 +340,7 @@ function accionInicio_(usuario, datos) {
   var totalPorPagar = 0;
   resumen.forEach(function (t) { if (t.id !== 'HORMIGA') totalPorPagar += t.pendiente; });
   return {
+    version: VERSION,
     usuario: usuario,
     mes: mes,
     etiquetaMes: claveAEtiqueta(mes),
@@ -372,6 +385,7 @@ function accionConfig_(usuario) {
     responsables = Object.keys(usuarios).map(function (k) { return usuarios[k].nombre; });
   }
   return {
+    version: VERSION,
     usuario: usuario,
     conceptos: conf.conceptos,
     responsables: responsables,
@@ -509,12 +523,26 @@ function escribirFila_(hoja, filaDestino, valoresFila, cols, filaModelo) {
 }
 
 function accionMarcarPagado_(usuario, datos) {
+  return cambiarEstadoDePago_(datos, true);
+}
+
+/** Lo contrario de marcarPagado: devuelve a 'Pendiente' consumos que estaban 'Pagado'. */
+function accionDesmarcarPagado_(usuario, datos) {
+  return cambiarEstadoDePago_(datos, false);
+}
+
+/**
+ * Cuerpo común de marcarPagado (pagar = true) y desmarcarPagado (pagar = false).
+ * Solo toca la celda Estado de cada fila, después de comprobar que la fila sigue
+ * teniendo el monto y la descripción que vio la app, y nunca si esa celda tiene fórmula.
+ */
+function cambiarEstadoDePago_(datos, pagar) {
   validarIdCliente_(datos.idCliente);
   var nombreHoja = hojaConsumosCanonica_(datos.hoja);
   if (!nombreHoja) throw errorApp_('datos_invalidos', 'Esa hoja no admite marcar pagos.');
   var filas = datos.filas;
   if (!Array.isArray(filas) || !filas.length || filas.length > 500) {
-    throw errorApp_('datos_invalidos', 'No se indicaron filas para marcar.');
+    throw errorApp_('datos_invalidos', pagar ? 'No se indicaron filas para marcar.' : 'No se indicaron filas para desmarcar.');
   }
   var verificar = {};
   (Array.isArray(datos.verificar) ? datos.verificar : []).forEach(function (v) {
@@ -549,7 +577,9 @@ function accionMarcarPagado_(usuario, datos) {
         omitidas.push({ fila: fila, motivo: 'la fila cambió' });
         return;
       }
-      if (normalizar(f[cols.estado]) === 'pagado') { omitidas.push({ fila: fila, motivo: 'ya estaba pagado' }); return; }
+      var yaPagado = normalizar(f[cols.estado]) === 'pagado';
+      if (pagar && yaPagado) { omitidas.push({ fila: fila, motivo: 'ya estaba pagado' }); return; }
+      if (!pagar && !yaPagado) { omitidas.push({ fila: fila, motivo: 'no estaba pagado' }); return; }
       aMarcar.push(fila);
     });
 
@@ -558,7 +588,7 @@ function accionMarcarPagado_(usuario, datos) {
       var formulas = hoja.getRange(1, cols.estado + 1, valores.length, 1).getFormulas();
       aMarcar.forEach(function (fila) {
         if (formulas[fila - 1][0]) { omitidas.push({ fila: fila, motivo: 'el estado tiene fórmula' }); return; }
-        hoja.getRange(fila, cols.estado + 1).setValue('Pagado');
+        hoja.getRange(fila, cols.estado + 1).setValue(pagar ? 'Pagado' : 'Pendiente');
         actualizadas++;
       });
       SpreadsheetApp.flush();
@@ -721,4 +751,206 @@ function accionBorrarGasto_(usuario, datos) {
   } finally {
     candado.releaseLock();
   }
+}
+
+// ---------------------------------------------------------------------------
+// Versión del motor
+// ---------------------------------------------------------------------------
+
+/** Dice qué versión está instalada y qué acciones entiende. No lee el Sheets. */
+function accionVersion_() {
+  return { version: VERSION, acciones: ACCIONES.slice() };
+}
+
+// ---------------------------------------------------------------------------
+// Ahorros acumulados (solo lectura)
+// ---------------------------------------------------------------------------
+
+/** Acumulado de cada meta de ahorro del presupuesto hasta el mes pedido inclusive. */
+function accionAhorros_(usuario, datos) {
+  var mes = mesValido_(datos.mes);
+  var rango = obtenerHoja_(HOJA_PRESUPUESTO).getDataRange();
+  var r = ahorrosAcumulados(rango.getDisplayValues(), rango.getValues(), mes);
+  if (!r) throw errorApp_('datos_invalidos', 'Ese mes no está en el presupuesto.');
+  return r;
+}
+
+// ---------------------------------------------------------------------------
+// Editar una línea del presupuesto
+// ---------------------------------------------------------------------------
+
+/**
+ * Cambia el monto de UNA línea del presupuesto en UN mes.
+ * Se niega si la línea ya no es la misma, si la celda tiene fórmula, si está
+ * combinada, si no contiene un número simple o si su valor ya no es el que la
+ * app mostraba (montoAnterior). Solo escribe el valor: la nota de la celda
+ * ("Pagado…") y su formato quedan como estaban.
+ */
+function accionEditarPresupuesto_(usuario, datos) {
+  validarIdCliente_(datos.idCliente);
+  // En una escritura el mes es obligatorio: no se asume el mes actual.
+  if (datos.mes === undefined || datos.mes === null || datos.mes === '') {
+    throw errorApp_('datos_invalidos', 'Falta el mes.');
+  }
+  var mes = mesValido_(datos.mes);
+  var fila = datos.fila;
+  if (!Number.isInteger(fila) || fila < 1) throw errorApp_('datos_invalidos', 'No se indicó la línea del presupuesto.');
+  var concepto = textoLimpio_(datos.concepto, 200, 'el concepto', true);
+
+  var revisado = validarMontoPresupuesto(datos.monto);
+  if (revisado.error) throw errorApp_('datos_invalidos', revisado.error);
+  var montoNuevo = revisado.monto;
+
+  var anterior = typeof datos.montoAnterior === 'number'
+    ? (isFinite(datos.montoAnterior) ? datos.montoAnterior : null)
+    : (typeof datos.montoAnterior === 'string' ? parsearMonto(datos.montoAnterior) : null);
+  if (anterior === null) throw errorApp_('datos_invalidos', 'Falta el monto que mostraba la app (montoAnterior).');
+
+  var hoja = obtenerHoja_(HOJA_PRESUPUESTO);
+  var candado = tomarCandado_();
+  try {
+    var rango = hoja.getDataRange();
+    var p = leerPresupuesto(rango.getDisplayValues(), rango.getValues(), mes, rango.getNotes());
+    if (!p) throw errorApp_('datos_invalidos', 'Ese mes no está en el presupuesto.');
+    var linea = null;
+    p.filas.forEach(function (f) { if (f.fila === fila) linea = f; });
+    if (!linea || normalizar(linea.concepto) !== normalizar(concepto)) {
+      throw errorApp_('datos_invalidos', 'Esa línea del presupuesto cambió. Actualiza y vuelve a intentar.');
+    }
+
+    var celda = hoja.getRange(fila, p.columna);
+    if (celda.getFormula()) {
+      throw errorApp_('datos_invalidos', 'Ese monto se calcula con una fórmula y no se cambia desde la app. Edítalo en el Sheets.');
+    }
+    if (celda.isPartOfMerge()) {
+      throw errorApp_('datos_invalidos', 'Esa celda está combinada con otras y no se cambia desde la app. Edítala en el Sheets.');
+    }
+    var crudo = celda.getValue();
+    var vacia = crudo === '' || crudo === null;
+    if (!vacia && (typeof crudo !== 'number' || !isFinite(crudo))) {
+      throw errorApp_('datos_invalidos', 'Esa celda no contiene un número simple y no se cambia desde la app. Edítala en el Sheets.');
+    }
+    var actual = vacia ? 0 : crudo;
+    if (centavos_(actual) !== centavos_(anterior)) {
+      throw errorApp_('datos_invalidos', 'El monto de esa línea cambió en el Sheets. Actualiza y vuelve a intentar.');
+    }
+
+    var actualizado = false;
+    if (centavos_(actual) !== centavos_(montoNuevo)) {
+      celda.setValue(montoNuevo);
+      SpreadsheetApp.flush();
+      actualizado = true;
+    }
+
+    // Se vuelve a leer para devolver los totales ya recalculados por el Sheets.
+    var totales = p.totales;
+    if (actualizado) {
+      var rango2 = hoja.getDataRange();
+      var p2 = leerPresupuesto(rango2.getDisplayValues(), rango2.getValues(), mes, rango2.getNotes());
+      totales = p2 ? p2.totales : null;
+    }
+    return {
+      actualizado: actualizado, mes: mes, fila: fila, concepto: linea.concepto, seccion: linea.seccion,
+      montoAnterior: Math.round(actual * 100) / 100, monto: montoNuevo,
+      pagadoNota: notaPagado(celda.getNote()),
+      totales: totales
+    };
+  } finally {
+    candado.releaseLock();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Avisos de vencimiento por correo (activador diario, sin costo)
+// ---------------------------------------------------------------------------
+
+/** Claves ya avisadas HOY según lo guardado en la propiedad (lo de otros días se descarta). */
+function avisosYaEnviados_(crudo, hoy) {
+  if (!crudo) return [];
+  try {
+    var g = JSON.parse(crudo);
+    if (g && g.fecha === hoy && Array.isArray(g.claves)) return g.claves.map(String);
+  } catch (err) { /* propiedad dañada: se trata como vacía */ }
+  return [];
+}
+
+/**
+ * Pensada para correr una vez al día con un activador de tiempo (ver instalarAvisos).
+ * Manda UN solo correo a los usuarios de USUARIOS cuando una tarjeta con deuda
+ * vence en 3 días, mañana u hoy. No repite el mismo aviso el mismo día.
+ * Solo LEE el Sheets; lo único que escribe es la propiedad FINFAMILY_AVISOS.
+ * También se puede ejecutar a mano desde el editor para probarla.
+ */
+function avisosDeVencimiento() {
+  var candado = LockService.getScriptLock();
+  if (!candado.tryLock(20000)) {
+    console.warn('FinFamily avisos: el script estaba ocupado; no se envió nada en esta pasada.');
+    return { enviado: false, avisos: 0, motivo: 'ocupado' };
+  }
+  try {
+    var hoy = hoyServidor_();
+    var propiedades = PropertiesService.getScriptProperties();
+    var yaAvisadas = avisosYaEnviados_(propiedades.getProperty(PROPIEDAD_AVISOS), hoy);
+    var resumen = resumenTarjetas(leerTodosLosConsumos_(), hoy, false);
+    var avisos = avisosDelDia(resumen, hoy, yaAvisadas);
+    if (!avisos.length) {
+      console.log('FinFamily avisos (' + hoy + '): nada nuevo que avisar.');
+      return { enviado: false, avisos: 0, motivo: 'nada que avisar' };
+    }
+
+    var correos = Object.keys(leerUsuarios_()).filter(function (c) { return /^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(c); });
+    if (!correos.length) {
+      console.error('FinFamily avisos: no hay correos válidos en USUARIOS.');
+      return { enviado: false, avisos: avisos.length, motivo: 'sin destinatarios' };
+    }
+    if (MailApp.getRemainingDailyQuota() < correos.length) {
+      console.error('FinFamily avisos: se agotó la cuota diaria de correos de Google.');
+      return { enviado: false, avisos: avisos.length, motivo: 'sin cuota de correo' };
+    }
+
+    var texto = textoAvisos(avisos);
+    MailApp.sendEmail({ to: correos.join(','), subject: texto.asunto, body: texto.cuerpo, name: 'FinFamily' });
+
+    // Se anota recién después de enviar: si el envío falla, mañana (o al reintentar) se avisa igual.
+    propiedades.setProperty(PROPIEDAD_AVISOS, JSON.stringify({
+      fecha: hoy,
+      claves: yaAvisadas.concat(avisos.map(function (a) { return a.clave; }))
+    }));
+    console.log('FinFamily avisos (' + hoy + '): correo enviado con ' + avisos.length + ' aviso(s).');
+    return { enviado: true, avisos: avisos.length, destinatarios: correos.length };
+  } finally {
+    candado.releaseLock();
+  }
+}
+
+/** Borra solo los activadores de avisosDeVencimiento (no toca los demás del proyecto). */
+function quitarActivadoresDeAvisos_() {
+  var quitados = 0;
+  ScriptApp.getProjectTriggers().forEach(function (a) {
+    if (a.getHandlerFunction() === FUNCION_AVISOS) {
+      ScriptApp.deleteTrigger(a);
+      quitados++;
+    }
+  });
+  return quitados;
+}
+
+/**
+ * Ejecutar UNA vez a mano desde el editor: crea el activador diario (8 a 9 a. m., hora de Lima).
+ * Si ya existía, lo reemplaza (nunca quedan dos). Google pedirá permiso para enviar
+ * correo y para ejecutar el script cuando ustedes no estén.
+ */
+function instalarAvisos() {
+  var quitados = quitarActivadoresDeAvisos_();
+  ScriptApp.newTrigger(FUNCION_AVISOS).timeBased().everyDays(1).atHour(HORA_AVISOS).inTimezone(ZONA_HORARIA).create();
+  var correos = Object.keys(leerUsuarios_());
+  console.log('FinFamily avisos: activador diario creado' + (quitados ? ' (reemplazó ' + quitados + ' anterior)' : '') +
+    '. Avisará a ' + correos.length + ' correo(s). Cuota de correos disponible hoy: ' + MailApp.getRemainingDailyQuota() + '.');
+}
+
+/** Ejecutar a mano desde el editor para dejar de recibir los avisos. */
+function quitarAvisos() {
+  var quitados = quitarActivadoresDeAvisos_();
+  PropertiesService.getScriptProperties().deleteProperty(PROPIEDAD_AVISOS);
+  console.log('FinFamily avisos: se quitaron ' + quitados + ' activador(es). Ya no se enviarán correos.');
 }

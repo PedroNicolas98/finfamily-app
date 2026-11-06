@@ -2333,6 +2333,21 @@ body.montos-ocultos :is(.hero-monto, .hero-pagar-monto, .plastico-monto, .np-mon
 .hero .delta.bien { color: #A6F3DA; } .hero .delta.mal { color: #FFCDC2; }
 .delta.bien { color: var(--bien, #12916f); } .delta.mal { color: var(--mal, #D9543E); }
 
+/* ---------- Metas de ahorro, editar una línea y devolver a pendiente ---------- */
+.metas { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.metas li { display: flex; flex-direction: column; gap: 5px; animation: subir 520ms var(--suave) both; animation-delay: calc(var(--i, 0) * 80ms); }
+.meta-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-weight: 650; }
+.metas .gp-barra { display: block; height: 8px; border-radius: 99px; background: var(--sup-2); overflow: hidden; }
+.metas .gp-barra > i { display: block; height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, var(--vivo), var(--marca)); transition: width 1000ms var(--suave); }
+.metas small { font-size: 0.74rem; }
+.metas-pie { font-size: 0.78rem; margin-top: 4px; }
+.linea-editar { display: inline-grid; vertical-align: middle; width: 26px; height: 26px; margin-left: 4px; }
+.filas-pres li:hover .linea-editar { opacity: 1; }
+.mov-devolver { margin-left: 2px; }
+.mov:hover .mov-devolver { opacity: 1; }
+.hoja-modal form.cierre-caja { text-align: left; }
+.hoja-modal form.cierre-caja .cierre-etq { font-size: 1.1rem; color: var(--tinta); }
+
 /* ---------- Cierre de mes ---------- */
 .boton-cierre { font-size: 0.82rem; }
 .cierre-mes { max-width: 440px; }

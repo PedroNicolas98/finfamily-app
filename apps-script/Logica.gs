@@ -690,8 +690,175 @@ function construirFila(columnas, anchoFila, datos, usuarioNombre, hoja, ciclo) {
   return fila;
 }
 
+// ---------------------------------------------------------------------------
+// Editar el presupuesto (validación del monto)
+// ---------------------------------------------------------------------------
+
+var MONTO_MAXIMO_PRESUPUESTO = 1000000;
+
+/**
+ * Revisa el monto nuevo de una línea del presupuesto.
+ * Devuelve {monto} (redondeado a centavos) o {error} con el motivo en español.
+ * Acepta número o texto ('1,234.50', 'S/ 80'). El cero sí vale; negativos no.
+ */
+function validarMontoPresupuesto(valor) {
+  var n = null;
+  if (typeof valor === 'number') n = isFinite(valor) ? valor : null;
+  else if (typeof valor === 'string') n = parsearMonto(valor);
+  if (n === null) return { error: 'El monto debe ser un número.' };
+  if (n < 0) return { error: 'El monto no puede ser negativo.' };
+  if (n > MONTO_MAXIMO_PRESUPUESTO) return { error: 'El monto es demasiado grande (máximo 1,000,000).' };
+  return { monto: Math.round(n * 100) / 100 };
+}
+
+// ---------------------------------------------------------------------------
+// Ahorros acumulados
+// ---------------------------------------------------------------------------
+
+/**
+ * Acumulado de cada meta de ahorro (líneas de la sección 'ahorros' del presupuesto)
+ * sumando todos los meses de la hoja hasta claveMes inclusive, con el detalle por mes.
+ * Son los montos escritos en el presupuesto, no movimientos reales de una cuenta.
+ * Devuelve null si el mes no está en los encabezados.
+ */
+function ahorrosAcumulados(display2D, valores2D, claveMes) {
+  var base = leerPresupuesto(display2D, valores2D, claveMes);
+  if (!base) return null;
+  var claves = base.meses.map(function (m) { return m.clave; })
+    .filter(function (c) { return c <= claveMes; })
+    .sort();
+  var porFila = {};
+  var orden = [];
+  claves.forEach(function (clave) {
+    var p = clave === claveMes ? base : leerPresupuesto(display2D, valores2D, clave);
+    if (!p) return;
+    p.filas.forEach(function (f) {
+      if (f.seccion !== 'ahorros') return;
+      if (!porFila[f.fila]) {
+        porFila[f.fila] = { concepto: f.concepto, fila: f.fila, acumulado: 0, delMes: 0, meses: [] };
+        orden.push(f.fila);
+      }
+      var meta = porFila[f.fila];
+      meta.acumulado += f.monto;
+      if (clave === claveMes) meta.delMes = f.monto;
+      meta.meses.push({ mes: clave, etiqueta: claveAEtiqueta(clave), monto: f.monto });
+    });
+  });
+  var total = 0, totalDelMes = 0;
+  var metas = orden.map(function (fila) {
+    var meta = porFila[fila];
+    meta.acumulado = redondear_(meta.acumulado);
+    total += meta.acumulado;
+    totalDelMes += meta.delMes;
+    return meta;
+  });
+  return {
+    mes: claveMes,
+    etiquetaMes: claveAEtiqueta(claveMes),
+    desde: claves.length ? claves[0] : claveMes,
+    metas: metas,
+    total: redondear_(total),
+    totalDelMes: redondear_(totalDelMes)
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Avisos de vencimiento por correo
+// ---------------------------------------------------------------------------
+
+/** Días antes del vencimiento en que se avisa: 3 días antes, la víspera y el mismo día. */
+var DIAS_DE_AVISO = [3, 1, 0];
+
+/**
+ * Decide qué avisar hoy. Un aviso por cada estado de cuenta con saldo pendiente
+ * que vence exactamente en 3 días, mañana u hoy. No avisa de Gastos Hormiga,
+ * ni de estados sin fecha, ni de los ya vencidos.
+ * yaAvisadas: lista de claves ya enviadas (clave = 'hoy|tarjeta|vence'); esas se saltan.
+ * Devuelve, del más urgente al menos urgente:
+ *   [{clave, tarjeta, nombre, vence, monto, dias, cuando: 'hoy'|'manana'|'en_3_dias'}]
+ */
+function avisosDelDia(resumen, hoyISO, yaAvisadas) {
+  var enviadas = {};
+  (yaAvisadas || []).forEach(function (k) { enviadas[String(k)] = true; });
+  var salida = [];
+  if (!parsearFecha(hoyISO)) return salida;
+  (resumen || []).forEach(function (t) {
+    if (!t || t.id === 'HORMIGA') return;
+    (t.estados || []).forEach(function (g) {
+      if (!g || !g.vence || !(g.pendiente > 0)) return;
+      var dias = diasEntre_(hoyISO, g.vence);
+      if (dias === null || DIAS_DE_AVISO.indexOf(dias) === -1) return;
+      var clave = hoyISO + '|' + t.id + '|' + g.vence;
+      if (enviadas[clave]) return;
+      enviadas[clave] = true; // por si el mismo estado viniera repetido
+      salida.push({
+        clave: clave, tarjeta: t.id, nombre: t.nombre, vence: g.vence,
+        monto: redondear_(g.pendiente), dias: dias,
+        cuando: dias === 0 ? 'hoy' : (dias === 1 ? 'manana' : 'en_3_dias')
+      });
+    });
+  });
+  salida.sort(function (a, b) {
+    if (a.dias !== b.dias) return a.dias - b.dias;
+    return a.nombre < b.nombre ? -1 : (a.nombre > b.nombre ? 1 : 0);
+  });
+  return salida;
+}
+
+/** 1234.5 -> 'S/ 1,234.50' */
+function formatoSoles_(n) {
+  var partes = redondear_(Number(n) || 0).toFixed(2).split('.');
+  var negativo = partes[0].charAt(0) === '-';
+  var entero = (negativo ? partes[0].slice(1) : partes[0]).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return (negativo ? '-' : '') + 'S/ ' + entero + '.' + partes[1];
+}
+
+/** 'YYYY-MM-DD' -> 'DD/MM/YYYY' */
+function fechaCorta_(isoTexto) {
+  var s = String(isoTexto || '');
+  return s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4);
+}
+
+function textoCuando_(cuando) {
+  if (cuando === 'hoy') return 'vence HOY';
+  if (cuando === 'manana') return 'vence mañana';
+  return 'vence en 3 días';
+}
+
+/**
+ * Asunto y cuerpo (texto simple) del correo para una lista de avisosDelDia.
+ * Devuelve null si no hay nada que avisar.
+ */
+function textoAvisos(avisos) {
+  var lista = avisos || [];
+  if (!lista.length) return null;
+  var asunto;
+  if (lista.length === 1) {
+    asunto = 'FinFamily: ' + lista[0].nombre + ' ' + textoCuando_(lista[0].cuando) +
+      ' (' + formatoSoles_(lista[0].monto) + ')';
+  } else {
+    asunto = 'FinFamily: ' + lista.length + ' pagos de tarjeta por vencer';
+  }
+  var total = 0;
+  var lineas = lista.map(function (a) {
+    total += a.monto;
+    return '• ' + a.nombre + ': ' + formatoSoles_(a.monto) + ' — ' + textoCuando_(a.cuando) +
+      ' (' + fechaCorta_(a.vence) + ')';
+  });
+  var cuerpo = ['Hola, este es el recordatorio de FinFamily.', ''].concat(lineas);
+  if (lista.length > 1) cuerpo = cuerpo.concat(['', 'Total: ' + formatoSoles_(total)]);
+  cuerpo = cuerpo.concat(['', 'Cuando paguen, márquenlo como pagado en la app y dejarán de llegar avisos.']);
+  return { asunto: asunto, cuerpo: cuerpo.join('\n') };
+}
+
 if (typeof module !== 'undefined') {
   module.exports = {
+    MONTO_MAXIMO_PRESUPUESTO: MONTO_MAXIMO_PRESUPUESTO,
+    DIAS_DE_AVISO: DIAS_DE_AVISO,
+    validarMontoPresupuesto: validarMontoPresupuesto,
+    ahorrosAcumulados: ahorrosAcumulados,
+    avisosDelDia: avisosDelDia,
+    textoAvisos: textoAvisos,
     CICLOS: CICLOS,
     MESES_ES: MESES_ES,
     ABREV_MES: ABREV_MES,

@@ -1168,7 +1168,14 @@ function ocupado(delta) {
   cargasActivas = Math.max(0, cargasActivas + delta);
   document.body.classList.toggle('cargando-datos', cargasActivas > 0);
 }
-const SOLO_LEEN = ['inicio', 'config', 'tarjetas', 'presupuesto', 'personas'];
+const SOLO_LEEN = ['inicio', 'config', 'tarjetas', 'presupuesto', 'personas', 'ahorros', 'version'];
+// El motor de Google instalado dice su versión desde la 1.2.0. Las funciones nuevas solo se ofrecen si ya está.
+function motorNuevo() {
+  let v = leerCache('inicio')?.datos?.version || leerCache('config')?.datos?.version || '';
+  if (!v) { try { v = localStorage.getItem('ff:motor') || ''; } catch { /* nada */ } }
+  const [a, b] = String(v).split('.').map(Number);
+  return a > 1 || (a === 1 && b >= 2);
+}
 const EN_PANTALLA = ['editarGasto', 'borrarGasto', 'marcarPagado']; // después de estos se espera al Sheets para ver el cambio
 async function llamarApi(...args) {
   ocupado(1);
@@ -1966,6 +1973,44 @@ async function vistaInicio() {
   return raiz;
 }
 
+// ---------- Editar el monto de una línea del presupuesto ----------
+
+function editarLinea(mes, f) {
+  const inMonto = h('input', { id: 'pl-monto', type: 'text', inputmode: 'decimal', autocomplete: 'off', value: Number(f.monto || 0).toFixed(2) });
+  const msg = h('p', { class: 'mensaje error', hidden: true });
+  const dlg = h('dialog', { class: 'hoja-modal', 'aria-label': 'Cambiar monto' });
+  const cerrar = () => { if (dlg.classList.contains('cerrando')) return; dlg.classList.add('cerrando'); setTimeout(() => { if (dlg.open) dlg.close(); dlg.remove(); }, sinMovimiento() ? 0 : 190); };
+  dlg.addEventListener('cancel', (ev) => { ev.preventDefault(); cerrar(); });
+  dlg.addEventListener('click', (ev) => { if (ev.target === dlg) cerrar(); });
+  const btn = h('button', { type: 'submit', class: 'boton primario' }, 'Guardar');
+  const form = h('form', { class: 'cierre-caja', novalidate: true, onsubmit: async (ev) => {
+    ev.preventDefault();
+    const monto = inMonto.value.trim() === '0' || Number(inMonto.value) === 0 ? 0 : leerMonto(inMonto.value);
+    msg.hidden = true;
+    if (monto === null || monto === undefined) { msg.textContent = 'Escribe un monto válido.'; msg.hidden = false; inMonto.focus(); return; }
+    ocuparBoton(btn, 'Guardando…');
+    try {
+      await llamarApi('editarPresupuesto', { idCliente: uuid(), mes, fila: f.fila, concepto: f.concepto, montoAnterior: f.monto || 0, monto }, { email: emailSesion() });
+      try { await cargar('presupuesto', { mes }, 'presupuesto:' + mes); } catch { /* se verá al refrescar */ }
+      cerrar();
+      avisar(`${nombreLinea(f.concepto)}: ${soles(monto)}`, 'ok');
+      navegar();
+    } catch (e) {
+      liberarBoton(btn, 'Guardar');
+      msg.textContent = mensajeError(e, 'No se pudo guardar. Intenta de nuevo.'); msg.hidden = false;
+    }
+  } },
+    h('p', { class: 'cierre-etq' }, nombreLinea(f.concepto)),
+    h('p', { class: 'suave' }, `${nombreMesClave(mes) || mes} · ahora ${soles(f.monto || 0)}`),
+    h('div', { class: 'campo' }, h('label', { for: 'pl-monto' }, 'Nuevo monto (S/)'), inMonto),
+    msg,
+    h('div', { class: 'acciones modal-acciones' }, btn, h('button', { type: 'button', class: 'boton', onclick: cerrar }, 'Cancelar')));
+  dlg.append(form);
+  document.body.append(dlg);
+  dlg.showModal();
+  inMonto.focus(); inMonto.select();
+}
+
 // ---------- Cierre de mes: cómo terminó el mes anterior y si se gastó más o menos que el de antes ----------
 
 async function abrirCierre(mes) {
@@ -2045,6 +2090,16 @@ async function vistaMovimientos() {
       }
       const fila = filaMov(c, nombreCortoTC(c.tarjeta));
       if (c.estado === 'Pagado') fila.querySelector('.mov-der .suave')?.prepend(h('i', { class: 'mov-pagado', title: 'Pagado' }, icono('check')));
+      if (c.estado === 'Pagado' && c.tarjeta.id !== 'HORMIGA' && c.fila && motorNuevo() && emailSesion()) {
+        fila.append(h('button', { type: 'button', class: 'boton-editar mov-devolver', title: 'Devolver a pendiente', 'aria-label': `Devolver a pendiente ${limpiarComercio(c.descripcion)}`, onclick: async (ev) => {
+          const b = ev.currentTarget; b.disabled = true;
+          try {
+            const res = await llamarApi('desmarcarPagado', { idCliente: uuid(), hoja: c.tarjeta.hoja, filas: [c.fila], verificar: [{ fila: c.fila, monto: c.monto, descripcion: c.descripcion }] }, { email: emailSesion() });
+            if (res?.actualizadas) { avisar('Volvió a pendiente', 'ok', { ico: 'atras' }); navegar(); }
+            else { avisar(`No se cambió: ${res?.omitidas?.[0]?.motivo || 'revisa el gasto'}`, 'error'); b.disabled = false; }
+          } catch (e) { avisar(mensajeError(e, 'No se pudo cambiar. Intenta de nuevo.'), 'error'); b.disabled = false; }
+        } }, icono('atras')));
+      }
       nodos.push(fila);
     });
     lista.replaceChildren(...nodos);
@@ -2836,7 +2891,9 @@ async function vistaPresupuesto() {
             h('span', { class: 'fila-pres-nombre' },
               marcable ? botonFijo(f, d.mes, (x) => { li.classList.toggle('pagado', !!x.pagado); nota.textContent = x.pagado ? (x.pagadoNota || '') : ''; pintarResumenFijos(); }) : null,
               h('span', { title: f.concepto }, nombreLinea(f.concepto), marcable ? nota : null)),
-            h('span', {}, f.monto && total ? h('small', { class: 'pct' }, `${Math.round((f.monto / total) * 100)}%`) : null, soles(f.monto))),
+            h('span', {}, f.monto && total ? h('small', { class: 'pct' }, `${Math.round((f.monto / total) * 100)}%`) : null, soles(f.monto),
+              motorNuevo() && clave !== 'ingresos' && f.fila && !f.esTarjeta && !(f.monto < 0) && emailSesion()
+                ? h('button', { type: 'button', class: 'boton-editar linea-editar', title: 'Cambiar monto', 'aria-label': `Cambiar monto de ${nombreLinea(f.concepto)}`, onclick: () => editarLinea(d.mes, f) }, icono('lapiz')) : null)),
           h('div', { class: 'barra-pres', 'aria-hidden': 'true' }, h('i', { 'data-w': `${Math.round((Math.abs(f.monto || 0) / max) * 100)}%` })));
         return li;
       })));
@@ -2991,6 +3048,21 @@ async function vistaPresupuesto() {
   secciones.forEach((el, i) => { if (el) { el.classList.add('revelar'); el.style.setProperty('--i', String(i)); } });
 
   if (secciones[2]) pintarLlevas(secciones[2]);
+  // Metas de ahorro: cuánto lleva guardado cada una, sumando los meses del presupuesto hasta este.
+  if (secciones[1] && motorNuevo()) {
+    cargarRapido('ahorros', { mes: d.mes }, 'ahorros:' + d.mes).then((ra) => {
+      const metas = (ra?.datos?.metas || []).filter((m) => m.acumulado > 0 || m.delMes > 0);
+      if (!metas.length || secciones[1].querySelector('.metas')) return;
+      const mayor = Math.max(...metas.map((m) => m.acumulado), 1);
+      secciones[1].querySelector('.ahorro-metas')?.remove();
+      secciones[1].append(h('ul', { class: 'metas' }, metas.map((m, i) => h('li', { style: `--i: ${i}`, title: (m.meses || []).filter((x) => x.monto).map((x) => `${x.etiqueta}: ${soles(x.monto)}`).join('\n') },
+        h('div', { class: 'meta-top' }, h('span', {}, nombreLinea(m.concepto)), h('strong', { 'data-contar': String(m.acumulado) }, soles(0))),
+        h('div', { class: 'gp-barra' }, h('i', { class: 'd1', 'data-w': `${Math.round((m.acumulado / mayor) * 100)}%` })),
+        h('small', { class: 'suave' }, m.delMes > 0 ? `+${soles(m.delMes)} este mes` : 'Sin aporte este mes')))),
+        h('p', { class: 'suave metas-pie' }, `Guardado según el plan: ${soles(ra.datos.total || 0)}`));
+      animarVista(secciones[1].querySelector('.metas'));
+    }).catch(() => {});
+  }
   return h('div', { class: 'pantalla presupuesto' },
     h('header', { class: 'cabecera-fila' },
       h('div', { class: 'cabecera' }, h('h1', {}, 'Presupuesto')),
@@ -3345,6 +3417,14 @@ async function arrancar() {
   // Lo que quedó en espera de envío se vuelve a intentar solo: cada 45 segundos y al volver a la app.
   const reintentar = () => { if (navigator.onLine && document.visibilityState === 'visible' && api.emailGuardado()) procesarCola().catch(() => {}); };
   setInterval(reintentar, 45000);
+  // Pregunta una vez qué versión del motor está instalada; si es la nueva, aparecen sus funciones.
+  if (api.emailGuardado() && navigator.onLine) {
+    setTimeout(() => llamarApi('version', {}).then((r) => {
+      const antes = motorNuevo();
+      try { localStorage.setItem('ff:motor', r?.version || ''); } catch { /* nada */ }
+      if (!antes && motorNuevo() && !hayEdicionAbierta()) navegar({ silencioso: true });
+    }).catch(() => { try { localStorage.removeItem('ff:motor'); } catch { /* nada */ } }), 1500);
+  }
   document.addEventListener('visibilitychange', reintentar);
   // Al volver a la app: se envía lo pendiente, se busca versión nueva y, si pasó un buen rato, se traen los datos de nuevo.
   let ocultaDesde = 0;

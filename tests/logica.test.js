@@ -799,3 +799,83 @@ test('gastoPorPersona suma por responsable solo los consumos del mes', () => {
   assert.deepEqual(ana.medios.map((m) => m.medio), ['TC SIP', 'Gastos hormiga']);
   assert.deepEqual(L.gastoPorPersona(consumos, '2026-09'), []);
 });
+
+// ---------- Motor 1.2.0: monto del presupuesto, ahorros y avisos ----------
+
+test('validarMontoPresupuesto: acepta números razonables y rechaza el resto', () => {
+  assert.deepEqual(L.validarMontoPresupuesto(120.456), { monto: 120.46 });
+  assert.deepEqual(L.validarMontoPresupuesto(0), { monto: 0 });
+  assert.deepEqual(L.validarMontoPresupuesto('S/ 1,234.50'), { monto: 1234.5 });
+  assert.deepEqual(L.validarMontoPresupuesto(1000000), { monto: 1000000 });
+  assert.equal(L.validarMontoPresupuesto(-0.01).error, 'El monto no puede ser negativo.');
+  assert.equal(L.validarMontoPresupuesto(1000001).error, 'El monto es demasiado grande (máximo 1,000,000).');
+  for (const malo of ['', 'abc', null, undefined, NaN, Infinity, {}, [], true]) {
+    assert.equal(L.validarMontoPresupuesto(malo).error, 'El monto debe ser un número.');
+  }
+});
+
+test('ahorrosAcumulados: suma cada meta desde el primer mes hasta el pedido', () => {
+  const { display, valores } = hojaPresupuesto();
+  const r = L.ahorrosAcumulados(display, valores, '2026-12');
+  assert.equal(r.mes, '2026-12');
+  assert.equal(r.desde, '2026-10');
+  assert.deepEqual(r.metas.map((m) => [m.concepto, m.acumulado, m.delMes]),
+    [['Ahorro Casa', 160, 50], ['Ahorro Viaje', 0, 0], ['Fondo de Emergencia', 60, 20]]);
+  assert.deepEqual(r.metas[0].meses, [
+    { mes: '2026-10', etiqueta: 'oct-26', monto: 50 },
+    { mes: '2026-11', etiqueta: 'nov-26', monto: 60 },
+    { mes: '2026-12', etiqueta: 'dic-26', monto: 50 }
+  ]);
+  assert.equal(r.total, 220);
+  assert.equal(r.totalDelMes, 70);
+  // La columna sin título (total trimestral) no se cuenta como mes.
+  assert.equal(L.ahorrosAcumulados(display, valores, '2027-01').metas[0].acumulado, 210);
+  // Primer mes: acumulado igual a lo del mes. Mes que no existe: null.
+  assert.deepEqual(L.ahorrosAcumulados(display, valores, '2026-10').metas.map((m) => m.acumulado), [50, 0, 20]);
+  assert.equal(L.ahorrosAcumulados(display, valores, '2025-01'), null);
+});
+
+test('avisosDelDia: avisa a 3 días, mañana y hoy; no a 2 días, ni vencidas, ni pagadas, ni hormiga', () => {
+  const e = (vence, pendiente) => ({ vence, pago: '', total: pendiente, pendiente, consumos: [] });
+  const resumen = [
+    tarjetaResumen('SIP', 'TC SIP', [e('2026-11-09', 120)]),             // en 3 días
+    tarjetaResumen('IBK_P', 'TC IBK · Pedro', [e('2026-11-07', 50.5)]),  // mañana
+    tarjetaResumen('IBK_B', 'TC IBK · Britney', [e('2026-11-06', 15), e('2026-11-08', 99)]), // hoy / en 2 días
+    tarjetaResumen('BCP', 'TC BCP', [e('2026-11-05', 70), e('2026-11-09', 0)]), // vencida / sin deuda
+    tarjetaResumen('RIPLEY', 'TC Ripley', [e('', 80)]),                  // sin fecha
+    tarjetaResumen('HORMIGA', 'Gastos hormiga', [e('2026-11-06', 9)])
+  ];
+  const av = L.avisosDelDia(resumen, '2026-11-06', []);
+  assert.deepEqual(av, [
+    { clave: '2026-11-06|IBK_B|2026-11-06', tarjeta: 'IBK_B', nombre: 'TC IBK · Britney', vence: '2026-11-06', monto: 15, dias: 0, cuando: 'hoy' },
+    { clave: '2026-11-06|IBK_P|2026-11-07', tarjeta: 'IBK_P', nombre: 'TC IBK · Pedro', vence: '2026-11-07', monto: 50.5, dias: 1, cuando: 'manana' },
+    { clave: '2026-11-06|SIP|2026-11-09', tarjeta: 'SIP', nombre: 'TC SIP', vence: '2026-11-09', monto: 120, dias: 3, cuando: 'en_3_dias' }
+  ]);
+  // Lo ya avisado hoy se salta; lo avisado otro día (otra clave) no cuenta.
+  const resto = L.avisosDelDia(resumen, '2026-11-06', ['2026-11-06|SIP|2026-11-09', '2026-11-05|IBK_P|2026-11-07']);
+  assert.deepEqual(resto.map((a) => a.tarjeta), ['IBK_B', 'IBK_P']);
+  assert.deepEqual(L.avisosDelDia(resumen, '2026-11-06', av.map((a) => a.clave)), []);
+  assert.deepEqual(L.avisosDelDia(resumen, 'no es fecha', []), []);
+  assert.deepEqual(L.avisosDelDia(null, '2026-11-06'), []);
+});
+
+test('avisosDelDia con hojas sintéticas y textoAvisos: asunto y cuerpo del correo', () => {
+  // TC SIP sintética: 40 pendientes que vencen el 03/12/2026.
+  const resumen = L.resumenTarjetas(todosLosConsumos(), '2026-11-30', false);
+  const av = L.avisosDelDia(resumen, '2026-11-30', []);
+  assert.deepEqual(av.map((a) => [a.tarjeta, a.monto, a.cuando]), [['SIP', 40, 'en_3_dias']]);
+  const uno = L.textoAvisos(av);
+  assert.equal(uno.asunto, 'FinFamily: TC SIP vence en 3 días (S/ 40.00)');
+  assert.ok(uno.cuerpo.includes('• TC SIP: S/ 40.00 — vence en 3 días (03/12/2026)'));
+  assert.ok(!uno.cuerpo.includes('Total:'));
+
+  const varios = L.textoAvisos([
+    { nombre: 'TC BCP', monto: 1234.5, cuando: 'hoy', vence: '2026-11-20' },
+    { nombre: 'TC SIP', monto: 20, cuando: 'manana', vence: '2026-11-21' }
+  ]);
+  assert.equal(varios.asunto, 'FinFamily: 2 pagos de tarjeta por vencer');
+  assert.ok(varios.cuerpo.includes('• TC BCP: S/ 1,234.50 — vence HOY (20/11/2026)'));
+  assert.ok(varios.cuerpo.includes('• TC SIP: S/ 20.00 — vence mañana (21/11/2026)'));
+  assert.ok(varios.cuerpo.includes('Total: S/ 1,254.50'));
+  assert.equal(L.textoAvisos([]), null);
+});
