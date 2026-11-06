@@ -2409,6 +2409,11 @@ html[data-modo="oscuro"] .ahorro-resumen .ahorro-total { color: var(--vivo); }
 .carrusel.infinito.arrastrando .plastico { pointer-events: none; }
 .carrusel.infinito a.plastico { -webkit-user-drag: none; }
 
+/* Ningún texto por debajo de 11 px: las etiquetas más chicas se leían con esfuerzo */
+.anillo-texto span, .plastico-monto > span, .mb-mes small, .mb-mes em, .mb-valor, .mb-col .mb-zona .mb-valor, .mb-col.nodato .mb-valor, .ruta-fecha i,
+.plastico-pie .plastico-titular, .plastico-pie .plastico-estado, .gd-eje span, .gd-prom b, .gd-rejilla span b { font-size: 11px; }
+.mb-mes em { padding-inline: 5px; }
+
 /* ---------- Ajustes de la prueba de tamaños ---------- */
 /* App de gastos: los medios de pago se ven todos, sin tener que deslizar hacia el lado */
 body.solo-gasto .opciones:not(.chicas) { flex-wrap: wrap; overflow: visible; margin: 0; padding: 4px 0 10px; }
