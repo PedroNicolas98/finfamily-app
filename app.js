@@ -1973,6 +1973,78 @@ async function vistaInicio() {
   return raiz;
 }
 
+// ---------- Editar el monto en el mismo lugar: clic, escribir, Enter ----------
+
+function editarEnLinea(boton, mes, f) {
+  if (boton.classList.contains('guardando')) return;
+  const entrada = h('input', { type: 'text', inputmode: 'decimal', class: 'monto-entrada', value: Number(f.monto || 0).toFixed(2), 'aria-label': `Nuevo monto de ${nombreLinea(f.concepto)}`, autocomplete: 'off' });
+  let cerrado = false;
+  const volver = () => { if (cerrado) return; cerrado = true; entrada.replaceWith(boton); };
+  const guardar = async () => {
+    if (cerrado) return;
+    const texto = entrada.value.trim();
+    const monto = Number(texto) === 0 && texto !== '' ? 0 : leerMonto(texto);
+    if (monto === null || monto === undefined) { entrada.classList.add('mal'); entrada.focus(); return; }
+    if (Math.round(monto * 100) === Math.round((f.monto || 0) * 100)) { volver(); return; }
+    volver();
+    boton.classList.add('guardando');
+    boton.textContent = soles(monto);
+    try {
+      await llamarApi('editarPresupuesto', { idCliente: uuid(), mes, fila: f.fila, concepto: f.concepto, montoAnterior: f.monto || 0, monto }, { email: emailSesion() });
+      try { await cargar('presupuesto', { mes }, 'presupuesto:' + mes); } catch { /* se verá al refrescar */ }
+      avisar(`${nombreLinea(f.concepto)}: ${soles(monto)}`, 'ok');
+      navegar({ silencioso: true });
+    } catch (e) {
+      boton.classList.remove('guardando');
+      boton.textContent = soles(f.monto || 0);
+      avisar(mensajeError(e, 'No se pudo guardar. Intenta de nuevo.'), 'error');
+    }
+  };
+  entrada.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); guardar(); }
+    if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); volver(); boton.focus(); }
+  });
+  entrada.addEventListener('input', () => entrada.classList.remove('mal'));
+  entrada.addEventListener('blur', () => { if (!entrada.classList.contains('mal')) guardar(); else volver(); });
+  boton.replaceWith(entrada);
+  entrada.focus(); entrada.select();
+}
+
+// Orden y densidad de la lista de gastos (se recuerdan en el equipo). Al reordenar, cada fila se desliza a su nuevo lugar.
+function controlesGastos(seccion) {
+  const ul = seccion.querySelector('.filas-pres');
+  const cab = seccion.querySelector('.panel-cab');
+  if (!ul || !cab) return;
+  let pref = { orden: 'monto', compacta: false };
+  try { pref = { ...pref, ...JSON.parse(localStorage.getItem('ff:pres-vista') || '{}') }; } catch { /* nada */ }
+  const recordar = () => { try { localStorage.setItem('ff:pres-vista', JSON.stringify(pref)); } catch { /* nada */ } };
+  const criterio = {
+    monto: (a, b) => Number(b.dataset.plan) - Number(a.dataset.plan),
+    nombre: (a, b) => a.dataset.nombre.localeCompare(b.dataset.nombre),
+    pendiente: (a, b) => (a.classList.contains('pagado') - b.classList.contains('pagado')) || ((b.dataset.marcable ? 1 : 0) - (a.dataset.marcable ? 1 : 0)) || (Number(b.dataset.plan) - Number(a.dataset.plan)),
+  };
+  const ordenar = (animar) => {
+    const filas = [...ul.children];
+    const antes = new Map(filas.map((li) => [li, li.getBoundingClientRect()]));
+    filas.sort(criterio[pref.orden] || criterio.monto).forEach((li) => ul.append(li));
+    if (!animar || sinMovimiento()) return;
+    filas.forEach((li, i) => {
+      const a = antes.get(li); const d = li.getBoundingClientRect();
+      const dx = a.left - d.left; const dy = a.top - d.top;
+      if (!dx && !dy) return;
+      li.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 520, delay: Math.min(i * 14, 160), easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'backwards' });
+    });
+  };
+  const botonesOrden = [['monto', 'Monto'], ['nombre', 'A–Z'], ['pendiente', 'Por pagar']].map(([id, texto]) => h('button', { type: 'button', 'aria-pressed': String(pref.orden === id),
+    title: id === 'monto' ? 'Del más grande al más chico' : id === 'nombre' ? 'Por nombre' : 'Primero lo que falta pagar',
+    onclick: () => { pref.orden = id; recordar(); botonesOrden.forEach((b, k) => b.setAttribute('aria-pressed', String(['monto', 'nombre', 'pendiente'][k] === id))); ordenar(true); } }, texto));
+  const densidad = h('button', { type: 'button', class: 'boton icono-solo pres-densidad', 'aria-pressed': String(pref.compacta), title: 'Vista compacta o amplia', 'aria-label': 'Cambiar entre vista compacta y amplia',
+    onclick: () => { pref.compacta = !pref.compacta; recordar(); densidad.setAttribute('aria-pressed', String(pref.compacta)); seccion.classList.toggle('compacta', pref.compacta); } }, icono('lista'));
+  seccion.classList.toggle('compacta', pref.compacta);
+  cab.after(h('div', { class: 'pres-controles' }, h('div', { class: 'segmentos pres-orden', role: 'group', 'aria-label': 'Ordenar gastos' }, botonesOrden), densidad));
+  if (pref.orden !== 'monto') ordenar(false);
+}
+
 // ---------- Editar el monto de una línea del presupuesto ----------
 
 function editarLinea(mes, f) {
@@ -2886,14 +2958,16 @@ async function vistaPresupuesto() {
       h('ul', { class: 'filas-pres' }, ordenadas.map((f) => {
         const marcable = fijos.includes(f);
         const nota = h('small', { class: 'nota-pagado' }, f.pagadoNota || '');
-        const li = h('li', { class: [f.monto ? '' : 'cero', f.pagado && marcable ? 'pagado' : ''].join(' ').trim(), 'data-linea': clave === 'gastos' && !f.esTarjeta ? normalizar(nombreLinea(f.concepto)) : null, 'data-plan': String(Math.abs(f.monto || 0)) },
+        const li = h('li', { class: [f.monto ? '' : 'cero', f.pagado && marcable ? 'pagado' : ''].join(' ').trim(), 'data-nombre': normalizar(nombreLinea(f.concepto)), 'data-marcable': marcable ? '1' : null, 'data-linea': clave === 'gastos' && !f.esTarjeta ? normalizar(nombreLinea(f.concepto)) : null, 'data-plan': String(Math.abs(f.monto || 0)) },
           h('div', { class: 'fila-pres-top' },
             h('span', { class: 'fila-pres-nombre' },
               marcable ? botonFijo(f, d.mes, (x) => { li.classList.toggle('pagado', !!x.pagado); nota.textContent = x.pagado ? (x.pagadoNota || '') : ''; pintarResumenFijos(); }) : null,
               h('span', { title: f.concepto }, nombreLinea(f.concepto), marcable ? nota : null)),
-            h('span', {}, f.monto && total ? h('small', { class: 'pct' }, `${Math.round((f.monto / total) * 100)}%`) : null, soles(f.monto),
+            h('span', {}, f.monto && total ? h('small', { class: 'pct' }, `${Math.round((f.monto / total) * 100)}%`) : null,
               motorNuevo() && clave !== 'ingresos' && f.fila && !f.esTarjeta && !(f.monto < 0) && emailSesion()
-                ? h('button', { type: 'button', class: 'boton-editar linea-editar', title: 'Cambiar monto', 'aria-label': `Cambiar monto de ${nombreLinea(f.concepto)}`, onclick: () => editarLinea(d.mes, f) }, icono('lapiz')) : null)),
+                ? h('button', { type: 'button', class: 'monto-editable', title: 'Clic para cambiar el monto', 'aria-label': `Cambiar monto de ${nombreLinea(f.concepto)}, ahora ${soles(f.monto)}`,
+                  onclick: (ev) => editarEnLinea(ev.currentTarget, d.mes, f) }, soles(f.monto))
+                : soles(f.monto))),
           h('div', { class: 'barra-pres', 'aria-hidden': 'true' }, h('i', { 'data-w': `${Math.round((Math.abs(f.monto || 0) / max) * 100)}%` })));
         return li;
       })));
@@ -3047,7 +3121,7 @@ async function vistaPresupuesto() {
   ];
   secciones.forEach((el, i) => { if (el) { el.classList.add('revelar'); el.style.setProperty('--i', String(i)); } });
 
-  if (secciones[2]) pintarLlevas(secciones[2]);
+  if (secciones[2]) { pintarLlevas(secciones[2]); controlesGastos(secciones[2]); }
   // Metas de ahorro: cuánto lleva guardado cada una, sumando los meses del presupuesto hasta este.
   if (secciones[1] && motorNuevo()) {
     cargarRapido('ahorros', { mes: d.mes }, 'ahorros:' + d.mes).then((ra) => {
