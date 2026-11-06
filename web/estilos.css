@@ -2265,7 +2265,8 @@ html[data-modo="oscuro"] :is(.panel, .grupo, .cuenta-panel) { box-shadow: var(--
   .tablero .panel-fijos { grid-column: 2; grid-row: 3 / span 2; min-height: 0; }
   .tablero .panel-gasto, .tablero .panel-dona { grid-column: 3; grid-row: 3 / span 2; min-height: 0; }
   .tablero .panel { padding: 16px 18px; }
-  .tablero .panel-fijos .lista-fijos, .tablero .panel-fijos ul { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+  .tablero .panel-fijos { overflow: hidden; }
+  .tablero .panel-fijos > * { flex-shrink: 0; }
   .tablero .panel-gasto .pest-cuerpo { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; }
   .tablero .pest-lista { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; align-self: stretch; }
   .tablero .gd { padding-top: 26px; }
@@ -2287,25 +2288,22 @@ html[data-modo="oscuro"] :is(.panel, .grupo, .cuenta-panel) { box-shadow: var(--
 /* ---------- Presupuesto como tablero: también entra completo, sin bajar ---------- */
 @media (min-width: 1280px) and (min-height: 620px) {
   .pantalla.presupuesto {
-    display: grid; box-sizing: border-box; height: 100dvh; padding-top: 20px; padding-bottom: 18px; gap: 14px 16px;
-    grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.6fr); grid-template-rows: auto auto minmax(0, 1fr);
+    display: grid; padding-top: 20px; gap: 14px 16px; align-items: start;
+    grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.6fr);
   }
-  .pantalla.presupuesto:has(> .mensaje) { grid-template-rows: auto auto auto minmax(0, 1fr); }
-  body:has(.pantalla.presupuesto) { padding-bottom: 0; }
   .pantalla.presupuesto > .cabecera-fila, .pantalla.presupuesto > .hero, .pantalla.presupuesto > .mensaje { grid-column: 1 / -1; }
   .pantalla.presupuesto > .cabecera-fila h1 { font-size: 1.5rem; }
   .pantalla.presupuesto > .hero.hero-meses { padding: 14px 26px; gap: 8px 28px; align-items: center;
     grid-template-columns: auto minmax(0, 1fr) minmax(400px, 1fr); grid-template-areas: 'principal meses datos'; }
   .pantalla.presupuesto .hero-datos strong { font-size: 0.98rem; white-space: nowrap; }
   .pantalla.presupuesto .hero-datos li { padding: 10px 12px; gap: 8px; }
-  .pantalla.presupuesto > .rejilla-pres > .panel:first-child { flex: 1.3 1 0; }
+
   .pantalla.presupuesto .hero-monto { font-size: 2.4rem; margin: 2px 0 8px; }
   .pantalla.presupuesto .mb-plano { height: 108px; }
   .pantalla.presupuesto .hero-datos { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; border: 0; padding: 0; margin: 0; }
-  .pantalla.presupuesto > .rejilla-pres { grid-column: 1; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
-  .pantalla.presupuesto > .rejilla-pres > .panel { flex: 1 1 0; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 16px 18px; }
-  .pantalla.presupuesto > .panel { grid-column: 2; min-height: 0; display: flex; flex-direction: column; padding: 16px 18px; }
-  .pantalla.presupuesto > .panel > :last-child { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding-right: 6px; }
+  .pantalla.presupuesto > .rejilla-pres { grid-column: 1; display: flex; flex-direction: column; gap: 14px; }
+  .pantalla.presupuesto > .rejilla-pres > .panel { padding: 16px 18px; }
+  .pantalla.presupuesto > .panel { grid-column: 2; padding: 16px 18px; }
   .pantalla.presupuesto .panel ::-webkit-scrollbar { width: 6px; }
   .pantalla.presupuesto .panel ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--tinta) 16%, transparent); border-radius: 99px; }
 }
