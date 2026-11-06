@@ -1065,10 +1065,23 @@ async function procesarHasta(id) {
 // ---------- Avisos superiores ----------
 
 // Menú lateral (computadora): la tarjeta que vence primero, tomada de lo último guardado.
+// Globo sobre "Tarjetas" en el menú: cuántas tarjetas con deuda vencen en los próximos 7 días (o ya vencieron).
+function pintarGlobos(lista) {
+  document.querySelectorAll('.barra-nav a[data-ruta="tarjetas"]').forEach((a) => {
+    const n = api.emailGuardado() ? lista.filter((t) => t.id !== 'HORMIGA' && t.pendiente > 0 && t.proximoVence && diasEntre(hoyISO(), t.proximoVence) <= 7).length : 0;
+    let g = a.querySelector('.nav-globo');
+    if (!n) { g?.remove(); return; }
+    if (!g) { g = h('span', { class: 'nav-globo' }); a.append(g); }
+    if (g.textContent !== String(n)) g.textContent = String(n);
+    g.title = n === 1 ? '1 tarjeta vence en 7 días o menos' : `${n} tarjetas vencen en 7 días o menos`;
+  });
+}
+
 function pintarProximoPago() {
+  const lista = leerCache('tarjetas')?.datos?.tarjetas || [];
+  pintarGlobos(lista);
   const caja = document.querySelector('.nav-proximo');
   if (!caja) return;
-  const lista = leerCache('tarjetas')?.datos?.tarjetas || [];
   const prox = lista.filter((t) => t.id !== 'HORMIGA' && t.pendiente > 0 && t.proximoVence)
     .sort((a, b) => String(a.proximoVence).localeCompare(String(b.proximoVence)))[0];
   if (!prox || !api.emailGuardado()) { caja.hidden = true; caja.dataset.clave = ''; return; }
@@ -3148,6 +3161,22 @@ async function arrancar() {
   document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') cerrarMenusCuenta(); });
   window.addEventListener('resize', moverIndicador);
   document.body.append(h('div', { class: 'barra-carga', 'aria-hidden': 'true' }, h('i')));
+  // El brillo de los paneles de vidrio sigue al cursor.
+  if (matchMedia('(hover: hover) and (pointer: fine)').matches) {
+    let pendiente = null;
+    document.addEventListener('pointermove', (ev) => {
+      const el = ev.target.closest?.('.panel, .grupo');
+      if (!el) return;
+      pendiente = [el, ev.clientX, ev.clientY];
+      requestAnimationFrame(() => {
+        if (!pendiente) return;
+        const [caja, x, y] = pendiente; pendiente = null;
+        const r = caja.getBoundingClientRect();
+        caja.style.setProperty('--px', `${Math.round(x - r.left)}px`);
+        caja.style.setProperty('--py', `${Math.round(y - r.top)}px`);
+      });
+    }, { passive: true });
+  }
   // Onda al tocar un botón.
   document.addEventListener('pointerdown', (ev) => {
     const el = ev.target.closest?.('.boton, .opcion, .cuenta-boton, .pest, .chip-filtro');
