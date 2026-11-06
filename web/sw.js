@@ -2,15 +2,17 @@
 // La API (Apps Script) y Google están en otros dominios: esas peticiones no se tocan
 // y van directo a la red. Cambia VERSION al publicar cambios.
 
-const VERSION = 'finfamily-v46';
+const VERSION = 'finfamily-v47';
 const CASCARON = [
   './',
   './index.html',
   './gasto.html',
   './gasto.webmanifest',
   './iconos/gasto.svg',
-  './iconos/gasto-192.png',
-  './iconos/gasto-512.png',
+  './iconos/gasto-logo-192.png',
+  './iconos/gasto-logo-512.png',
+  './iconos/gasto-fondo-192.png',
+  './iconos/gasto-fondo-512.png',
   './estilos.css',
   './config.js',
   './api.js',
@@ -18,9 +20,10 @@ const CASCARON = [
   './app.js',
   './manifest.webmanifest',
   './iconos/icono.svg',
-  './iconos/icono-192.png',
-  './iconos/icono-512.png',
-  './iconos/icono-maskable.svg',
+  './iconos/logo-192.png',
+  './iconos/logo-512.png',
+  './iconos/logo-fondo-192.png',
+  './iconos/logo-fondo-512.png',
   './fuentes/plus-jakarta-sans.woff2',
 ];
 
