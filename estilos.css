@@ -2146,6 +2146,36 @@ html[data-vt] .carrusel-pista > .plastico[style*="view-transition-name"] { anima
   body.menu-chico .cuenta-menu.nav .cuenta-panel { width: 268px; }
 }
 
+/* ---------- Menú flotante de vidrio (computadora) ---------- */
+@media (min-width: 1024px) {
+  body { --menu-aire: 14px; padding-left: calc(var(--ancho-menu) + var(--menu-aire) + 6px); }
+  .barra-nav {
+    top: var(--menu-aire); bottom: var(--menu-aire); left: var(--menu-aire);
+    border: 1px solid color-mix(in srgb, #fff 70%, transparent); border-radius: 28px;
+    background: none; -webkit-backdrop-filter: none; backdrop-filter: none;
+    box-shadow: 0 30px 60px -28px color-mix(in srgb, var(--marca) 55%, transparent), 0 2px 10px -4px rgba(15, 30, 60, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    transition: width var(--menu-dur) var(--menu-curva), border-radius var(--menu-dur) var(--menu-curva);
+  }
+  /* Luz de color detrás del vidrio, para que se note el esmerilado */
+  /* El vidrio va en una capa aparte: así el botón de plegar no queda recortado por el menú */
+  .barra-nav::after { content: ''; position: absolute; z-index: -1; inset: 0; border-radius: inherit; pointer-events: none;
+    -webkit-backdrop-filter: blur(24px) saturate(1.7); backdrop-filter: blur(24px) saturate(1.7);
+    background: radial-gradient(120% 40% at 0% 0%, color-mix(in srgb, var(--marca) 10%, transparent), transparent 70%), radial-gradient(120% 36% at 100% 100%, color-mix(in srgb, var(--vivo) 12%, transparent), transparent 70%),
+      linear-gradient(165deg, color-mix(in srgb, var(--sup) 82%, transparent), color-mix(in srgb, var(--sup) 50%, transparent)); }
+  body.menu-chico .barra-nav { border-radius: 38px; }
+  html[data-modo="oscuro"] .barra-nav { border-color: rgba(255, 255, 255, 0.1); box-shadow: 0 30px 60px -28px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.08); }
+  .nav-plegar { left: calc(var(--ancho-menu) + var(--menu-aire) - 13px); top: 46px; }
+  .barra-seleccion, .tostada { left: calc(50% + (var(--ancho-menu) + var(--menu-aire) + 6px) / 2); }
+  /* Cada opción se enciende y se desliza un poco al pasar el cursor */
+  .barra-nav a:not(.central):not(.nav-proximo) { transition: background 220ms ease, color 220ms ease, transform 260ms var(--suave); }
+  .barra-nav a:not(.central):not(.nav-proximo):hover { background: color-mix(in srgb, var(--marca) 8%, transparent); transform: translateX(3px); }
+  .barra-nav a:not(.central):hover .icono { transform: scale(1.12); }
+  .barra-nav a .icono { transition: transform 260ms var(--suave); }
+  body.menu-chico .barra-nav a:not(.central):not(.nav-proximo):hover { transform: none; }
+  .nav-indicador { background: linear-gradient(135deg, color-mix(in srgb, var(--marca) 16%, transparent), color-mix(in srgb, var(--vivo) 14%, transparent)); border: 1px solid color-mix(in srgb, var(--marca) 16%, transparent); box-shadow: 0 8px 18px -10px color-mix(in srgb, var(--marca) 60%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.5); }
+  .barra-nav a.nav-proximo, .cuenta-menu.nav .cuenta-boton { background: color-mix(in srgb, var(--sup) 60%, transparent); border-color: color-mix(in srgb, var(--tinta) 8%, transparent); }
+}
+
 /* ---------- Movimiento con criterio: nada se reinicia, todo lo que entra también sale ---------- */
 /* Pantalla que solo se actualizó: lo que ya estaba a la vista no vuelve a entrar */
 .revelar.quieto, .revelar.quieto :is(.dona-arco, .gd-col i, .mov, .fijo, .persona, .ruta-paso), .revelar.quieto .ruta::before { animation: none; }
