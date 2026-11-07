@@ -105,6 +105,7 @@ const ICONOS = {
   presupuesto: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
   atras: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>',
   adelante: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>',
+  'ojo-tachado': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 5.1A10.5 10.5 0 0 1 12 5c6 0 9.5 7 9.5 7a17 17 0 0 1-2.8 3.6"/><path d="M6.3 6.3C3.8 8.3 2.5 12 2.5 12s3.5 7 9.5 7a9.8 9.8 0 0 0 4.2-.9"/></svg>',
   ojo: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></svg>',
   alerta: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 2.5 20h19z"/><path d="M12 10v4.5M12 17.5v.01"/></svg>',
   sube: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>',
@@ -203,7 +204,7 @@ function botonCuenta(variante) {
   const correo = api.emailGuardado();
   const panel = h('div', { class: 'cuenta-panel', hidden: true, role: 'dialog', 'aria-label': 'Tu cuenta' },
     h('div', { class: 'cuenta-quien' }, avatar(nombre || correo, 'grande'),
-      h('div', {}, h('strong', {}, nombre || 'Tu cuenta'), h('span', { class: 'suave', title: correo }, correo))),
+      h('div', {}, h('strong', {}, nombre || 'Tu cuenta'), h('span', { class: 'suave correo', title: correo }, ...String(correo || '').split('@').flatMap((p, i) => (i ? [h('wbr'), '@' + p] : [p]))))),
     panelApariencia(),
     h('div', { class: 'cuenta-enlaces' },
       SOLO_GASTO
@@ -214,7 +215,8 @@ function botonCuenta(variante) {
         try { localStorage.setItem('ff:ocultar', oculto ? '1' : ''); } catch { /* nada */ }
         ev.currentTarget.setAttribute('aria-pressed', String(oculto));
         ev.currentTarget.lastChild.textContent = oculto ? 'Mostrar montos' : 'Ocultar montos';
-      } }, icono('ojo'), document.body.classList.contains('montos-ocultos') ? 'Mostrar montos' : 'Ocultar montos'),
+        ev.currentTarget.firstChild.replaceWith(icono(oculto ? 'ojo-tachado' : 'ojo'));
+      } }, icono(document.body.classList.contains('montos-ocultos') ? 'ojo-tachado' : 'ojo'), document.body.classList.contains('montos-ocultos') ? 'Mostrar montos' : 'Ocultar montos'),
       h('button', { type: 'button', class: 'cuenta-enlace instalar', onclick: instalarApp }, icono('descargar'), 'Instalar la app'),
       esIphoneSinInstalar() ? h('p', { class: 'cuenta-pista' }, 'En iPhone: Compartir, luego "Agregar a inicio".') : null),
     zonaSesion());

@@ -2486,7 +2486,7 @@ body.solo-gasto .opciones:not(.chicas) { flex-wrap: wrap; overflow: visible; mar
 .barra-nav a.cuenta-enlace { padding: 0 8px; gap: 10px; min-height: 36px; font-size: 0.86rem; color: var(--tinta); border-radius: 10px; }
 .barra-nav a.cuenta-enlace .icono, .barra-nav a.cuenta-enlace .icono svg { width: 16px; height: 16px; }
 /* 8. El correo completo, en dos líneas si hace falta */
-.cuenta-quien .suave { white-space: normal; overflow-wrap: anywhere; text-overflow: clip; }
+.cuenta-quien .suave { white-space: normal; overflow-wrap: normal; word-break: keep-all; text-overflow: clip; font-size: 0.72rem; line-height: 1.25; }
 /* 9. Filtros por concepto: en computadora se ven todos, en varias filas */
 @media (min-width: 1024px) { .chips-filtro { flex-wrap: wrap; overflow: visible; } }
 /* 10 y 11. Cierre de mes: barras alineadas, avatares centrados, botón centrado */
@@ -2586,9 +2586,11 @@ body.sin-sesion .vista { padding-bottom: 0; }
 .pest { padding-block: 10px; }
 .volver, .boton-cierre, .cuenta-enlace, .cuenta-panel .zona-sesion .boton.enlace { min-height: 40px; }
 .seccion-acciones a, .panel-enlace, .panel-cab > a { display: inline-flex; align-items: center; min-height: 40px; }
-.cuenta-panel .segmentos button { min-height: 36px; width: 40px; }
-.cuenta-panel .color-op { width: 26px; height: 26px; }
-.cuenta-panel .colores { gap: 14px; }
+.cuenta-panel .segmentos button { min-height: 36px; width: 38px; }
+.cuenta-panel .color-op { width: 24px; height: 24px; flex-shrink: 0; }
+.cuenta-panel .colores { gap: 10px; flex-shrink: 0; }
+.cuenta-panel .apariencia, .cuenta-menu.nav .cuenta-panel .apariencia { overflow: visible; flex-wrap: wrap; row-gap: 8px; }
+.cuenta-panel .segmentos { flex-shrink: 0; }
 .tostada-accion { padding: 10px 14px; }
 /* 19. Menores: contraste de "Faltan N días", vista previa balanceada, filas parejas en compacta, select a medida */
 html:not([data-modo="oscuro"]) .estado-pill.al-dia { color: #0F6E50; }
