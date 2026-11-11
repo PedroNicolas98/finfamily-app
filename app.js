@@ -2474,6 +2474,74 @@ function abrirWhatsappMeta(estadoActual, alTerminar) {
   v.abrir();
 }
 
+// WhatsApp con Green API (v132, motor 1.19): tu WhatsApp vinculado por QR manda los avisos (plan gratis: 3 chats).
+function motorWhatsappGreen() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 19); }
+const CONSOLA_GREEN = 'https://console.green-api.com';
+
+function abrirWhatsappGreen(estadoActual, alTerminar) {
+  let est = estadoActual || {};
+  let cambiarDatos = !est.green?.configurado;
+  const v = ventanita('conectar-avisos wsp-dlg', 'WhatsApp con Green API');
+  v.caja.classList.add('conectar-caja');
+  const inUrl = h('input', { type: 'url', autocomplete: 'off', placeholder: 'apiUrl (ej. https://7103.api.greenapi.com)', 'aria-label': 'apiUrl' });
+  const inId = h('input', { type: 'text', inputmode: 'numeric', autocomplete: 'off', placeholder: 'idInstance (solo números)', 'aria-label': 'idInstance' });
+  const inToken = h('input', { type: 'password', autocomplete: 'off', placeholder: 'apiTokenInstance', 'aria-label': 'apiTokenInstance' });
+  const inTel = h('input', { type: 'tel', autocomplete: 'tel', placeholder: '+51 987 654 321', value: '+51 ', 'aria-label': 'Tu número de WhatsApp' });
+  const msg = h('p', { class: 'mensaje error', hidden: true });
+  const pasos = h('ol', { class: 'conectar-pasos' });
+  const error = (t) => { msg.textContent = t; msg.hidden = false; };
+  const paso = (n, hecho, titulo, ayuda, ...controles) => h('li', { class: 'conectar-paso' + (hecho ? ' hecho' : ' activo'), style: `--i: ${n}` },
+    h('span', { class: 'conectar-num' }, hecho ? icono('check') : String(n)),
+    h('div', { class: 'conectar-txt' }, h('strong', {}, titulo), h('small', { class: 'suave' }, ayuda),
+      controles.filter(Boolean).length ? h('div', { class: 'conectar-ctrl' }, controles.filter(Boolean)) : null));
+  const btnDatos = h('button', { type: 'button', class: 'boton chico primario' }, 'Guardar datos');
+  btnDatos.onclick = async () => {
+    msg.hidden = true;
+    if (inId.value.replace(/\D/g, '').length < 6) { error('Pega el idInstance.'); inId.focus(); return; }
+    if (inToken.value.trim().length < 20) { error('Pega el apiTokenInstance completo.'); inToken.focus(); return; }
+    ocuparBoton(btnDatos, 'Comprobando…');
+    try {
+      est = await llamarApi('guardarWhatsappGreen', { apiUrl: inUrl.value.trim() || undefined, idInstance: inId.value.trim(), apiToken: inToken.value.trim() }, { email: emailSesion() });
+      guardarCache('whatsapp', est);
+      inToken.value = ''; cambiarDatos = false;
+      avisar('Green API conectado', 'ok');
+      pintar();
+    } catch (e) { liberarBoton(btnDatos, 'Guardar datos'); error(mensajeError(e, 'Green API no aceptó los datos.')); }
+  };
+  const btnTel = h('button', { type: 'button', class: 'boton chico primario' }, 'Conectar mi número');
+  btnTel.onclick = async () => {
+    msg.hidden = true;
+    if (inTel.value.replace(/\D/g, '').length < 9) { error('Escribe tu número con el código del país.'); inTel.focus(); return; }
+    ocuparBoton(btnTel, 'Enviando…');
+    try {
+      est = await llamarApi('guardarWhatsapp', { via: 'green', telefono: inTel.value }, { email: emailSesion() });
+      guardarCache('whatsapp', est);
+      avisar('¡Conectado! Revisa el mensaje de bienvenida en WhatsApp.', 'ok');
+      pintar(); alTerminar?.(est);
+    } catch (e) { liberarBoton(btnTel, 'Conectar mi número'); error(mensajeError(e, 'No se pudo conectar tu número.')); }
+  };
+  function pintar() {
+    const datosListos = !!est.green?.configurado && !cambiarDatos;
+    const miNumero = est.conectado && est.via === 'green';
+    pasos.replaceChildren(
+      paso(1, datosListos, 'Cuenta gratis en Green API y QR', datosListos ? `Listo${est.green?.numero ? ` · manda desde ${est.green.numero}` : ''}. Se hace una sola vez para los dos.`
+        : 'Crea tu cuenta (solo correo), crea una instancia «Developer» (gratis), toca «Get QR» y escanéalo en WhatsApp › Dispositivos vinculados. Luego copia aquí los 3 datos.',
+      ...(datosListos ? [h('button', { type: 'button', class: 'boton chico enlace', onclick: () => { cambiarDatos = true; pintar(); } }, 'Cambiar')]
+        : [h('div', { class: 'wsp-campos' }, inUrl, inId, inToken), btnDatos, h('a', { class: 'boton chico', href: CONSOLA_GREEN, target: '_blank', rel: 'noopener' }, 'Abrir Green API', icono('adelante'))])),
+      paso(2, miNumero, 'Tu número de WhatsApp', miNumero ? `Conectado: ${est.telefono}.` : 'El número donde quieres recibir tus avisos. Te llega un mensaje de bienvenida.',
+        ...(miNumero ? [] : [h('div', { class: 'wsp-campos' }, inTel), datosListos ? btnTel : null])));
+  }
+  v.caja.append(
+    h('span', { class: 'conectar-ico' }, icono('novedad')),
+    h('p', { class: 'cierre-etq' }, 'Avisos por WhatsApp'),
+    h('p', { class: 'suave' }, 'Gratis con Green API: tu WhatsApp vinculado manda los avisos. Si es tu mismo número, a ti te llegan al chat «Tú» sin sonido.'),
+    pasos, msg,
+    h('div', { class: 'acciones modal-acciones' }, h('button', { type: 'button', class: 'boton primario', onclick: v.cerrar }, 'Listo'),
+      h('button', { type: 'button', class: 'boton enlace', onclick: () => { v.cerrar(); (motorWhatsappMeta() ? abrirWhatsappMeta(est, alTerminar) : abrirConectarWhatsapp(alTerminar)); } }, 'Otras formas')));
+  pintar();
+  v.abrir();
+}
+
 // Fila de Ajustes › Avisos.
 function filaWhatsapp() {
   const control = h('span', { class: 'wsp-control' });
@@ -2481,7 +2549,7 @@ function filaWhatsapp() {
   const pintarCon = (d) => {
     if (!d) { control.replaceChildren(h('span', { class: 'suave' }, '…')); return; }
     if (!d.conectado) {
-      control.replaceChildren(h('button', { type: 'button', class: 'boton chico primario', onclick: () => (motorWhatsappMeta() ? abrirWhatsappMeta(d, pintarCon) : abrirConectarWhatsapp(pintarCon)) }, 'Conectar'));
+      control.replaceChildren(h('button', { type: 'button', class: 'boton chico primario', onclick: () => (motorWhatsappGreen() ? abrirWhatsappGreen(d, pintarCon) : motorWhatsappMeta() ? abrirWhatsappMeta(d, pintarCon) : abrirConectarWhatsapp(pintarCon)) }, 'Conectar'));
       return;
     }
     const probar = h('button', { type: 'button', class: 'boton chico', onclick: async () => {
@@ -2494,8 +2562,9 @@ function filaWhatsapp() {
       try { const r = await llamarApi('guardarWhatsapp', { quitar: true }, { email: emailSesion() }); guardarCache('whatsapp', r); pintarCon(r); avisar('WhatsApp desconectado', 'ok'); }
       catch (e) { avisar(mensajeError(e, 'No se pudo quitar.'), 'error'); }
     } }, 'Quitar');
-    const ver = d.via === 'meta' && motorWhatsappMeta() ? h('button', { type: 'button', class: 'boton chico enlace', onclick: () => abrirWhatsappMeta(d, pintarCon) }, 'Ver') : null;
-    control.replaceChildren(...[h('span', { class: 'pill ok', title: d.via === 'meta' ? 'WhatsApp oficial (Meta)' : 'CallMeBot' }, d.telefono || 'Conectado'), probar, ver, quitar].filter(Boolean));
+    const ver = d.via === 'green' && motorWhatsappGreen() ? h('button', { type: 'button', class: 'boton chico enlace', onclick: () => abrirWhatsappGreen(d, pintarCon) }, 'Ver')
+      : d.via === 'meta' && motorWhatsappMeta() ? h('button', { type: 'button', class: 'boton chico enlace', onclick: () => abrirWhatsappMeta(d, pintarCon) }, 'Ver') : null;
+    control.replaceChildren(...[h('span', { class: 'pill ok', title: d.via === 'green' ? 'Green API' : d.via === 'meta' ? 'WhatsApp oficial (Meta)' : 'CallMeBot' }, d.telefono || 'Conectado'), probar, ver, quitar].filter(Boolean));
   };
   pintarCon(leerCache('whatsapp')?.datos || null);
   cargarRapido('whatsapp', {}, 'whatsapp').then((r) => pintarCon(r?.datos)).catch(() => fila.remove());
