@@ -2201,6 +2201,135 @@ function abrirMeta({ concepto, disponible, aporteMes, mes, actual }, alGuardar) 
   inMonto.focus();
 }
 
+// ---------------------------------------------------------------------------
+// Cuadre de saldos (v128, motor 1.16): comparar con lo que dice el banco. Tarjetas: el total del estado de
+// cuenta contra lo anotado. Débito y Lemon: el saldo de hoy contra (saldo del último cuadre − lo anotado desde
+// entonces). Si no cuadra, muestra la diferencia y ayuda a buscar (pendientes por confirmar y posibles repetidos).
+// ---------------------------------------------------------------------------
+function motorCuadre() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 16); }
+const MEDIOS_DEBITO = [{ id: 'YAPE', etiqueta: 'Yape' }, { id: 'PLIN', etiqueta: 'Plin' }, { id: 'EFECTIVO', etiqueta: 'Débito / efectivo' }];
+
+async function abrirCuadre() {
+  const yo = usuarioActual()?.nombre || '';
+  const [rt, rc, rp] = await Promise.all([
+    cargarRapido('tarjetas', { hoy: hoyISO(), incluirPagados: true }, 'tarjetas-todo').catch(() => null),
+    cargarRapido('cuadres', {}, 'cuadres').catch(() => null),
+    cargarRapido('pendientes', {}, 'pendientes').catch(() => null),
+  ]);
+  const tarjetas = rt?.datos?.tarjetas || [];
+  let cuadres = rc?.datos?.cuadres || {};
+  const pendientes = (rp?.datos?.pendientes || estado.ultimosPendientes || []).filter((p) => !p.moneda || p.moneda === 'PEN');
+  const tcs = tarjetas.filter((t) => t.id !== 'HORMIGA' && (t.estados || []).length);
+  const hormiga = consumosDe(tarjetas, (t) => t.id === 'HORMIGA').filter((c) => !c.fecha || c.fecha <= hoyISO());
+  let modo = tcs.length ? 'tc' : 'debito';
+  let tcElegida = tcs.find((t) => (t.estados || []).some((e) => e.pendiente > 0))?.id || tcs[0]?.id;
+  let mediosDeb = (cuadres['debito|' + yo]?.medios?.length ? cuadres['debito|' + yo].medios : MEDIOS_DEBITO.map((m) => m.id));
+  const v = ventanita('cuadre-dlg', 'Cuadrar con el banco');
+  const cuerpo = h('div', { class: 'cuadre-cuerpo' });
+  const pestanas = h('div', { class: 'cuadre-pestanas', role: 'tablist' });
+  const inMonto = h('input', { type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: '0.00', 'aria-label': 'Lo que dice el banco' });
+  v.caja.append(h('p', { class: 'cierre-etq' }, 'Cuadrar con el banco'), pestanas, cuerpo,
+    h('div', { class: 'acciones modal-acciones' }, h('button', { type: 'button', class: 'boton primario', onclick: v.cerrar }, 'Listo')));
+
+  const estadoTC = (t) => [...(t.estados || [])].filter((e) => e.vence).sort((x, y) => (y.pendiente > 0) - (x.pendiente > 0) || String(x.vence).localeCompare(String(y.vence)))[0] || (t.estados || [])[0];
+  const anotadoCon = (medios, soloMio) => hormiga.filter((c) => medios.some((m) => normalizar(c.medio || '').startsWith(normalizar(m)))
+    && (!soloMio || mismoNombre(c.responsable, yo))).reduce((s, c) => s + (Number(c.monto) || 0), 0);
+  const listaAyuda = (titulo, items) => items.length ? h('div', { class: 'cuadre-ayuda' }, h('p', { class: 'etq' }, titulo),
+    h('ul', {}, items.map((x) => h('li', { class: x.justo ? 'justo' : '' }, h('span', {}, x.texto), h('strong', {}, soles(x.monto)), x.justo ? h('em', {}, '¡justo la diferencia!') : null)))) : null;
+  const resultado = (dif, textoMas, textoMenos) => {
+    if (Math.abs(dif) < 0.01) return h('div', { class: 'cuadre-res ok' }, h('span', { class: 'cuadre-ico' }, icono('check')), h('strong', {}, '¡Cuadra!'));
+    return h('div', { class: 'cuadre-res ' + (dif > 0 ? 'mas' : 'menos') }, h('span', { class: 'cuadre-ico' }, icono('alerta')),
+      h('div', {}, h('strong', {}, `${dif > 0 ? 'Faltan' : 'Sobran'} ${soles(Math.abs(dif))}`), h('small', {}, dif > 0 ? textoMas : textoMenos)));
+  };
+  const guardar = async (clave, saldo, extra = {}) => {
+    try {
+      const r = await llamarApi('guardarCuadre', { clave, saldo, ...extra }, { email: emailSesion() });
+      cuadres = r?.cuadres || cuadres; guardarCache('cuadres', { cuadres });
+      avisar('Cuadre guardado', 'ok'); inMonto.value = ''; pintar();
+    } catch (e) { avisar(mensajeError(e, 'No se pudo guardar.'), 'error'); }
+  };
+
+  const pintarTC = () => {
+    const t = tcs.find((x) => x.id === tcElegida);
+    if (!t) return [h('p', { class: 'suave' }, 'No hay estados de cuenta de tarjetas todavía.')];
+    const e = estadoTC(t);
+    const app = Math.round((Number(e?.total) || 0) * 100) / 100;
+    const clave = `tc|${t.id}|${e?.vence || ''}`;
+    const previo = cuadres[clave];
+    const banco = leerMonto(inMonto.value);
+    const dif = banco === null || banco === undefined || inMonto.value.trim() === '' ? null : Math.round((banco - app) * 100) / 100;
+    const pend = pendientes.filter((p) => idTarjetaDePendiente(p) === t.id && !directoPend(p));
+    const consumos = e?.consumos || [];
+    const repetidos = [];
+    consumos.forEach((c, i) => consumos.slice(i + 1).forEach((d) => {
+      if (Math.round(c.monto * 100) === Math.round(d.monto * 100) && Math.abs((deISO(c.fecha) - deISO(d.fecha)) / 86400000) <= 1) repetidos.push({ texto: `${limpiarComercio(c.descripcion)} y ${limpiarComercio(d.descripcion)}`, monto: c.monto });
+    }));
+    return [
+      h('div', { class: 'opciones cuadre-tcs' }, tcs.map((x) => h('button', { type: 'button', class: 'opcion chica', 'aria-pressed': String(x.id === tcElegida), onclick: () => { tcElegida = x.id; inMonto.value = ''; pintar(); } },
+        chipTC(x.id, 'mini insignia'), h('span', { class: 'opcion-texto' }, nombreTC(x.id))))),
+      h('p', { class: 'cuadre-app' }, h('span', { class: 'suave' }, `Para el pago del ${fechaCorta(e?.vence)}, la app tiene`), h('strong', {}, soles(app))),
+      h('label', { class: 'cuenta-monto' }, h('span', {}, 'Banco S/'), inMonto),
+      h('p', { class: 'suave cuadre-tip' }, 'Escribe el total del estado de cuenta que ves en la app del banco.'),
+      dif === null ? (previo ? h('p', { class: 'suave' }, `Último cuadre: ${fechaCorta(previo.fecha)} · banco ${soles(previo.saldo)}`) : null)
+        : resultado(dif, 'Hay consumos en el banco que no están anotados.', 'La app tiene algo de más: revisa repetidos o de otra tarjeta.'),
+      dif !== null && dif > 0 ? listaAyuda('Por confirmar de esta tarjeta', pend.map((p) => ({ texto: `${limpiarComercio(p.comercio || '')} · ${fechaCorta(p.fecha)}`, monto: p.monto, justo: Math.abs(p.monto - dif) < 0.01 }))) : null,
+      dif !== null && dif < 0 ? listaAyuda('Podrían estar repetidos', repetidos.map((x) => ({ ...x, justo: Math.abs(x.monto + dif) < 0.01 }))) : null,
+      dif !== null ? h('button', { type: 'button', class: 'boton chico', onclick: () => guardar(clave, banco, { base: app }) }, icono('check'), 'Guardar este cuadre') : null,
+    ];
+  };
+
+  const pintarCuenta = (tipo) => {
+    const lemon = tipo === 'lemon';
+    const clave = `${tipo}|${yo}`;
+    const medios = lemon ? ['LEMON'] : mediosDeb;
+    const anotado = Math.round(anotadoCon(medios, !lemon) * 100) / 100;
+    const punto = cuadres[clave];
+    const banco = leerMonto(inMonto.value);
+    const hay = inMonto.value.trim() !== '' && banco !== null;
+    const chipsMedios = lemon ? null : h('div', { class: 'opciones cuadre-medios' }, MEDIOS_DEBITO.map((m) => h('button', { type: 'button', class: 'opcion chica', 'aria-pressed': String(medios.includes(m.id)),
+      onclick: () => { mediosDeb = medios.includes(m.id) ? medios.filter((x) => x !== m.id) : [...medios, m.id]; pintar(); } }, m.etiqueta)));
+    if (!punto) {
+      return [
+        chipsMedios,
+        h('p', { class: 'cuadre-app' }, h('span', { class: 'suave' }, lemon ? 'Primera vez con Lemon' : 'Primera vez con tu débito'), h('strong', {}, 'Punto de partida')),
+        h('label', { class: 'cuenta-monto' }, h('span', {}, 'Hoy S/'), inMonto),
+        h('p', { class: 'suave cuadre-tip' }, `Escribe el saldo que ves hoy en ${lemon ? 'Lemon' : 'tu cuenta'}. Desde ahí la app sigue lo que anotes.`),
+        hay ? h('button', { type: 'button', class: 'boton primario', onclick: () => guardar(clave, banco, { base: anotado, medios }) }, 'Guardar punto de partida') : null,
+      ];
+    }
+    const gastado = Math.round((anotado - punto.base) * 100) / 100;
+    const esperado = Math.round((punto.saldo - gastado) * 100) / 100;
+    const dif = hay ? Math.round((banco - esperado) * 100) / 100 : null;
+    const pend = pendientes.filter((p) => lemon ? String(p.medioSugerido || p.banco || '').toUpperCase() === 'LEMON' : (directoPend(p) && String(p.medioSugerido || '').toUpperCase() !== 'LEMON'));
+    return [
+      chipsMedios,
+      h('p', { class: 'cuadre-app' }, h('span', { class: 'suave' }, `Desde el ${fechaCorta(punto.fecha)} (${soles(punto.saldo)}) anotaste ${soles(gastado)}. Deberías tener`), h('strong', {}, soles(esperado))),
+      h('label', { class: 'cuenta-monto' }, h('span', {}, 'Hoy S/'), inMonto),
+      dif === null ? h('p', { class: 'suave cuadre-tip' }, `Escribe el saldo que ves hoy en ${lemon ? 'Lemon' : 'tu cuenta'}.`)
+        : Math.abs(dif) < 0.01 ? resultado(0) : h('div', { class: 'cuadre-res ' + (dif > 0 ? 'entro' : 'menos') }, h('span', { class: 'cuadre-ico' }, icono(dif > 0 ? 'sube' : 'baja')),
+          h('div', {}, h('strong', {}, dif > 0 ? `Entraron ${soles(dif)} sin anotar` : `Salieron ${soles(-dif)} sin anotar`),
+            h('small', {}, dif > 0 ? (lemon ? '¿Una recarga de Pasajes?' : '¿Sueldo, un depósito o una devolución?') : 'Falta anotar algún gasto: revisa lo de abajo.'))),
+      dif !== null && dif < 0 ? listaAyuda('Por confirmar', pend.map((p) => ({ texto: `${limpiarComercio(p.comercio || '')} · ${fechaCorta(p.fecha)}`, monto: p.monto, justo: Math.abs(p.monto + dif) < 0.01 }))) : null,
+      hay ? h('button', { type: 'button', class: 'boton chico', onclick: () => guardar(clave, banco, { base: anotado, medios }) }, icono('check'), 'Guardar como nuevo punto de partida') : null,
+    ];
+  };
+
+  function pintar() {
+    pestanas.replaceChildren(...[['tc', 'Tarjetas'], ['debito', 'Mi débito'], ['lemon', 'Lemon']].map(([k, t]) => h('button', { type: 'button', role: 'tab', class: 'cuadre-pestana', 'aria-selected': String(modo === k),
+      onclick: () => { modo = k; inMonto.value = ''; pintar(); } }, t)));
+    const enfocado = document.activeElement === inMonto;
+    cuerpo.replaceChildren(...(modo === 'tc' ? pintarTC() : pintarCuenta(modo)).filter(Boolean));
+    if (enfocado) { inMonto.focus(); const n = inMonto.value.length; inMonto.setSelectionRange(n, n); }
+  }
+  let reloj = 0;
+  inMonto.addEventListener('input', () => { clearTimeout(reloj); reloj = setTimeout(pintar, 350); });
+  inMonto.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); clearTimeout(reloj); pintar(); } });
+  pintar();
+  v.abrir();
+  inMonto.focus();
+}
+const directoPend = (p) => ['PLIN', 'YAPE', 'EFECTIVO', 'LEMON'].includes(String(p.medioSugerido || '').toUpperCase());
+
 function actualizarCacheFijo(mes, f) {
   const c = leerCache('presupuesto:' + mes);
   const linea = c?.datos?.filas?.find((x) => x.fila === f.fila);
@@ -2527,6 +2656,7 @@ async function vistaInicio() {
         icono('check'), `Cierre de ${(nombreMesClave(mesCerrado()) || '').slice(0, 3).toLowerCase()}.`) : null,
       esHoy ? h('button', { type: 'button', class: 'boton boton-hoy boton-cierre boton-cobrar' + (diasQuedan <= 5 ? ' pronto' : ''),
         title: 'Qué pasa con el sueldo de este mes al cobrar', onclick: () => abrirAlCobrar(mesHoy) }, icono('billetera'), 'Al cobrar') : null,
+      esHoy && motorCuadre() && emailSesion() ? h('button', { type: 'button', class: 'boton boton-hoy boton-cierre', title: 'Comparar con lo que dice el banco', onclick: () => abrirCuadre() }, icono('balanza' in ICONOS ? 'balanza' : 'lista'), 'Cuadrar') : null,
       esHoy ? null : h('button', { type: 'button', class: 'boton boton-hoy', title: 'Volver al mes en curso', onclick: () => {
         estado.sentido = cmpMes(mesHoy, mes) > 0 ? 'adelante' : 'atras';
         estado.mesInicio = null;
