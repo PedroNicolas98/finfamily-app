@@ -1,0 +1,45 @@
+{
+  "id": "./gasto.html",
+  "name": "FinFamily Gasto",
+  "short_name": "Gasto",
+  "description": "Registra un gasto de la casa en segundos.",
+  "lang": "es-PE",
+  "start_url": "./gasto.html",
+  "scope": "./gasto",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F2F4F8",
+  "theme_color": "#1F4287",
+  "icons": [
+    {
+      "src": "iconos/gasto-logo-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "iconos/gasto-logo-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "iconos/gasto-fondo-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "iconos/gasto-fondo-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "iconos/gasto.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

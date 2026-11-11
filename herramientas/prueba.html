@@ -1,0 +1,198 @@
+<!doctype html>
+<!-- SOLO PARA PRUEBAS LOCALES (no se publica): simula el motor con los datos guardados en este navegador. -->
+<html lang="es-PE">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>FinFamily (prueba)</title>
+  <script>
+    var P = new URLSearchParams(location.search);
+    // Sin datos guardados (p. ej. un navegador sin ventana): se cargan desde un archivo local que git ignora.
+    if (!localStorage.getItem('ff:c:inicio')) {
+      try {
+        // Primero los datos reales de esta computadora (ignorados por git); si no hay, los inventados del repositorio.
+        var semilla = null;
+        ['prueba-datos.local.json', 'prueba-datos.ejemplo.json'].forEach(function (archivo) {
+          if (semilla) return;
+          try { var x = new XMLHttpRequest(); x.open('GET', archivo, false); x.send(); if (x.status === 200) semilla = JSON.parse(x.responseText); } catch (e) { /* sigue */ }
+        });
+        if (!semilla) throw new Error('sin datos de prueba');
+        Object.keys(semilla).forEach(function (k) { localStorage.setItem(k, semilla[k]); });
+      } catch (e) { /* sin archivo */ }
+    }
+    // Lo guardado cuenta como recién traído: así la pantalla no se repinta en medio de una captura.
+    Object.keys(localStorage).forEach(function (k) {
+      if (k.indexOf('ff:c:') !== 0) return;
+      try { var v = JSON.parse(localStorage.getItem(k)); v.ts = Date.now(); localStorage.setItem(k, JSON.stringify(v)); } catch (e) {}
+    });
+    localStorage.setItem('ff:modo', P.get('modo') || 'claro');
+    localStorage.setItem('ff:color', P.get('color') || 'marino');
+    document.documentElement.dataset.modo = P.get('modo') || 'claro';
+    document.documentElement.dataset.color = P.get('color') || 'marino';
+    // Guion para capturas: ?ir=tarjetas (o ?clic=selector) y ?congelar=0.5 detiene la transición a esa fracción.
+    window.addEventListener('load', function () {
+      var ir = P.get('ir'), clic = P.get('clic'), congelar = P.get('congelar');
+      if (!ir && !clic) return;
+      setTimeout(function () {
+        if (clic) { var el = document.querySelector(clic); if (el) el.click(); } else location.hash = '#' + ir;
+        if (congelar === null) return;
+        var ms = parseFloat(congelar) * 480, vueltas = 0;
+        var mirar = function () {
+          var todas = document.getAnimations();
+          var hayVT = todas.some(function (an) { return an.effect && an.effect.pseudoElement && an.effect.pseudoElement.indexOf('view-transition') >= 0; });
+          if (!hayVT) { if (vueltas++ < 120) requestAnimationFrame(mirar); else document.title = 'SIN TRANSICION'; return; }
+          todas.forEach(function (an) { try { an.pause(); an.currentTime = ms; } catch (e) {} });
+          document.title = 'CONGELADA';
+        };
+        requestAnimationFrame(mirar);
+      }, 1800);
+    });
+    if (new URLSearchParams(location.search).get('app') === 'gasto') document.documentElement.dataset.app = 'gasto';
+    (function () {
+      var b64 = function (o) { return btoa(JSON.stringify(o)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+      var correo = localStorage.getItem('ff:email') || 'PersonaA@ejemplo.com';
+      localStorage.setItem('ff:token', b64({ alg: 'none' }) + '.' + b64({ email: correo, exp: Math.floor(Date.now() / 1000) + 3600, picture: P.get('foto') ? 'https://lh3.googleusercontent.com/a/default-user=s96-c' : undefined }) + '.prueba');
+      var real = window.fetch.bind(window);
+      var cache = function (k) { try { return JSON.parse(localStorage.getItem('ff:c:' + k)).datos; } catch (e) { return null; } };
+      var pagados = {};
+      window.__llamadas = [];
+      window.fetch = async function (url, opts) {
+        if (String(url).indexOf('script.google.com/macros') === -1) return real(url, opts);
+        var cuerpo = JSON.parse(opts.body);
+        var d = cuerpo.datos || {};
+        window.__llamadas.push({ accion: cuerpo.accion, datos: d });
+        var datos = null;
+        var vMotor = P.get('motor') === '12' ? '1.2.0' : P.get('motor') === '13' ? '1.3.1' : P.get('motor') === '14' ? '1.4.0' : P.get('motor') === '15' ? '1.5.0' : P.get('motor') === '151' ? '1.5.1' : P.get('motor') === '16' ? '1.6.0' : P.get('motor') === '18' ? '1.8.0' : P.get('motor') === '19' ? '1.9.0' : P.get('motor') === '110' ? '1.10.0' : '1.7.0';
+        var vMin = function (x) { var p = vMotor.split('.').map(Number), q = x.split('.').map(Number); for (var i = 0; i < 3; i++) { if ((p[i] || 0) !== (q[i] || 0)) return (p[i] || 0) > (q[i] || 0); } return true; };
+        window.__bolsas = window.__bolsas || { mes: '2026-11', comun: { saldoHoja: 985.57, fuera: 119, saldo: 1104.57 },
+          personas: [{ nombre: 'PersonaA', acumulado: 279.41, gastado: 0, gastadoMes: 0, disponible: 279.41, comprometido: 119 }, { nombre: 'PersonaB', acumulado: 279.41, gastado: 0, gastadoMes: 0, disponible: 279.41, comprometido: 0 }],
+          proximos: [{ mes: '2026-11', porPersona: 552.29, personas: [{ nombre: 'PersonaA', apartado: 119, queda: 433.29 }, { nombre: 'PersonaB', apartado: 0, queda: 552.29 }] },
+            { mes: '2026-12', porPersona: 150, personas: [{ nombre: 'PersonaA', apartado: 0, queda: 150 }, { nombre: 'PersonaB', apartado: 0, queda: 150 }] }],
+          ahorros: [{ meta: 'Ahorro Casa', acumulado: 0, retirado: 0, retiradoMes: 0, disponible: 0 }, { meta: 'Ahorro Viaje', acumulado: 600, retirado: 0, retiradoMes: 0, disponible: 600 }, { meta: 'Fondo de Emergencia', acumulado: 0, retirado: 0, retiradoMes: 0, disponible: 0 }],
+          otros: 0, disponible: 1663.39, meses: [] };
+        window.__iconos = window.__iconos || {};
+        var SUGERIDOS = { 'alimentacion': ['Supermercado', 'Desayuno'], 'alacena': ['Chucherías', 'Matanza'], 'limpieza': ['Limpieza'], 'mascotas': ['Mascotas'], 'internet': ['Internet y Telefonía'], 'suscripciones': ['Suscripciones'], 'salud': ['Salud y Farmacia'], 'cuidado personal': ['Cuidado Personal'], 'pasajes': ['Pasajes y Transporte'] };
+        var norm = function (t) { return String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s*\(.*$/, '').trim(); };
+        if (!window.__lineas || !window.__lineas.length) { var base = cache('presupuesto:2026-11') || { filas: [] }; window.__asig = {}; window.__lineas = (base.filas || []).map(function (f) { return { fila: f.fila, concepto: f.concepto, seccion: f.seccion, monto: f.monto }; }); }
+        var lineasCon = function () { return window.__lineas.map(function (l) { var k = norm(l.concepto); var prop = window.__asig[k]; return Object.assign({}, l, { conceptos: prop || (l.seccion === 'gastos' ? (SUGERIDOS[k] || []) : []), sugerido: !prop && !!SUGERIDOS[k] }); }); };
+        window.__catalogo = window.__catalogo || [
+          { id: 'SIP', nombre: 'SIP · Oh!', titular: '', hoja: 'TC SIP', medio: 'TC_SIP', cierre: 10, vence: 3, color: 'rojo', activa: true, orden: 1 },
+          { id: 'IBK_P', nombre: 'Interbank', titular: 'PersonaA', hoja: 'TC IBK', medio: 'TC_IBK', cierre: 20, vence: 15, color: 'verde', activa: true, orden: 2 },
+          { id: 'IBK_B', nombre: 'Interbank', titular: 'PersonaB', hoja: 'TC IBK', medio: 'TC_IBK', cierre: 20, vence: 20, color: 'turquesa', activa: true, orden: 3 },
+          { id: 'BCP', nombre: 'BCP', titular: '', hoja: 'TC BCP', medio: 'TC_BCP', cierre: 20, vence: 20, color: 'azul', activa: true, orden: 4 },
+          { id: 'RIPLEY', nombre: 'Ripley', titular: '', hoja: 'TC Ripley', medio: 'TC_RIPLEY', cierre: null, vence: null, color: 'gris', activa: true, orden: 5 }
+        ];
+        window.__usuarios = window.__usuarios || [{ nombre: 'PersonaA', correo: 'PersonaA@ejemplo.com', clave: 'P' }, { nombre: 'PersonaB', correo: 'PersonaB@ejemplo.com', clave: 'B' }];
+        window.__conceptos = window.__conceptos || null;
+        var activas = function () { return window.__catalogo.filter(function (t) { return t.activa !== false; }); };
+        var mediosDe = function () { var vistos = {}; var ms = []; activas().forEach(function (t) { if (!vistos[t.medio]) { vistos[t.medio] = 1; ms.push({ id: t.medio, etiqueta: 'TC ' + t.nombre.replace(' · Oh!', ''), hoja: t.hoja, tipo: 'tarjeta' }); } }); return ms.concat([{ id: 'YAPE', etiqueta: 'Yape', hoja: 'Gastos Hormiga', tipo: 'directo' }, { id: 'PLIN', etiqueta: 'Plin', hoja: 'Gastos Hormiga', tipo: 'directo' }, { id: 'EFECTIVO', etiqueta: 'Efectivo', hoja: 'Gastos Hormiga', tipo: 'directo' }].concat(vMin('1.8') ? [{ id: 'LEMON', etiqueta: 'Lemon', hoja: 'Gastos Hormiga', tipo: 'directo' }] : [])); };
+        window.__pendientes = window.__pendientes || [
+          { id: 'm1', fecha: '2026-11-09', banco: 'BCP', tarjeta: 'BCP', comercio: 'PLAZA VEA SAN MIGUEL', monto: 85.9, moneda: 'PEN', ultimos4: '4821', responsable: 'PersonaB', fechaCorreo: '2026-11-09T20:15:00' },
+          { id: 'm2', fecha: '2026-11-09', banco: 'IBK', tarjeta: 'IBK_P', comercio: 'RAPPI', monto: 42.5, moneda: 'PEN', ultimos4: '1177', responsable: 'PersonaA', fechaCorreo: '2026-11-09T13:02:00' },
+          { id: 'm4', fecha: '2026-11-09', banco: 'BCP', tarjeta: 'BCP', comercio: 'Plin a Personab', monto: 100, moneda: 'PEN', ultimos4: '4826', responsable: 'PersonaA', medioSugerido: 'PLIN', fechaCorreo: '2026-11-09T10:00:00' },
+          { id: 'm5', fecha: '2026-11-06', banco: 'LEMON', tarjeta: 'LEMON', comercio: 'Lemon a Persona De Prueba', monto: 5, moneda: 'PEN', ultimos4: '', responsable: 'PersonaA', medioSugerido: 'LEMON', fechaCorreo: '2026-11-06T19:47:00' },
+          { id: 'm6', fecha: '2026-11-06', banco: 'YAPE', tarjeta: 'YAPE', comercio: 'Yape a Personab', monto: 3, moneda: 'PEN', ultimos4: '', responsable: 'PersonaA', medioSugerido: 'YAPE', fechaCorreo: '2026-11-06T12:00:00' },
+          { id: 'm3', fecha: '2026-11-08', banco: 'SIP', tarjeta: 'SIP', comercio: 'NETFLIX.COM', monto: 15.99, moneda: 'USD', ultimos4: '', responsable: '', fechaCorreo: '2026-11-08T09:40:00' }
+        ];
+        window.__ajustes = window.__ajustes || { vencimiento: true, presupuesto: true, gastoGrande: 300, resumenSemanal: true, calendario: true };
+        if (cuerpo.accion === 'inicio') { datos = cache('inicio'); if (P.get('motor')) { datos.version = vMotor; datos.pendientes = window.__pendientes.length; if (vMin('1.7.0')) datos.bolsas = window.__bolsas; } }
+        else if (cuerpo.accion === 'bolsas') datos = window.__bolsas;
+        else if (cuerpo.accion === 'pendientes') datos = { pendientes: window.__pendientes.slice(), total: window.__pendientes.length };
+        else if (cuerpo.accion === 'confirmarPendiente' && d.id === 'm2' && !d.confirmarDuplicado) datos = { confirmado: false, posibleDuplicado: true, coincidencia: { hoja: 'TC IBK', descripcion: 'Rappi', monto: 42.5, fecha: '2026-11-09' } };
+        else if (cuerpo.accion === 'confirmarPendiente') { window.__pendientes = window.__pendientes.filter(function (p) { return p.id !== d.id; }); datos = { confirmado: true, hoja: 'TC BCP', fila: 120 }; }
+        else if (cuerpo.accion === 'descartarPendiente') { window.__pendientes = window.__pendientes.filter(function (p) { return p.id !== d.id; }); datos = { descartado: true }; }
+        else if (cuerpo.accion === 'ajustesAvisos') datos = { ajustes: window.__ajustes };
+        else if (cuerpo.accion === 'guardarAjustesAvisos') { window.__ajustes = Object.assign({}, window.__ajustes, d); datos = { ajustes: window.__ajustes }; }
+        else if (cuerpo.accion === 'datosTarjetas') datos = { tarjetas: { SIP: { digitos: '', red: '', nombre: '' }, IBK_P: { digitos: '', red: '', nombre: '' }, IBK_B: { digitos: '', red: '', nombre: '' }, BCP: { digitos: '4821', red: 'visa', nombre: 'PersonaB' }, RIPLEY: { digitos: '', red: '', nombre: '' } } };
+        else if (cuerpo.accion === 'guardarDatosTarjeta') datos = { guardado: true, id: d.id };
+        else if (cuerpo.accion === 'ahorros') datos = { mes: d.mes, desde: '2026-06', total: 2350, totalDelMes: 300, metas: [
+          { concepto: 'Ahorro Casa', fila: 30, acumulado: 1500, delMes: 200, meses: [{ mes: '2026-10', etiqueta: 'oct-26', monto: 200 }] },
+          { concepto: 'Ahorro Viaje', fila: 31, acumulado: 600, delMes: 100, meses: [] },
+          { concepto: 'Fondo de Emergencia', fila: 32, acumulado: 250, delMes: 0, meses: [] }] };
+        else if (cuerpo.accion === 'editarPresupuesto') datos = { actualizado: true, mes: d.mes, fila: d.fila, concepto: d.concepto, monto: d.monto };
+        else if (cuerpo.accion === 'version' && P.get('motor')) datos = { version: vMotor };
+        else if (cuerpo.accion === 'reenvio') { window.__reenvioN = (window.__reenvioN || 0) + 1; datos = { destino: 'duenio@example.test', propio: P.get('propio') === '1', dominios: ['notificacionesbcp.com.pe', 'yape.pe'], palabras: ['realizaste', 'consumo', 'operación'], codigo: window.__reenvioN > 2 ? '123456789' : '', ultimoAviso: P.get('conectado') ? '2026-11-10 09:00' : '' }; }
+        else if (cuerpo.accion === 'desmarcarPagado') datos = { actualizadas: (d.filas || []).length, omitidas: [] };
+        else if (cuerpo.accion === 'config') { datos = cache('config'); if (P.get('motor')) { datos.version = vMotor; if (!datos.responsables || datos.responsables.length < 2) datos.responsables = ['PersonaA', 'PersonaB']; if (vMin('1.5.1')) datos.iconos = Object.assign({}, window.__iconos); if (vMin('1.4.0')) { datos.tarjetas = activas(); datos.medios = mediosDe(); if (window.__conceptos) datos.conceptos = window.__conceptos.slice(); } } }
+        else if (cuerpo.accion === 'agregarTarjeta') { var idN = d.nombre.toUpperCase().normalize('NFD').replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, ''); window.__catalogo.push({ id: idN, nombre: d.nombre, titular: d.titular || '', hoja: 'TC ' + d.nombre, medio: 'TC_' + idN, cierre: d.cierre, vence: d.vence, color: d.color, activa: true, orden: 99 }); datos = { tarjetas: activas() }; }
+        else if (cuerpo.accion === 'editarTarjeta') { window.__catalogo.forEach(function (t) { if (t.id === d.id) Object.assign(t, d); }); datos = { tarjetas: activas() }; }
+        else if (cuerpo.accion === 'quitarTarjeta') { if (d.id === 'SIP' && !d.forzar) datos = { quitada: false, pendientes: 26 }; else { window.__catalogo.forEach(function (t) { if (t.id === d.id) t.activa = false; }); datos = { quitada: true, tarjetas: activas() }; } }
+        else if (cuerpo.accion === 'agregarConcepto') { window.__conceptos = window.__conceptos || cache('config').conceptos.slice(); window.__conceptos.push(d.nombre); datos = { conceptos: window.__conceptos.slice() }; }
+        else if (cuerpo.accion === 'renombrarConcepto') { window.__conceptos = (window.__conceptos || cache('config').conceptos.slice()).map(function (c) { return c === d.de ? d.a : c; }); datos = { renombrado: true, filas: 7, conceptos: window.__conceptos.slice() }; }
+        else if (cuerpo.accion === 'quitarConcepto') { if (d.nombre === 'Supermercado' && !d.forzar) datos = { quitado: false, usos: 12 }; else { window.__conceptos = (window.__conceptos || cache('config').conceptos.slice()).filter(function (c) { return c !== d.nombre; }); datos = { quitado: true, conceptos: window.__conceptos.slice() }; } }
+        else if (cuerpo.accion === 'usuarios') datos = { usuarios: window.__usuarios.slice() };
+        else if (cuerpo.accion === 'guardarIconoConcepto') { if (d.icono) window.__iconos[d.concepto] = d.icono; else delete window.__iconos[d.concepto]; datos = { iconos: Object.assign({}, window.__iconos) }; }
+        else if (cuerpo.accion === 'lineasPresupuesto') datos = { mes: d.mes, lineas: lineasCon() };
+        else if (cuerpo.accion === 'agregarLinea') { var ult = window.__lineas.filter(function (l) { return l.seccion === d.seccion; }).slice(-1)[0]; var f = (ult ? ult.fila : 10) + 1; window.__lineas.forEach(function (l) { if (l.fila >= f) l.fila++; }); var nombre = d.seccion === 'ahorros' && !/^(ahorro|fondo)/i.test(d.nombre) ? 'Ahorro ' + d.nombre : d.nombre; window.__lineas.splice(window.__lineas.indexOf(ult) + 1, 0, { fila: f, concepto: nombre, seccion: d.seccion, monto: d.monto }); datos = { fila: f, lineas: lineasCon() }; }
+        else if (cuerpo.accion === 'renombrarLinea') { window.__lineas.forEach(function (l) { if (l.fila === d.fila) l.concepto = d.nombre; }); datos = { renombrada: true, lineas: lineasCon() }; }
+        else if (cuerpo.accion === 'quitarLinea') { var li = window.__lineas.find(function (l) { return l.fila === d.fila; }); if (li && li.monto > 0 && !d.forzar) datos = { quitada: false, mesesConMonto: 3 }; else { window.__lineas = window.__lineas.filter(function (l) { return l.fila !== d.fila; }); datos = { quitada: true, lineas: lineasCon() }; } }
+        else if (cuerpo.accion === 'asignarConceptos') { Object.keys(window.__asig).forEach(function (k) { window.__asig[k] = window.__asig[k].filter(function (c) { return d.conceptos.indexOf(c) === -1; }); }); window.__asig[norm(d.linea)] = d.conceptos.slice(); datos = { lineas: lineasCon() }; }
+        else if (cuerpo.accion === 'editarLineaMeses') { window.__lineas.forEach(function (l) { if (l.fila === d.fila) l.monto = d.monto; }); datos = { actualizados: 14 }; }
+        else if (cuerpo.accion === 'agregarUsuario') { window.__usuarios.push({ nombre: d.nombre, correo: d.correo, clave: d.nombre[0].toUpperCase() }); datos = { usuarios: window.__usuarios.slice() }; }
+        else if (cuerpo.accion === 'quitarUsuario') { window.__usuarios = window.__usuarios.filter(function (u) { return u.correo !== d.correo; }); datos = { usuarios: window.__usuarios.slice() }; }
+        else if (cuerpo.accion === 'tarjetas') {
+          datos = cache('tarjetas');
+          (datos.tarjetas || []).forEach(function (t, i) {
+            (t.estados || []).forEach(function (g) { (g.consumos || []).forEach(function (c, j) { c.responsable = t.responsable || ((i + j) % 2 ? 'PersonaB' : 'PersonaA'); }); });
+          });
+        } else if (cuerpo.accion === 'presupuesto') {
+          datos = cache('presupuesto:' + d.mes);
+          if (!datos) {
+            // Mes sin datos guardados: se inventa uno a partir de noviembre para probar los gráficos.
+            datos = JSON.parse(JSON.stringify(cache('presupuesto:2026-11')));
+            datos.mes = d.mes;
+            var t = datos.totales;
+            if (d.mes >= '2027-01') { t.ingresos = 0; t.saldo = -t.gastos; t.saldoPersonal = t.saldo / 2; }   // sin ingresos cargados
+            else if (d.mes === P.get('falta')) { t.gastos = t.ingresos + 640; t.saldo = -640; t.saldoPersonal = -320; } // mes en que falta
+            else { t.saldo = Math.round(t.saldo * 1.9 * 100) / 100; t.saldoPersonal = t.saldo / 2; }
+          }
+          (datos.filas || []).forEach(function (f, i) {
+            f.fila = i + 5;
+            if (f.seccion === 'gastos') {
+              f.esTarjeta = /^TC /i.test(f.concepto);
+              if (pagados[f.fila] === undefined) pagados[f.fila] = i % 4 === 0;
+              f.pagado = pagados[f.fila];
+              f.pagadoNota = f.pagado ? 'Pagado el 03/11/2026 · PersonaB' : '';
+            }
+          });
+        } else if (cuerpo.accion === 'personas') {
+          var t = cache('tarjetas'), por = {};
+          (t.tarjetas || []).forEach(function (x, i) {
+            (x.estados || []).forEach(function (g) { (g.consumos || []).forEach(function (c, j) {
+              var n = x.responsable || ((i + j) % 2 ? 'PersonaB' : 'PersonaA');
+              por[n] = por[n] || { nombre: n, total: 0, consumos: 0, cs: {} };
+              por[n].total += c.monto; por[n].consumos++; por[n].cs[c.concepto] = (por[n].cs[c.concepto] || 0) + c.monto;
+            }); });
+          });
+          datos = { mes: d.mes, personas: Object.keys(por).map(function (k) {
+            var p = por[k];
+            return { nombre: p.nombre, total: Math.round(p.total * 100) / 100, consumos: p.consumos, medios: [],
+              conceptos: Object.keys(p.cs).map(function (c) { return { concepto: c, monto: Math.round(p.cs[c] * 100) / 100 }; }).sort(function (a, b) { return b.monto - a.monto; }) };
+          }).sort(function (a, b) { return b.total - a.total; }) };
+        } else if (cuerpo.accion === 'marcarFijo') {
+          pagados[d.fila] = d.pagado;
+          datos = { mes: d.mes, fila: d.fila, pagado: d.pagado, pagadoNota: d.pagado ? 'Pagado el 05/11/2026 · PersonaA' : '' };
+        } else if (cuerpo.accion === 'editarGasto') datos = { actualizado: true, hoja: d.hoja, fila: d.fila };
+        else if (cuerpo.accion === 'borrarGasto') datos = { borrado: true, hoja: d.hoja };
+        else if (cuerpo.accion === 'registrar') datos = { guardado: true, hoja: 'Gastos Hormiga (prueba)', fila: 99, duplicadoId: false };
+        else if (cuerpo.accion === 'marcarPagado') datos = { actualizadas: (d.filas || []).length, omitidas: [] };
+        await new Promise(function (r) { setTimeout(r, 250); });
+        return new Response(JSON.stringify(datos ? { ok: true, datos: datos } : { ok: false, codigo: 'datos_invalidos', error: 'Sin datos de prueba.' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      };
+    })();
+  </script>
+  <link rel="stylesheet" href="estilos.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <div id="avisos" class="avisos"></div>
+  <main id="vista" class="vista" tabindex="-1">
+    <div class="pantalla arranque" aria-busy="true" aria-label="Abriendo FinFamily">
+      <svg class="logo-marca vivo" viewBox="11 13 98 98" aria-hidden="true"><defs><linearGradient id="lm-degradado" gradientUnits="userSpaceOnUse" x1="14" y1="16" x2="106" y2="108"><stop offset="0" class="lm-g1"/><stop offset="1" class="lm-g2"/></linearGradient></defs><path class="lm-t lm-casa" pathLength="100" d="M98 74v26H22V58l38-34 26 23"/><path class="lm-t lm-flecha" pathLength="100" d="M42 82l14-14 12 10 30-32"/><path class="lm-t lm-punta" pathLength="100" d="M84 46h14v14"/><path class="lm-t lm-pulso" pathLength="100" d="M42 82l14-14 12 10 30-32"/></svg>
+      <i class="arranque-barra" aria-hidden="true"><b></b></i>
+    </div>
+  </main>
+  <nav id="nav" class="barra-nav" aria-label="Secciones"></nav>
+</body>
+</html>

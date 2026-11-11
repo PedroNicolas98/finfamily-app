@@ -1,0 +1,14 @@
+# Dependencias
+node_modules/
+
+# Configuración local de clasp (contiene el ID del proyecto de Apps Script)
+.clasp.json
+
+# Archivos solo para tu computadora (ej. config.local.js)
+*.local.*
+
+# Página de pruebas locales (no se publica)
+web/prueba.html
+
+# Datos inventados de la página de pruebas (la copia buena está en herramientas/)
+web/prueba-datos.ejemplo.json
