@@ -7079,8 +7079,13 @@ async function arrancar() {
     const abiertaDesde = Date.now();
     navigator.serviceWorker.register('./sw.js').then((reg) => { estado.registroSW = reg; }).catch(() => {});
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      // Recién abierta ya trae los archivos nuevos: solo se avisa si llevaba un rato abierta.
-      if (!habiaVersion || Date.now() - abiertaDesde < 60000) return;
+      if (!habiaVersion) return;
+      // Recién abierta: pudo cargar la versión anterior guardada (si GitHub tardó). Se recarga sola una vez, si no hay nada a medio editar.
+      if (Date.now() - abiertaDesde < 60000) {
+        let ya = false;
+        try { ya = Date.now() - Number(sessionStorage.getItem('ff:recargo') || 0) < 120000; sessionStorage.setItem('ff:recargo', String(Date.now())); } catch { /* nada */ }
+        if (!ya && !hayEdicionAbierta() && !document.querySelector('dialog[open]')) { location.reload(); return; }
+      }
       avisar('Hay una versión nueva', '', { ico: 'novedad', fijo: true, accion: 'Actualizar', alAccion: () => location.reload() });
     });
   }
