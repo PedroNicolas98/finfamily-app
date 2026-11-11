@@ -4039,3 +4039,33 @@ body.menu-chico .cuenta-menu.nav .cuenta-boton:has(.avatar.con-foto):focus-visib
   body .tarjeta-dlg .tj-colores .color-op { width: 22px; height: 22px; }
   body .tarjeta-dlg form.cierre-caja { grid-template-columns: minmax(0, 290px) minmax(0, 1fr); column-gap: 24px; }
 }
+/* ---------- Diseños reales de cada banco (v141) ---------- */
+.plastico[data-diseno] { background: linear-gradient(125deg, var(--c1) 0%, color-mix(in oklab, var(--c1), var(--c2) 45%) 60%, var(--c2) 100%); }
+.plastico[data-diseno]::before, .plastico[data-diseno]::after { display: none; }
+.plastico-arte { position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; border-radius: inherit; }
+.plastico-arte .arte-svg, .plastico-arte svg { display: block; width: 100%; height: 100%; }
+.plastico-marca.diseno { font-style: normal; text-transform: none; letter-spacing: 0; }
+.plastico-marca.diseno::after { display: none; }
+.plastico-marca.oculta { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+/* Interbank: "Benefit" y el cuadrado del logo, colores lisos */
+.plastico[data-diseno^="ibk"] .plastico-marca { font-weight: 650; font-size: clamp(0.82rem, 5cqw, 1.12rem); }
+.plastico-logo { display: block; flex-shrink: 0; width: clamp(24px, 11cqw, 40px); height: clamp(24px, 11cqw, 40px); }
+.plastico-logo svg { display: block; width: 100%; height: 100%; }
+.plastico[data-diseno^="ibk"] { background: linear-gradient(160deg, var(--c1), color-mix(in oklab, var(--c1), var(--c2) 35%)); }
+/* BCP: logo con las flechas naranjas y la Q de Qore de fondo */
+.bcp-logo { font-style: italic; font-weight: 900; font-size: clamp(0.95rem, 6cqw, 1.35rem); letter-spacing: -0.03em; display: inline-flex; align-items: center; gap: 0.06em; }
+.bcp-logo b { color: #FF7A00; font-style: normal; font-weight: 900; transform: scaleX(0.9); }
+.bcp-logo b:first-child { color: #FFFFFF; }
+/* Sip: "sip" grande en vertical, celeste con letras oscuras o negra con letras blancas */
+.plastico[data-diseno="sip-celeste"] { color: #0B1220; background: linear-gradient(150deg, #33B4F5, #1C9BE2); }
+.plastico[data-diseno="sip-celeste"] .plastico-monto strong { text-shadow: none; }
+.plastico[data-diseno="sip-celeste"] .sip-letras, .plastico[data-diseno="sip-celeste"] .sip-punto { fill: #0B0D12; }
+.plastico[data-diseno="sip-negra"] .sip-letras, .plastico[data-diseno="sip-negra"] .sip-punto { fill: #FFFFFF; }
+.plastico[data-diseno="sip-negra"] .sip-punto { fill: #29AEF3; }
+.plastico[data-diseno^="sip"] .plastico-top { justify-content: flex-start; }
+.plastico[data-diseno^="sip"] > .plastico-top, .plastico[data-diseno^="sip"] > .plastico-medio, .plastico[data-diseno^="sip"] > .plastico-numero, .plastico[data-diseno^="sip"] > .plastico-pie { padding-right: 25cqw; }
+/* Ripley: gris con la R grande y la franja de colores al borde */
+.ripley-logo { font-size: clamp(0.62rem, 3.6cqw, 0.86rem); font-weight: 600; letter-spacing: 0.01em; opacity: 0.92; }
+.plastico-franja { position: absolute; z-index: -1; right: 4%; top: 22%; bottom: 14%; width: 1.4%; border-radius: 2px; background: linear-gradient(#E4002B 0 46%, #F5B400 46% 72%, #7B2D8E 72%); }
+.plastico[data-diseno="ripley"] > .plastico-top, .plastico[data-diseno="ripley"] > .plastico-medio, .plastico[data-diseno="ripley"] > .plastico-numero, .plastico[data-diseno="ripley"] > .plastico-pie { padding-right: 9cqw; }
+.tj-campo-color[hidden] { display: none; }

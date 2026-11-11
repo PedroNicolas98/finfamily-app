@@ -203,7 +203,8 @@ function aplicarCatalogo() {
   let css = document.getElementById('css-tarjetas');
   if (!css) { css = document.createElement('style'); css.id = 'css-tarjetas'; document.head.append(css); }
   css.textContent = cat.map((t) => {
-    const c = COLORES_TC[t.color] || COLORES_TC.azul;
+    const dis = disenoTC(t);
+    const c = dis ? DISENOS_TC[dis].c : COLORES_TC[t.color] || COLORES_TC.azul;
     return `.tc-${t.id} { --c1: ${c[0]}; --c2: ${c[1]}; --acento: ${c[2]}; --op: ${c[0]}; }`;
   }).join('\n');
 }
@@ -484,6 +485,41 @@ function chipTC(id, extra = '') {
 
 // Marca de la red de pago de cada tarjeta (se puede cambiar desde el detalle). BCP sale como Visa, como en el plástico.
 const RED_TC = { BCP: 'visa', IBK_P: 'visa', IBK_B: 'visa', SIP: 'mastercard', RIPLEY: 'mastercard' };
+// Diseños reales de cada banco (v141), sacados de las imágenes oficiales de cada uno. c = [claro, oscuro, acento].
+const DISENOS_TC = {
+  'ibk-clasica': { banco: 'Interbank', nombre: 'Visa Clásica (azul)', c: ['#1640C8', '#0A2493', '#05BE50'], logo: '#05BE50' },
+  'ibk-verde': { banco: 'Interbank', nombre: 'Clásica verde (anterior)', c: ['#21B85A', '#0B8A3E', '#FFFFFF'], logo: '#FFFFFF' },
+  'ibk-oro': { banco: 'Interbank', nombre: 'Oro', c: ['#E0AA16', '#B88608', '#FFFFFF'], logo: '#FFFFFF' },
+  'ibk-platinum': { banco: 'Interbank', nombre: 'Platinum', c: ['#A9ABAE', '#7C7F84', '#FFFFFF'], logo: '#FFFFFF' },
+  'ibk-signature': { banco: 'Interbank', nombre: 'Signature', c: ['#1C1F25', '#0A0C0F', '#6B7280'], logo: '#3D434D' },
+  'bcp-qore': { banco: 'BCP', nombre: 'Qore Classic (azul)', c: ['#2259CC', '#123B98', '#FF7A00'] },
+  'bcp-qore-gold': { banco: 'BCP', nombre: 'Qore Gold', c: ['#D6B061', '#A8823A', '#FF7A00'] },
+  'bcp-qore-platinum': { banco: 'BCP', nombre: 'Qore Platinum', c: ['#ACB1B7', '#7B8189', '#FF7A00'] },
+  'bcp-clasica': { banco: 'BCP', nombre: 'Visa Clásica (ondas)', c: ['#1F63D6', '#0C2C78', '#FF7A00'] },
+  'sip-celeste': { banco: 'Sip', nombre: 'Celeste', c: ['#29AEF3', '#1595DD', '#0B1220'] },
+  'sip-negra': { banco: 'Sip', nombre: 'Negra', c: ['#1C1D21', '#08090B', '#29AEF3'] },
+  'ripley': { banco: 'Ripley', nombre: 'Mastercard', c: ['#4A4D53', '#26282C', '#E4002B'] },
+};
+// Diseño de una tarjeta: el elegido; si no eligió, el de su banco según el nombre; 'propio' = colores de la app.
+function disenoTC(t, forzado) {
+  const d = forzado !== undefined ? forzado : datosTC(t.id)?.diseno;
+  if (d === 'propio' || t.id === 'HORMIGA') return null;
+  if (DISENOS_TC[d]) return d;
+  const n = `${t.nombre || ''} ${t.id || ''}`;
+  if (/interbank|\bibk/i.test(n)) return 'ibk-clasica';
+  if (/\bbcp\b/i.test(n)) return 'bcp-qore';
+  if (/\bsip\b|\boh\b/i.test(n)) return 'sip-celeste';
+  if (/ripley/i.test(n)) return 'ripley';
+  return null;
+}
+// Dibujos fijos de cada banco (números y textos fijos, nunca datos de afuera).
+const ARTE_TC = {
+  BCP: '<svg viewBox="0 0 100 63" preserveAspectRatio="xMidYMid slice"><circle cx="24" cy="40" r="25" fill="none" stroke="#fff" stroke-opacity=".13" stroke-width="10"/><path d="M38 56l18 16" stroke="#fff" stroke-opacity=".13" stroke-width="10" stroke-linecap="round"/><path d="M60 27c3 9 8 13 17 15-9 2-14 6-17 15-3-9-8-13-17-15 9-2 14-6 17-15z" fill="#fff" fill-opacity=".12"/></svg>',
+  'bcp-clasica': '<svg viewBox="0 0 100 63" preserveAspectRatio="none"><g fill="none" stroke="#fff" stroke-width=".5"><path stroke-opacity=".35" d="M0 38C22 26 40 50 62 38S88 26 100 34"/><path stroke-opacity=".25" d="M0 42C22 30 40 54 62 42S88 30 100 38"/><path stroke-opacity=".18" d="M0 46C22 34 40 58 62 46S88 34 100 42"/></g></svg>',
+  Sip: '<svg viewBox="0 0 100 63" preserveAspectRatio="xMaxYMid meet"><text x="88" y="33" transform="rotate(-90 88 33)" text-anchor="middle" dominant-baseline="central" font-family="Plus Jakarta Sans, Arial, sans-serif" font-weight="800" font-size="25" letter-spacing="-1.2" class="sip-letras">sip</text><circle cx="88" cy="9.5" r="1.9" class="sip-punto"/></svg>',
+  Ripley: '<svg viewBox="0 0 100 63" preserveAspectRatio="xMinYMid meet"><text x="3" y="58" font-family="Georgia, Times New Roman, serif" font-size="68" fill="#fff" fill-opacity=".05" stroke="#fff" stroke-opacity=".24" stroke-width=".45">R</text></svg>',
+};
+const LOGO_IBK = (color) => `<svg viewBox="0 0 40 40" aria-hidden="true"><rect x="1" y="1" width="38" height="38" rx="5" fill="${color}"/><path d="M11 10.5 30 8v23L11 33.5z" style="fill: var(--c1)"/></svg>`;
 function datosTC(id) {
   try { return JSON.parse(localStorage.getItem('ff:tc-datos') || '{}')[id] || {}; } catch { return {}; }
 }
@@ -610,8 +646,10 @@ function estadoPill(vence, pendiente) {
 }
 
 // Tarjeta dibujada como plástico: marca, monto por pagar, titular y vencimiento.
-function tarjetaVisual(t, comoEnlace = true) {
+function tarjetaVisual(t, comoEnlace = true, opciones = {}) {
   const esH = t.id === 'HORMIGA';
+  const dis = esH ? null : disenoTC(t, opciones.diseno);
+  const D = dis ? DISENOS_TC[dis] : null;
   const e = esH ? null : estadoVence(t.proximoVence, t.pendiente);
   const d = esH ? {} : datosTC(t.id);
   const fecha = !esH && t.proximoVence ? fechaCorta(t.proximoVence) : null;
@@ -622,11 +660,21 @@ function tarjetaVisual(t, comoEnlace = true) {
   else if (e && e.clase === 'mal') { rotulo = 'Venció'; }
   else if (e && e.clase === 'aviso') { valor = e.texto === 'Vence hoy' ? 'Hoy' : e.texto === 'Vence mañana' ? 'Mañana' : fecha; }
   const digitos = /^\d{4}$/.test(d.digitos || '') ? d.digitos : null;
-  return h(comoEnlace ? 'a' : 'div', { class: `plastico tc-${t.id}${esH ? ' hormiga' : ''}`, href: comoEnlace ? `#tarjeta-${t.id}` : null },
+  // Con diseño real: logo y dibujo del banco; el nombre de la tarjeta queda para lectores de pantalla.
+  const nombre = NOMBRE_TC[t.id] || t.nombre;
+  let marca = h('span', { class: 'plastico-marca', 'data-sub': esH ? 'Billetera' : 'Tarjeta de crédito' }, nombre);
+  let arriba = icono(esH ? 'billetera' : 'sin-contacto');
+  if (D?.banco === 'Interbank') { marca = h('span', { class: 'plastico-marca diseno', title: nombre }, 'Benefit'); arriba = svgFijo(LOGO_IBK(D.logo), 'plastico-logo'); }
+  else if (D?.banco === 'BCP') marca = h('span', { class: 'plastico-marca diseno bcp-logo', title: nombre }, h('b', {}, '›'), 'BCP', h('b', {}, '›'));
+  else if (D?.banco === 'Sip') marca = h('span', { class: 'plastico-marca diseno oculta' }, nombre);
+  else if (D?.banco === 'Ripley') { marca = h('span', { class: 'plastico-marca diseno oculta' }, nombre); arriba = h('span', { class: 'ripley-logo', 'aria-hidden': 'true' }, 'banco ripley'); }
+  const arte = D ? (ARTE_TC[dis] || ARTE_TC[D.banco] || '') : '';
+  return h(comoEnlace ? 'a' : 'div', { class: `plastico tc-${t.id}${esH ? ' hormiga' : ''}`, href: comoEnlace ? `#tarjeta-${t.id}` : null,
+    'data-diseno': dis, style: D ? `--c1:${D.c[0]};--c2:${D.c[1]};--acento:${D.c[2]}` : null },
     h('i', { class: 'plastico-brillo', 'aria-hidden': 'true' }),
-    h('span', { class: 'plastico-top' },
-      h('span', { class: 'plastico-marca', 'data-sub': esH ? 'Billetera' : 'Tarjeta de crédito' }, NOMBRE_TC[t.id] || t.nombre),
-      icono(esH ? 'billetera' : 'sin-contacto')),
+    arte ? h('i', { class: 'plastico-arte', 'aria-hidden': 'true' }, svgFijo(arte, 'arte-svg')) : null,
+    D?.banco === 'Ripley' ? h('i', { class: 'plastico-franja', 'aria-hidden': 'true' }) : null,
+    h('span', { class: 'plastico-top' }, marca, arriba),
     h('span', { class: 'plastico-medio' },
       esH ? null : h('span', { class: 'plastico-chip', 'aria-hidden': 'true' }, h('i'), h('i')),
       h('span', { class: 'plastico-monto' },
@@ -2652,7 +2700,7 @@ function abrirAntojos(d, alGuardar) {
 
 // Inicio: "Entre ustedes" y "Antojos" como dos tiras compactas lado a lado (v139), en vez de dos paneles casi vacíos.
 // SVG armado aquí con números, nunca con datos de afuera.
-function svgFijo(texto) { const s = document.createElement('span'); s.className = 'anillo-svg'; s.innerHTML = texto; return s; }
+function svgFijo(texto, clase = 'anillo-svg') { const s = document.createElement('span'); s.className = clase; s.innerHTML = texto; return s; }
 function anilloTira(pct, nivel) {
   const C = 2 * Math.PI * 17;
   return h('span', { class: `tira-ico tira-anillo ${nivel}` },
@@ -4336,13 +4384,24 @@ function dialogoTarjeta(t) {
   const selRed = h('select', { id: 'tj-red' }, h('option', { value: 'visa' }, 'Visa'), h('option', { value: 'mastercard' }, 'Mastercard'), h('option', { value: '' }, 'Sin marca'));
   selRed.value = t ? redTC(t) : 'visa';
   const cajaPrevia = h('div', { class: 'tj-previa' });
+  // Diseño: el real de cada banco (como el plástico de verdad) o los colores propios de la app.
+  const bancos = [...new Set(Object.values(DISENOS_TC).map((x) => x.banco))];
+  const selDiseno = h('select', { id: 'tj-diseno' },
+    h('option', { value: '' }, 'Según el banco'),
+    bancos.map((b) => h('optgroup', { label: b }, Object.entries(DISENOS_TC).filter(([, x]) => x.banco === b).map(([k, x]) => h('option', { value: k }, `${b} · ${x.nombre}`)))),
+    h('option', { value: 'propio' }, 'Colores de la app'));
+  selDiseno.value = (d.diseno && (DISENOS_TC[d.diseno] || d.diseno === 'propio')) ? d.diseno : '';
+  const campoColor = h('div', { class: 'campo campo-chico tj-campo-color' });
+  const verColor = () => { const dis = disenoTC({ id: t?.id || 'NUEVA', nombre: inNombre.value }, selDiseno.value || null); campoColor.hidden = !!dis; };
+  selDiseno.addEventListener('change', () => { verColor(); previa(); });
+  inNombre.addEventListener('input', verColor);
   const previa = () => {
     const id = t?.id || 'NUEVA';
     const c = COLORES_TC[color];
     cajaPrevia.style.cssText = `--c1:${c[0]};--c2:${c[1]};--acento:${c[2]}`;
     const falsa = { id, nombre: inNombre.value.trim() || 'Tarjeta', titular: selTitular.value, pendiente: 0, proximoVence: null };
     const anterior = NOMBRE_TC[id]; NOMBRE_TC[id] = falsa.nombre; const dAnt = DUENIO_TC[id]; if (selTitular.value) DUENIO_TC[id] = nombreCorto(selTitular.value); else delete DUENIO_TC[id];
-    const vis = tarjetaVisual(falsa, false);
+    const vis = tarjetaVisual(falsa, false, { diseno: selDiseno.value || null });
     if (anterior !== undefined) NOMBRE_TC[id] = anterior; else delete NOMBRE_TC[id];
     if (dAnt !== undefined) DUENIO_TC[id] = dAnt; else delete DUENIO_TC[id];
     vis.classList.add('tj-mini');
@@ -4387,7 +4446,7 @@ function dialogoTarjeta(t) {
       if (nueva) { const r = await llamarApi('agregarTarjeta', { idCliente: uuid(), ...datos }, { email: emailSesion() }); id = r?.id || (r?.tarjetas || []).find((x) => x.nombre === nombre && !CATALOGO_LOCAL.some((y) => y.id === x.id))?.id; }
       else await llamarApi('editarTarjeta', { id, ...datos }, { email: emailSesion() });
       if (id) {
-        const nuevos = { digitos: dig, nombre: d.nombre || '', red: selRed.value };
+        const nuevos = { digitos: dig, nombre: d.nombre || '', red: selRed.value, diseno: selDiseno.value };
         guardarDatosTC(id, nuevos);
         llamarApi('guardarDatosTarjeta', { id, ...nuevos }, { email: emailSesion() }).catch(() => { /* quedó en este equipo */ });
       }
@@ -4411,7 +4470,8 @@ function dialogoTarjeta(t) {
     h('div', { class: 'modal-cuerpo' },
       h('div', { class: 'campo' }, h('label', { for: 'tj-nombre' }, 'Banco o nombre'), inNombre),
       h('div', { class: 'campo campo-chico' }, h('label', { for: 'tj-titular' }, 'Titular'), selTitular),
-      h('div', { class: 'campo campo-chico' }, h('label', {}, 'Color'), h('div', { class: 'colores tj-colores' }, muestras)),
+      h('div', { class: 'campo campo-chico' }, h('label', { for: 'tj-diseno' }, 'Diseño'), selDiseno),
+      (campoColor.append(h('label', {}, 'Color'), h('div', { class: 'colores tj-colores' }, muestras)), campoColor),
       h('div', { class: 'campo campo-chico' }, h('label', { for: 'tj-cierre' }, 'Día de cierre'), inCierre),
       h('div', { class: 'campo campo-chico' }, h('label', { for: 'tj-vence' }, 'Día de vencimiento'), inVence),
       h('div', { class: 'campo campo-chico' }, h('label', { for: 'tj-dig' }, 'Últimos 4 dígitos'), inDig),
@@ -4420,6 +4480,7 @@ function dialogoTarjeta(t) {
     h('div', { class: 'acciones modal-acciones' }, btn, h('button', { type: 'button', class: 'boton', onclick: cerrar }, 'Cancelar'), btnQuitar)));
   dlg.append(form);
   document.body.append(dlg);
+  verColor();
   previa();
   dlg.showModal();
   inNombre.focus();
