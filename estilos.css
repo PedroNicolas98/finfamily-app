@@ -4845,3 +4845,8 @@ body .seccion-ahorros li.meta.aho { overflow: hidden; }
 .cv-ico .cat-ico { width: 26px; height: 26px; }
 .cv-nombre { font-size: 0.92rem; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cv-lista strong { font-size: 0.92rem; font-variant-numeric: tabular-nums; }
+.cv-comparo { margin: 0; font-size: 0.88rem; line-height: 1.35; padding: 6px 10px; border-radius: 10px; }
+.cv-comparo.sube { background: var(--mal-suave, rgba(217, 84, 62, 0.12)); }
+.cv-comparo.sube strong { color: var(--mal); }
+.cv-comparo.baja { background: var(--ok-suave, rgba(18, 145, 111, 0.12)); }
+.cv-comparo.baja strong { color: var(--ok); }
