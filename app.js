@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v147';
+const VERSION_APP = 'finfamily-v148';
 
 // Instalación en el equipo (el navegador avisa cuando se puede).
 let eventoInstalar = null;
@@ -1015,6 +1015,43 @@ function barraPartes(partes) {
   const total = visibles.reduce((s, p) => s + p.valor, 0) || 1;
   return h('div', { class: 'partes', role: 'img', 'aria-label': visibles.map((p) => `${p.etiqueta}: ${soles(p.valor)}`).join(', ') },
     visibles.map((p) => h('i', { class: p.clase, style: `flex: ${((p.valor / total) * 100).toFixed(2)} 1 0`, title: `${p.etiqueta}: ${soles(p.valor)}` })));
+}
+
+// Días plegados (v148): en las listas por día, cada franja se abre o se cierra al tocarla y dice cuántos gastos tiene.
+// Empiezan cerradas (salvo las de `abiertos`); mientras se busca o filtra, el ul lleva la clase 'buscando' y se ve todo.
+function plegarDias(ul, abiertos) {
+  let franja = null;
+  let filas = [];
+  const cerrar = () => {
+    if (!franja) return;
+    const f = franja, lista = filas;
+    const clave = f.dataset.dia || f.firstChild?.textContent || '';
+    const abierto = abiertos.has(clave);
+    f.classList.add('plegable');
+    f.classList.toggle('plegado', !abierto);
+    f.setAttribute('role', 'button');
+    f.tabIndex = 0;
+    f.setAttribute('aria-expanded', String(abierto));
+    f.prepend(h('span', { class: 'dia-chev', 'aria-hidden': 'true' }, icono('adelante')));
+    f.querySelector('.dia-total')?.before(h('small', { class: 'dia-n' }, `${lista.length} gasto${lista.length === 1 ? '' : 's'}`));
+    lista.forEach((li) => li.classList.toggle('dia-oculto', !abierto));
+    const alternar = () => {
+      const abrir = f.classList.contains('plegado');
+      if (abrir) abiertos.add(clave); else abiertos.delete(clave);
+      f.classList.toggle('plegado', !abrir);
+      f.setAttribute('aria-expanded', String(abrir));
+      lista.forEach((li, i) => {
+        li.classList.toggle('dia-oculto', !abrir);
+        if (abrir && !sinMovimiento()) { li.style.setProperty('--i', String(i)); li.classList.remove('dia-entra'); void li.offsetWidth; li.classList.add('dia-entra'); }
+      });
+    };
+    f.addEventListener('click', alternar);
+    f.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); alternar(); } });
+  };
+  for (const li of [...ul.children]) {
+    if (li.classList.contains('dia')) { cerrar(); franja = li; filas = []; } else if (franja) filas.push(li);
+  }
+  cerrar();
 }
 
 // Fila de un consumo en las listas de Inicio.
@@ -3745,6 +3782,7 @@ async function vistaMovimientos() {
   nada.querySelector('.vacio-ico')?.replaceChildren(icono('buscar'));
   let concepto = null;
   let tope = 60;
+  const diasAbiertos = new Set(); // los días que abriste siguen abiertos al buscar o ver más
   const texto = (c) => normalizar(`${c.descripcion} ${limpiarComercio(c.descripcion)} ${c.concepto || ''} ${nombreCortoTC(c.tarjeta)} ${c.medio || ''}`) + ' ' + palabrasFecha(c.fecha);
   const indice = todos.map((c) => [c, texto(c)]);
   const pintar = () => {
@@ -3756,7 +3794,7 @@ async function vistaMovimientos() {
     sal.slice(0, tope).forEach((c, k, arr) => {
       if (k === 0 || arr[k - 1].fecha !== c.fecha) {
         const delDia = sal.filter((x) => x.fecha === c.fecha).reduce((x, y) => x + (Number(y.monto) || 0), 0);
-        nodos.push(h('li', { class: 'dia' },
+        nodos.push(h('li', { class: 'dia', 'data-dia': c.fecha || '' },
           h('span', {}, c.fecha ? deISO(c.fecha).toLocaleDateString('es-PE', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : 'Sin fecha'),
           h('strong', { class: 'dia-total' }, soles(delDia))));
       }
@@ -3775,6 +3813,8 @@ async function vistaMovimientos() {
       nodos.push(fila);
     });
     lista.replaceChildren(...nodos);
+    plegarDias(lista, diasAbiertos);
+    lista.classList.toggle('buscando', !!(q || concepto));
     mas.hidden = sal.length <= tope;
     mas.textContent = `Ver más (${sal.length - tope})`;
     nada.hidden = sal.length > 0;
@@ -6255,7 +6295,7 @@ async function vistaTarjeta(id) {
     const zona = h('div', { class: 'acciones' });
     if (pendientes.length && !esHormiga) {
       // Con búsqueda o filtro puesto, el botón actúa solo sobre lo que se ve.
-      const aLaVista = () => pendientes.filter((c) => { const li = zona.parentElement?.querySelector(`li[data-fila="${c.fila}"]`); return !li?.hidden && !li?.classList.contains('yendose'); });
+      const aLaVista = () => pendientes.filter((c) => { const li = zona.closest('.grupo')?.querySelector(`li[data-fila="${c.fila}"]`); return !li?.hidden && !li?.classList.contains('yendose'); });
       const boton = h('button', { type: 'button', class: 'boton', onclick: () => {
         const lista = aLaVista();
         if (!lista.length) return;
@@ -6291,9 +6331,8 @@ async function vistaTarjeta(id) {
               h('span', { class: 'gp-chip', title: `${n}: ${soles(v)}` }, avatar(n, 'mini'), h('b', {}, n), h('span', {}, soles(v)))));
           })()),
         h('div', { class: 'derecha' }, h('strong', { class: 'monto-medio' }, soles(esHormiga ? g.total : g.pendiente)),
-          !esHormiga && g.total !== g.pendiente ? h('p', { class: 'suave' }, `de ${soles(g.total)}`) : null)),
-      zona,
-      h('ul', { class: 'lista consumos' }, consumos.flatMap((c, k) => {
+          !esHormiga && g.total !== g.pendiente ? h('p', { class: 'suave' }, `de ${soles(g.total)}`) : null, zona)),
+      h('ul', { class: 'lista consumos dias-plegables' }, consumos.flatMap((c, k) => {
         // Antes del primer consumo de cada día va una franja con la fecha y lo gastado ese día.
         const nuevoDia = k === 0 || consumos[k - 1].fecha !== c.fecha;
         const delDia = nuevoDia ? consumos.filter((x) => x.fecha === c.fecha) : null;
@@ -6328,6 +6367,11 @@ async function vistaTarjeta(id) {
         return franja ? [franja, fila] : [fila];
       }))));
   }
+  // Días plegados: se abre solo el que quieras ver. Un estado con pocos consumos (3 o menos) ya sale abierto.
+  col.querySelectorAll('ul.dias-plegables').forEach((ul) => {
+    const n = ul.querySelectorAll('li[data-fila]').length;
+    plegarDias(ul, new Set(n <= 3 ? [...ul.querySelectorAll('li.dia')].map((d) => d.dataset.dia || '') : []));
+  });
   if (todos.length > 6) {
     const cuenta = h('span', { class: 'buscador-cuenta', 'aria-live': 'polite' });
     const sinResultados = vacio('Ningún consumo coincide.');
@@ -6359,6 +6403,7 @@ async function vistaTarjeta(id) {
       // Con filtro se ve cuánto suma lo encontrado, no solo cuántos son.
       const sumaVisible = [...col.querySelectorAll('li[data-texto]')].reduce((s, li) => s + (li.hidden ? 0 : Number(li.dataset.monto)), 0);
       cuenta.textContent = q || conceptoElegido ? `${visibles} de ${todos.length} · ${soles(sumaVisible)}` : '';
+      col.querySelectorAll('ul.dias-plegables').forEach((ul) => ul.classList.toggle('buscando', !!(q || conceptoElegido)));
       sinResultados.hidden = visibles > 0;
       botonesGrupo.forEach((f) => f());
     };
