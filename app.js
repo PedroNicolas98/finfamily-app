@@ -1498,7 +1498,7 @@ function responsables() {
   return lista.map((n) => String(n).trim()).filter(Boolean);
 }
 function nombreCorto(n) { return String(n || '').split(' ')[0]; }
-const EN_PANTALLA = ['editarGasto', 'borrarGasto', 'marcarPagado']; // después de estos se espera al Sheets para ver el cambio
+const EN_PANTALLA = ['editarGasto', 'borrarGasto', 'marcarPagado', 'pasarACuotas']; // después de estos se espera al Sheets para ver el cambio
 async function llamarApi(...args) {
   ocupado(1);
   try { return await api.llamar(...args); } finally {
@@ -2003,10 +2003,34 @@ function editarConsumo(t, c) {
     }
   };
 
+  // Pasar a cuotas (v124): solo con tarjeta de crédito, si no está pagado ni ya en cuotas.
+  const puedeCuotas = motorPasarCuotas() && t.id !== 'HORMIGA' && !esCuota(c.descripcion) && normalizar(c.estado) !== 'pagado' && Number(c.monto) > 0;
+  const pasarACuotas = async (btn) => {
+    msg.hidden = true;
+    const ciclosCfg = leerCache('config')?.datos?.ciclos || CICLOS_LOCAL;
+    const mesInicio = (calcularCiclo(c.tarjetaId || t.id, c.fecha, ciclosCfg).pago || '').slice(0, 7);
+    const r = await elegirCuotas({ total: Number(c.monto), mesInicio });
+    if (!r || !(r.cuotas > 1)) return;
+    ocuparBoton(btn, 'Pasando…');
+    try {
+      const datos = { ...base, cuotas: r.cuotas };
+      if (r.montoCuota > 0) datos.montoCuota = r.montoCuota;
+      const d = await llamarApi('pasarACuotas', datos, { email: emailSesion() });
+      estado.cambioDesde = Date.now();
+      cerrar();
+      avisar(`${limpiarComercio(c.descripcion)}: ${r.cuotas} cuotas de ${soles(d?.montoCuota ?? montosDeCuotas(c.monto, r.cuotas, r.montoCuota)[0])}`, 'ok');
+      navegar();
+    } catch (e) {
+      fallar(e, 'No se pudo pasar a cuotas. Intenta de nuevo.');
+    }
+  };
+
   function pintarZona() {
     const btnGuardar = h('button', { type: 'button', class: 'boton primario', onclick: () => guardar(btnGuardar) }, 'Guardar');
-    zona.replaceChildren(
+    const btnCuotas = puedeCuotas ? h('button', { type: 'button', class: 'boton ed-cuotas', onclick: () => pasarACuotas(btnCuotas) }, icono('calendario'), 'Pasar a cuotas') : null;
+    zona.replaceChildren(...[
       btnGuardar,
+      btnCuotas,
       h('button', { type: 'button', class: 'boton peligro', onclick: () => {
         msg.hidden = true;
         cerrar();
@@ -2019,7 +2043,7 @@ function editarConsumo(t, c) {
           navegar({ silencioso: true });
         });
       } }, icono('papelera'), 'Borrar'),
-      h('button', { type: 'button', class: 'boton', onclick: cerrar }, 'Cancelar'));
+      h('button', { type: 'button', class: 'boton', onclick: cerrar }, 'Cancelar')].filter(Boolean));
   }
   pintarZona();
 
@@ -3681,6 +3705,9 @@ function interruptor(activo, etiqueta, alCambiar) {
 // ---------------------------------------------------------------------------
 // Compras en cuotas (v123, motor 1.11): una compra con tarjeta se reparte en N cuotas, cada una en su mes.
 // ---------------------------------------------------------------------------
+// Motor 1.12: pasar a cuotas un gasto ya anotado entero.
+function motorPasarCuotas() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 12); }
+const esCuota = (descripcion) => /·\s*cuota\s+\d{1,2}\/\d{1,2}\s*$/i.test(String(descripcion || ''));
 function motorCuotas() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 11); }
 const OPCIONES_CUOTAS = [1, 2, 3, 4, 6, 10, 12, 18, 24, 36];
 // Igual que el motor: partes iguales (los centavos que sobran van en la primera) o todas de la cuota fija.

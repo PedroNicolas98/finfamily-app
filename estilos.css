@@ -3754,3 +3754,5 @@ body .formulario.registro-uno .f-cierre .r-guardar .boton.grande { flex: 1; min-
 @media (prefers-reduced-motion: reduce) { .cuotas-resumen strong { animation: none; } }
 .freno-acciones .freno-cuotas { display: inline-flex; align-items: center; gap: 6px; }
 .freno-acciones .freno-cuotas .icono, .freno-acciones .freno-cuotas .icono svg { width: 16px; height: 16px; }
+.modal-acciones .ed-cuotas { display: inline-flex; align-items: center; gap: 6px; }
+.modal-acciones .ed-cuotas .icono, .modal-acciones .ed-cuotas .icono svg { width: 16px; height: 16px; }
