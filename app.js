@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v163';
+const VERSION_APP = 'finfamily-v164';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -2118,6 +2118,9 @@ function chipDiaFijo(f) {
 }
 
 // Inicio: fijos que vencen en 2 días o menos (o ya vencieron este mes) y siguen sin marcar.
+// Inicio en computadora: el mismo criterio que usa el CSS para ponerlo todo en una pantalla.
+function esComputadoraInicio() { return matchMedia('(min-width: 1024px)').matches; }
+
 function avisoFijos() {
   const sitio = h('section', { class: 'avisos-inicio avisos-pres aviso-fijos' });
   const pintar = async () => {
@@ -2142,7 +2145,7 @@ function avisoFijos() {
       if (item.grupo) {
         const g = item.grupo, x = g[0].x;
         const total = g.reduce((s, y) => s + (Number(y.linea.monto) || 0), 0);
-        return h('a', { class: 'aviso-fila ' + (x.dias < 0 ? 'vencida' : 'justo'), href: '#inicio', onclick: (ev) => { ev.preventDefault(); document.querySelector('.panel-fijos')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); } },
+        return h('a', { class: 'aviso-fila ' + (x.dias < 0 ? 'vencida' : 'justo'), href: '#presupuesto' },
           icono('calendario'),
           h('span', {}, h('strong', {}, `Pagar ${g.length} gastos fijos`), h('small', {}, `${cuandoDe(x)} · ${g.slice(0, 3).map((y) => nombreLinea(y.linea.concepto)).join(', ')}${g.length > 3 ? '…' : ''}`)),
           h('strong', { class: 'aviso-monto' }, soles(total)),
@@ -3468,47 +3471,7 @@ async function vistaInicio() {
   raiz.append(hero);
   if (esHoy && motorLector() && emailSesion()) raiz.append(avisoPendientes(r?.datos?.pendientes));
   if (esHoy && motorReenvio() && emailSesion()) raiz.append(avisoConectar());
-  if (bolsas) raiz.append(panelBolsas(bolsas, mesNombre));
-
-  // Tarjetas en carrusel, de la que vence primero a la última.
-  const ordenadas = [...tarjetas].sort((a, b) => (b.pendiente > 0) - (a.pendiente > 0)
-    || String(a.proximoVence || '9').localeCompare(String(b.proximoVence || '9')));
-  const enCarril = [...ordenadas, hormiga].filter(Boolean);
-  if (esHoy && enCarril.length) {
-    const carril = h('div', { class: 'carrusel' }, enCarril.map((t, i) => {
-      const el = tarjetaVisual(t);
-      el.style.setProperty('--i', String(i));
-      return el;
-    }));
-    // Con cuatro tarjetas o más el carrusel gira sin fin: se arma con tres juegos iguales en fila y,
-    // al completar una vuelta, vuelve al principio sin que se note.
-    if (enCarril.length >= 4) {
-      const originales = [...carril.children];
-      const copia = () => originales.map((el) => {
-        const c = el.cloneNode(true);
-        c.classList.add('clon'); c.setAttribute('aria-hidden', 'true'); c.tabIndex = -1;
-        return c;
-      });
-      carril.prepend(...copia());
-      carril.append(...copia());
-      // Los tres juegos van en una sola fila, que es la que se mueve.
-      const pista = h('div', { class: 'carrusel-pista' });
-      pista.append(...carril.children);
-      carril.append(pista);
-      carril.classList.add('infinito');
-      carril.dataset.n = String(originales.length);
-    }
-    const pasoCarril = () => { const t = carril.children; return t.length > 1 ? t[1].offsetLeft - t[0].offsetLeft : 280; };
-    const mover = (dir) => () => (carril.moverTarjeta ? carril.moverTarjeta(dir) : carril.scrollBy({ left: dir * pasoCarril(), behavior: 'smooth' }));
-    raiz.append(h('section', { class: 'tarjetas-inicio' },
-      h('div', { class: 'seccion-cab' },
-        tituloSeccion('Tus tarjetas'),
-        h('div', { class: 'seccion-acciones' },
-          h('button', { type: 'button', class: 'boton icono-solo solo-pc', 'aria-label': 'Tarjetas anteriores', onclick: mover(-1) }, icono('atras')),
-          h('button', { type: 'button', class: 'boton icono-solo solo-pc', 'aria-label': 'Tarjetas siguientes', onclick: mover(1) }, icono('adelante')),
-          h('a', { href: '#tarjetas' }, 'Ver todas'))),
-      carril));
-  }
+  // v164: sin el panel "Tu plata" (lo dice el resumen) ni el carrusel de tarjetas (está en Tarjetas): Inicio no repite.
 
   // v160: Inicio es solo el resumen. Los gastos hormiga (ya están en Tarjetas, por cuenta) y los gastos fijos
   // (ya están en Presupuesto) no se repiten aquí; el aviso "Pagar X · vence hoy" de los fijos sí queda arriba.
@@ -3554,19 +3517,19 @@ async function vistaInicio() {
       porConcepto.set(k, (porConcepto.get(k) || 0) + (Number(c.monto) || 0));
     }
     const orden = [...porConcepto].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
-    const cuantos = tablero && innerHeight < 720 ? 3 : tablero && innerHeight < 760 ? 4 : 5;
+    const cuantos = innerHeight < 720 ? 3 : innerHeight < 800 ? 4 : 5;
     const partes = orden.slice(0, cuantos).map(([etiqueta, valor]) => ({ etiqueta, valor }));
     const resto = orden.slice(cuantos).reduce((s, [, v]) => s + v, 0);
     if (resto > 0) partes.push({ etiqueta: 'Otros conceptos', valor: resto });
     // Un solo panel con dos vistas del mismo gasto: por día y por concepto.
     const pestanasGasto = [
-      { etiqueta: tablero ? 'Por día' : 'Gasto por día', lado: `${soles(dias.total)} en 30 días`, pista: 'Todo lo gastado en los últimos 30 días, pagado o no.', nodo: dias.nodo },
-      { etiqueta: tablero ? 'Por concepto' : 'Gasto por concepto', lado: soles(orden.reduce((s, [, v]) => s + v, 0)), pista: 'Todo lo gastado en los últimos 30 días, por concepto.',
+      { etiqueta: 'Por día', lado: `${soles(dias.total)} en 30 días`, pista: 'Todo lo gastado en los últimos 30 días, pagado o no.', nodo: dias.nodo },
+      { etiqueta: 'En qué se fue', lado: soles(orden.reduce((s, [, v]) => s + v, 0)), pista: 'Todo lo gastado en los últimos 30 días, por concepto.',
         nodo: h('div', { class: 'dona-ancha' }, partes.length ? dona(partes, 'Total') : vacio('Todavía no hay consumos este mes.')) },
     ];
 
     const recientes = consumosDe(completo ? rtodo.datos.tarjetas : todas, (t) => t.id !== 'HORMIGA').filter((c) => completo || c.estado !== 'Pagado')
-      .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, tablero ? Math.max(3, Math.min(6, Math.floor((innerHeight - 380) / 60))) : 6);
+      .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, esComputadoraInicio() ? Math.max(2, Math.min(6, Math.floor((innerHeight - (innerWidth < 1400 ? 640 : 520)) / 58))) : 6);
     const listaRecientes = recientes.length ? h('ul', { class: 'lista-mov' }, recientes.map((c) => {
       const fila = filaMov(c, nombreCortoTC(c.tarjeta));
       if (c.estado === 'Pagado' && c.tarjeta?.id !== 'HORMIGA') fila.querySelector('.mov-der .suave')?.prepend(h('i', { class: 'mov-pagado', title: 'Pagado', 'aria-label': 'Pagado' }, icono('check')));
@@ -3579,14 +3542,29 @@ async function vistaInicio() {
         { etiqueta: 'Hormiga', lado: h('a', { href: '#tarjeta-HORMIGA' }, soles(hormiga?.pendiente || 0)),
           nodo: h('div', { class: 'pest-lista' }, hormigas.length ? h('ul', { class: 'lista-mov' }, hormigas.map((c) => filaMov(c, c.medio))) : vacio('Sin gastos hormiga este mes.')) });
     }
+    pestanasGasto.unshift({ etiqueta: 'Últimos gastos', lado: h('a', { href: '#movimientos' }, 'Ver todos'), nodo: h('div', { class: 'pest-lista' }, listaRecientes) });
     agregar(panelPestanas('panel-gasto', pestanasGasto));
-    if (!tablero) agregar(panel('panel-lista', 'Últimos consumos', h('a', { href: '#movimientos' }, 'Ver todos'), listaRecientes));
 
     raiz.append(rejilla);
   }
 
   const revisar = seccionRevisar();
   if (revisar) raiz.append(revisar);
+
+  if (esHoy) {
+    raiz.classList.add('una-pantalla');
+    const avisos = [...raiz.querySelectorAll(':scope > .avisos-inicio, :scope > .aviso-pend')];
+    if (avisos.length) { const fila = h('div', { class: 'avisos-fila' }); hero.before(fila); fila.append(...avisos); }
+    const quien = raiz.querySelector(':scope > .rejilla-2b');
+    const tiras = raiz.querySelector(':scope > .tiras-inicio');
+    const gasto = raiz.querySelector(':scope > .rejilla-3');
+    const abajo = h('div', { class: 'inicio-abajo' });
+    if (quien) abajo.append(...quien.querySelectorAll('.panel'));
+    if (gasto) abajo.append(...gasto.children);
+    if (tiras) abajo.append(tiras);
+    quien?.remove(); gasto?.remove();
+    if (abajo.children.length) raiz.append(abajo);
+  }
 
   try {
     // Se muestra solo en los primeros días después de cada cobro (cuando recién se cerró un ciclo).
