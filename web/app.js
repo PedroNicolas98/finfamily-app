@@ -203,8 +203,7 @@ function aplicarCatalogo() {
   let css = document.getElementById('css-tarjetas');
   if (!css) { css = document.createElement('style'); css.id = 'css-tarjetas'; document.head.append(css); }
   css.textContent = cat.map((t) => {
-    const dis = disenoTC(t);
-    const c = dis ? DISENOS_TC[dis].c : COLORES_TC[t.color] || COLORES_TC.azul;
+    const c = colorAppTC(t);
     return `.tc-${t.id} { --c1: ${c[0]}; --c2: ${c[1]}; --acento: ${c[2]}; --op: ${c[0]}; }`;
   }).join('\n');
 }
@@ -500,6 +499,16 @@ const DISENOS_TC = {
   'sip-negra': { banco: 'Sip', nombre: 'Negra', c: ['#1C1D21', '#08090B', '#29AEF3'] },
   'ripley': { banco: 'Ripley', nombre: 'Mastercard', c: ['#4A4D53', '#26282C', '#E4002B'] },
 };
+// Color de cada tarjeta en la app (fichas, calendario, gráficos): el de su banco. Interbank SIEMPRE verde (su marca),
+// aunque el plástico sea azul; la de la otra persona en un verde distinto para no confundirlas.
+const VERDE_IBK_2 = ['#23B676', '#0B6A44', '#C8F7DC'];
+function colorAppTC(t) {
+  const dis = disenoTC(t);
+  if (dis && DISENOS_TC[dis].banco === 'Interbank') return t.color === 'verde' || !t.color ? COLORES_TC.verde : VERDE_IBK_2;
+  return dis ? DISENOS_TC[dis].c : COLORES_TC[t.color] || COLORES_TC.azul;
+}
+// Clase de color de una tarjeta de débito: por su banco (Interbank verde, BCP azul, Sip negra).
+const claseDebito = (banco) => `TD-${normalizar(banco || '').replace(/[^a-z]/g, '') || 'otro'}`;
 // Diseño de una tarjeta: el elegido; si no eligió, el de su banco según el nombre; 'propio' = colores de la app.
 function disenoTC(t, forzado) {
   const d = forzado !== undefined ? forzado : datosTC(t.id)?.diseno;
@@ -566,6 +575,7 @@ function gastadoEnCiclo(tarjetas, mes) {
   const real = new Map();
   for (const c of consumosDe(tarjetas || [], () => true)) {
     if (!c.fecha || c.fecha < desde || c.fecha > hasta) continue;
+    if (c.origen) continue; // sale del sobrante (P:) o de un ahorro (A:): no gasta la línea del presupuesto
     const k = normalizar(c.concepto || '');
     real.set(k, (real.get(k) || 0) + (Number(c.monto) || 0));
   }
@@ -4033,10 +4043,10 @@ async function abrirPendientes() {
     const deBilletera = ['YAPE', 'LEMON'].includes(String(p.banco || '').toUpperCase()); // leído del correo de Yape o Lemon
     const deb = debitoDe(p);
     const emisor = deb ? deb.etiqueta : directo ? (deBilletera ? (directo === 'LEMON' ? 'Lemon' : 'Yape') : `${directo === 'PLIN' ? 'Plin' : directo === 'YAPE' ? 'Yape' : directo === 'LEMON' ? 'Lemon' : 'Efectivo'} · débito BCP`) : nombreTC(id);
-    const ticket = h('article', { class: `pend voucher compacto tc-${deb ? 'TD' : directo ? 'HORMIGA' : id}` },
+    const ticket = h('article', { class: `pend voucher compacto tc-${deb ? claseDebito(deb.banco) : directo ? 'HORMIGA' : id}` },
       h('span', { class: 'sello', 'aria-hidden': 'true', hidden: true }, 'Confirmado'),
       h('div', { class: 'vch-fila' },
-        h('span', { class: 'pend-ico' }, catIco(sugerido || 'otro'), chipTC(deb ? 'TD' : directo ? 'HORMIGA' : id, 'mini insignia')),
+        h('span', { class: 'pend-ico' }, catIco(sugerido || 'otro'), chipTC(deb ? claseDebito(deb.banco) : directo ? 'HORMIGA' : id, 'mini insignia')),
         h('div', { class: 'vch-comercio' }, h('strong', {}, comercioDe(p).toUpperCase()),
           h('span', { class: 'vch-detalle' }, `${emisor}${p.ultimos4 ? ' ···· ' + p.ultimos4 : ''} · ${fechaCorta(p.fecha)}${hora ? ' · ' + hora : ''}`)),
         h('strong', { class: 'pend-monto' }, montoDe(p))));
@@ -4338,16 +4348,16 @@ function panelPersonasAdmin() {
   const btn = h('button', { type: 'button', class: 'boton chico primario' }, 'Agregar');
   const msg = h('p', { class: 'mensaje error', hidden: true });
   const caja = panel('revelar config-personas', 'Personas', null,
-    h('p', { class: 'suave' }, 'Quiénes entran a la app con su cuenta de Google y a nombre de quién se anotan los gastos.'),
-    lista, h('div', { class: 'config-agregar dos' }, inNombre, inCorreo, btn), msg);
+    h('p', { class: 'suave' }, 'Entran con su cuenta de Google; los gastos se anotan a su nombre.'),
+    lista, h('p', { class: 'etq' }, 'Agregar persona'), h('div', { class: 'config-agregar dos' }, inNombre, inCorreo, btn), msg);
   const error = (e, txt) => { msg.textContent = mensajeError(e, txt); msg.hidden = false; };
   let usuarios = [];
   const yo = emailSesion();
   const pintar = () => {
-    lista.replaceChildren(...usuarios.map((u) => h('div', { class: 'config-fila persona' },
-      avatar(u.nombre, 'chico'),
+    lista.replaceChildren(...usuarios.map((u, i) => h('div', { class: 'config-fila persona-adm', style: `--i: ${i}` },
+      avatar(u.nombre, 'grande'),
       h('div', { class: 'config-texto' }, h('strong', {}, u.nombre), h('span', { class: 'suave' }, u.correo)),
-      u.correo === yo ? h('span', { class: 'pill' }, 'Tú') : h('button', { type: 'button', class: 'boton chico', onclick: (ev) => {
+      u.correo === yo ? h('span', { class: 'pill ok' }, 'Tú') : h('button', { type: 'button', class: 'boton chico enlace peligro', onclick: (ev) => {
         const fila = ev.currentTarget.closest('.config-fila');
         confirmarEnLinea(fila, `${u.nombre} ya no podrá entrar a la app. ¿Quitar?`, 'Quitar', async () => {
           try { const r = await accionAdmin('quitarUsuario', { correo: u.correo }, 'Persona quitada'); usuarios = r?.usuarios || usuarios.filter((x) => x.correo !== u.correo); } catch (e) { error(e, 'No se pudo quitar.'); }
@@ -4380,7 +4390,7 @@ function panelDebitos() {
   function pintar(lista) {
     const activas = (lista || []).filter((d) => d.activa !== false);
     cuerpo.replaceChildren(...(activas.length ? activas.map((d) => h('div', { class: 'config-fila tc' },
-      h('span', { class: 'chip-tc mini tc-TD', 'aria-hidden': 'true' }),
+      h('span', { class: `chip-tc mini tc-${claseDebito(d.banco)}`, 'aria-hidden': 'true' }),
       h('div', { class: 'config-texto' }, h('strong', {}, `Débito ${d.banco}`), h('span', { class: 'suave' }, d.titular ? nombreCorto(d.titular) : 'De la casa')),
       h('button', { type: 'button', class: 'boton chico', onclick: () => dialogoDebito(d, pintar) }, 'Editar')))
       : [h('p', { class: 'suave' }, 'Agrega las tarjetas de débito para elegirlas al registrar un gasto.')]));
@@ -5400,7 +5410,7 @@ async function vistaRegistrar() {
   const plegar = () => cajaMonto?.classList.add('plegado');
 
   const quien = () => (f.responsable ? { nombre: f.responsable } : usuario);
-  const colorMedio = (m) => (m.tipo === 'tarjeta' ? (idCicloDeMedio(m, quien()) || 'HORMIGA') : m.tipo === 'debito' ? 'TD' : (COLOR_MEDIO[m.id] || 'HORMIGA'));
+  const colorMedio = (m) => (m.tipo === 'tarjeta' ? (idCicloDeMedio(m, quien()) || 'HORMIGA') : m.tipo === 'debito' ? claseDebito(m.banco) : (COLOR_MEDIO[m.id] || 'HORMIGA'));
   // Tarjetas de débito (motor 1.21): se muestran las de quien gastó (y la que ya esté elegida).
   const debitoAjeno = (m) => m.tipo === 'debito' && !!m.titular && !mismoNombre(m.titular, quien().nombre || '') && f.medio !== m.id;
   const tarjetasDe = (m) => catalogoTC().filter((t) => t.medio === m.id);
@@ -6585,12 +6595,12 @@ async function vistaPresupuesto() {
             h('span', { class: 'fila-pres-nombre' },
               marcable ? botonFijo(f, d.mes, (x) => { li.classList.toggle('pagado', !!x.pagado); nota.textContent = x.pagado ? (x.pagadoNota || '') : ''; pintarResumenFijos(); }) : null,
               h('span', { title: f.concepto }, nombreLinea(f.concepto), marcable ? nota : null)),
-            h('span', {}, f.monto && total ? h('small', { class: 'pct' }, `${Math.round((f.monto / total) * 100)}%`) : null,
+            h('span', {}, f.monto && total && clave !== 'gastos' ? h('small', { class: 'pct' }, `${Math.round((f.monto / total) * 100)}%`) : null,
               motorNuevo() && clave !== 'ingresos' && f.fila && !f.esTarjeta && !(f.monto < 0) && emailSesion()
                 ? h('button', { type: 'button', class: 'monto-editable', title: 'Clic para cambiar el monto', 'aria-label': `Cambiar monto de ${nombreLinea(f.concepto)}, ahora ${soles(f.monto)}`,
                   onclick: (ev) => editarEnLinea(ev.currentTarget, d.mes, f) }, soles(f.monto))
                 : soles(f.monto))),
-          h('div', { class: 'barra-pres', 'aria-hidden': 'true' }, h('i', { 'data-w': `${Math.round((Math.abs(f.monto || 0) / max) * 100)}%` })));
+          h('div', { class: 'barra-pres', 'aria-hidden': 'true' }, clave === 'gastos' ? null : h('i', { 'data-w': `${Math.round((Math.abs(f.monto || 0) / max) * 100)}%` })));
         return li;
       })));
   };
@@ -6600,8 +6610,9 @@ async function vistaPresupuesto() {
     const real = gastadoEnCiclo(rt?.datos?.tarjetas, d.mes);
     const ciclo = cicloDelMes(d.mes);
     if (!raizPres.querySelector('.nota-ciclo')) {
-      raizPres.querySelector('.pres-controles, .panel-cab')?.after(h('p', { class: 'suave nota-ciclo' },
-        `Lo gastado cuenta del ${fechaCorta(ciclo.desde)} al ${fechaCorta(ciclo.hasta)}: se paga con el sueldo de ${(nombreMesClave(d.mes) || '').split(' ')[0].toLowerCase()}.`));
+      const textoCiclo = `Lo gastado cuenta del ${fechaCorta(ciclo.desde)} al ${fechaCorta(ciclo.hasta)}: se paga con el sueldo de ${(nombreMesClave(d.mes) || '').split(' ')[0].toLowerCase()}. Lo que sale del sobrante o de un ahorro no cuenta aquí.`;
+      raizPres.querySelector('.pres-controles, .panel-cab')?.after(h('p', { class: 'suave nota-ciclo' }, textoCiclo));
+      raizPres.querySelector('.seccion-gastos .panel-cab h2')?.setAttribute('title', textoCiclo);
     }
     raizPres.querySelectorAll('li[data-linea]').forEach((li) => {
       const linea = li.dataset.linea; const plan = Number(li.dataset.plan) || 0;
@@ -6618,10 +6629,13 @@ async function vistaPresupuesto() {
       }
       const pct = (gastado / plan) * 100;
       const tono = pct > 100 ? 'pasado' : pct >= 80 ? 'justo' : 'bien';
-      li.querySelector('.fila-pres-nombre > span:last-child')?.append(h('small', { class: `llevas ${tono}` }, pct > 100 ? `Te pasaste: ${soles(gastado)} de ${soles(plan)}` : `Llevas ${soles(gastado)} de ${soles(plan)}`));
+      // La barra es lo usado de lo planeado (llena = se gastó todo). Sin gasto, no se escribe nada.
+      li.querySelector('.fila-pres-nombre > span:last-child')?.append(gastado > 0
+        ? h('small', { class: `llevas ${tono}` }, pct > 100 ? `Te pasaste: ${soles(gastado)} de ${soles(plan)}` : `Usado ${soles(gastado)} · quedan ${soles(plan - gastado)}`)
+        : h('small', { class: 'llevas vacio', hidden: true }));
+      li.title = `${nombreLinea(li.querySelector('.fila-pres-nombre [title]')?.title || '')}: usado ${soles(gastado)} de ${soles(plan)}`;
       const barra = li.querySelector('.barra-pres');
-      const ancho = parseFloat(barra?.querySelector('i')?.dataset.w) || 0;
-      if (barra) { const b = h('b', { class: `real ${tono}` }); barra.append(b); requestAnimationFrame(() => requestAnimationFrame(() => { b.style.width = `${Math.min(100, (ancho * Math.min(pct, 100)) / 100)}%`; })); }
+      if (barra && gastado > 0) { const b = h('b', { class: `real ${tono}` }); barra.append(b); requestAnimationFrame(() => requestAnimationFrame(() => { b.style.width = `${Math.min(100, pct)}%`; })); }
     });
   }).catch(() => {});
 
@@ -6708,6 +6722,19 @@ async function vistaPresupuesto() {
     })();
   }
   const sinIngresos = !(tot.ingresos > 0);
+  const totTarjetas = (d.filas || []).filter((f) => f.seccion === 'gastos' && f.esTarjeta).reduce((sum, f) => sum + Math.max(0, Number(f.monto) || 0), 0);
+  const partesFlujo = [
+    { etiqueta: 'Tarjetas', valor: totTarjetas, clase: 'pf-tc' },
+    { etiqueta: 'Gastos', valor: Math.max(0, (tot.gastos || 0) - totTarjetas), clase: 'pf-gasto' },
+    { etiqueta: 'Ahorros', valor: Math.max(0, tot.ahorros || 0), clase: 'pf-ahorro' },
+    { etiqueta: 'Sobra', valor: Math.max(0, tot.saldo || 0), clase: 'pf-sobra' },
+  ];
+  const flujo = sinIngresos ? null : h('div', { class: 'pres-flujo' },
+    h('p', { class: 'pf-titulo' }, `Así se reparten los ${soles(tot.ingresos)} que entran`),
+    barraPartes(partesFlujo),
+    h('ul', { class: 'pf-leyenda' }, partesFlujo.filter((x) => x.valor > 0).map((x) => h('li', {},
+      h('i', { class: `pf-punto ${x.clase}`, 'aria-hidden': 'true' }), h('span', {}, x.etiqueta), h('strong', {}, soles(x.valor)),
+      h('small', {}, `${Math.round((x.valor / tot.ingresos) * 100)}%`)))));
   const hero = h('section', { class: 'hero hero-meses' }, heroFondo(),
     sinIngresos
       ? h('div', { class: 'hero-principal' },
@@ -6725,7 +6752,8 @@ async function vistaPresupuesto() {
       heroDato('sube', 'Ingresos', soles(tot.ingresos), deltas.ingresos),
       heroDato('baja', 'Gastos', soles(tot.gastos), deltas.gastos),
       heroDato('billetera', 'Ahorros', soles(tot.ahorros), deltas.ahorros),
-      heroDato('check', 'Saldo libre', soles(libre), deltas.saldo)));
+      heroDato('check', 'Saldo libre', soles(libre), deltas.saldo)),
+    flujo);
 
   // Cambio frente al mes anterior (se completa cuando llegan esos datos, sin frenar la pantalla).
   const listaMeses = d.meses || meses;
@@ -7112,7 +7140,16 @@ async function arrancar() {
   aplicarApariencia();
   try { aplicarCatalogo(); } catch { /* sin catálogo todavía */ }
   aplicarMenu();
-  document.body.classList.toggle('solo-gasto', SOLO_GASTO);
+  // Gasto rápido (gasto.html): en el celular, su diseño propio de una columna; en computadora, el mismo diseño
+  // de dos columnas de "Nuevo gasto" de la app, sin menú (v146).
+  const mqPc = matchMedia('(min-width: 900px)');
+  const ponerModoGasto = () => {
+    const pc = SOLO_GASTO && mqPc.matches;
+    document.body.classList.toggle('solo-gasto', SOLO_GASTO && !pc);
+    document.body.classList.toggle('gasto-pc', pc);
+  };
+  ponerModoGasto();
+  if (SOLO_GASTO) mqPc.addEventListener?.('change', ponerModoGasto);
   construirNav();
   document.addEventListener('click', (ev) => {
     if (!ev.target.closest?.('.cuenta-menu')) cerrarMenusCuenta();
