@@ -4317,7 +4317,15 @@ function dialogoTarjeta(t) {
   dlg.addEventListener('cancel', (ev) => { ev.preventDefault(); cerrar(); });
   dlg.addEventListener('click', (ev) => { if (ev.target === dlg) cerrar(); });
   const inNombre = h('input', { id: 'tj-nombre', type: 'text', maxlength: '30', placeholder: 'Ej. BBVA, Diners', value: t?.nombre || '' });
-  const selTitular = h('select', { id: 'tj-titular' }, h('option', { value: '' }, 'De la casa'), personas.map((p) => h('option', { value: p, selected: t && t.titular && nombreCorto(p) === nombreCorto(t.titular) ? true : null }, nombreCorto(p))));
+  const opcionesTitular = (lista) => [h('option', { value: '' }, 'De la casa'), ...lista.map((p) => h('option', { value: p, selected: t && t.titular && nombreCorto(p) === nombreCorto(t.titular) ? true : null }, nombreCorto(p)))];
+  const selTitular = h('select', { id: 'tj-titular' }, opcionesTitular(personas));
+  // Si este equipo aún no tiene la lista de personas, se trae del Sheets y se completan las opciones.
+  if (!personas.length) {
+    cargarRapido('config', {}, 'config').then(() => {
+      const lista = responsables();
+      if (lista.length && dlg.isConnected) { const antes = selTitular.value; selTitular.replaceChildren(...opcionesTitular(lista)); if (antes) selTitular.value = antes; }
+    }).catch(() => { /* queda "De la casa" */ });
+  }
   const inCierre = h('input', { id: 'tj-cierre', type: 'text', inputmode: 'numeric', maxlength: '2', placeholder: '—', value: t?.cierre || '' });
   const inVence = h('input', { id: 'tj-vence', type: 'text', inputmode: 'numeric', maxlength: '2', placeholder: '—', value: t?.vence || '' });
   [inCierre, inVence].forEach((i) => i.addEventListener('input', () => { i.value = i.value.replace(/\D/g, '').slice(0, 2); }));
