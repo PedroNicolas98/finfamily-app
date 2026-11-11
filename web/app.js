@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v159';
+const VERSION_APP = 'finfamily-v160';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -3494,16 +3494,11 @@ async function vistaInicio() {
       carril));
   }
 
-  // Gastos fijos a la izquierda. A la derecha, quién gastó y debajo los gastos hormiga (en otro mes, en qué se fue).
+  // v160: Inicio es solo el resumen. Los gastos hormiga (ya están en Tarjetas, por cuenta) y los gastos fijos
+  // (ya están en Presupuesto) no se repiten aquí; el aviso "Pagar X · vence hoy" de los fijos sí queda arriba.
+  // En otro mes, a la derecha va en qué se fue.
   let extraPanel = null;
-  if (esHoy && rt?.datos?.tarjetas) {
-    const hormigas = consumosDe(rt.datos.tarjetas, (t) => t.id === 'HORMIGA')
-      .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 3);
-    // En el tablero los gastos hormiga van como una pestaña más del panel de gasto.
-    if (!tablero) extraPanel = panel('panel-lista panel-hormiga revelar', 'Gastos hormiga', h('a', { href: '#tarjeta-HORMIGA' }, soles(hormiga?.pendiente || 0)),
-      hormigas.length ? h('ul', { class: 'lista-mov' }, hormigas.map((c) => filaMov(c, c.medio))) : vacio('Sin gastos hormiga este mes.'),
-      h('a', { class: 'boton panel-accion', href: '#registrar' }, icono('mas'), 'Registrar gasto'));
-  } else if (!esHoy) {
+  if (!esHoy) {
     // En qué se fue ese mes: todos los consumos con fecha del mes, sumados por concepto.
     const porConcepto = new Map();
     for (const per of rp?.datos?.personas || []) {
@@ -3516,7 +3511,7 @@ async function vistaInicio() {
     extraPanel = panel('panel-dona revelar', '¿En qué se fue?', null,
       partes.length ? dona(partes, 'Total') : vacio('No hay consumos con fecha de este mes.'));
   }
-  const fijosPanel = panelFijos(rf?.datos, mes, tablero ? Math.max(4, Math.min(10, Math.floor((innerHeight - 356) / 45))) : esHoy ? 7 : 10);
+  const fijosPanel = null;
   const personasPanel = panelPersonas(rp?.datos);
   const pila = personasPanel || extraPanel ? h('div', { class: 'col-pila' }, personasPanel, extraPanel) : null;
   if (fijosPanel || pila) raiz.append(h('div', { class: 'rejilla-2b' }, fijosPanel, pila));
@@ -6317,7 +6312,8 @@ async function vistaTarjetas() {
   // de las demás se ve la franja de arriba con el nombre y lo que falta pagar.
   const peso = (t) => (t.id === 'HORMIGA' || t.cuenta ? 0 : t.pendiente > 0 && t.proximoVence ? 2 : 1);
   const enPila = tarjetasVista(lista).sort((a, b) => peso(a) - peso(b) || String(b.proximoVence || '').localeCompare(String(a.proximoVence || '')));
-  const billetera = h('div', { class: 'billetera' }, enPila.map((t, i) => {
+  // v160: --n = cuántas tarjetas hay; el CSS achica la pila para que entre en el alto de la ventana.
+  const billetera = h('div', { class: 'billetera', style: `--n:${enPila.length}` }, enPila.map((t, i) => {
     const el = tarjetaVisual(t);
     el.style.setProperty('--i', String(i));
     const arriba = el.querySelector('.plastico-top');
