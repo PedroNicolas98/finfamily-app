@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v176';
+const VERSION_APP = 'finfamily-v177';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -1178,6 +1178,7 @@ function zonaSesion() {
       confirmarEnLinea(zona,
         enEspera ? `Hay ${enEspera} ${enEspera === 1 ? 'gasto' : 'gastos'} sin enviar; se enviarán cuando vuelvas a entrar con esta misma cuenta.` : '¿Cerrar sesión?',
         'Cerrar sesión', async () => {
+          try { localStorage.removeItem(BLOQUEO_CLAVE); } catch { /* nada */ }
           borrarCaches();
           api.cerrarSesion();
           estado.tsDatos = null;
@@ -2133,6 +2134,69 @@ function chipDiaFijo(f) {
 }
 
 // Inicio: fijos que vencen en 2 días o menos (o ya vencieron este mes) y siguen sin marcar.
+// v177: lo que se repite. Cobros de cada mes (suscripciones, internet o montos parecidos cada ~30 días) y lugares
+// donde más se vuelve (3 veces o más en los últimos 60 días), con lo que sumaría al año. Las cuotas y los pases a
+// personas (Yape a…, Plin a…) no cuentan.
+const CONCEPTOS_MENSUALES = ['suscripciones', 'internet y telefonia'];
+function seRepiten(tarjetas) {
+  const hoy = hoyISO();
+  const lista = consumosDe(tarjetas || [], () => true).filter((x) => x.fecha && x.fecha <= hoy && Number(x.monto) > 0
+    && !/cuota \d+\/\d+/i.test(x.descripcion || '') && !/^(yape|plin|lemon|transferencia)\b/.test(normalizar(x.descripcion || '')));
+  // La cadena manda ("Tambo" y "Tambo M-Bastidas" son lo mismo); con palabras genéricas se usan dos ("Plaza Vea").
+  const GENERICAS = ['plaza', 'mall', 'centro', 'tienda', 'super', 'mercado', 'botica', 'farmacia', 'restaurante', 'cafe', 'pollos', 'la', 'el', 'los', 'las', 'de', 'san', 'santa', 'taxi', 'banco', 'pago', 'compra'];
+  const clave = (x) => { const p = normalizar(limpiarComercio(x.descripcion) || x.descripcion || '').replace(/[^a-z0-9 ]/g, ' ').split(' ').filter(Boolean); return (p[0] && p[0].length >= 4 && !GENERICAS.includes(p[0]) ? p.slice(0, 1) : p.slice(0, 2)).join(' '); };
+  const grupos = new Map();
+  for (const x of lista) { const k = clave(x); if (!k) continue; if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(x); }
+  const primero = lista.map((x) => x.fecha).sort()[0];
+  const hace60 = iso(new Date(deISO(hoy).getFullYear(), deISO(hoy).getMonth(), deISO(hoy).getDate() - 59));
+  const inicio = primero && primero > hace60 ? primero : hace60;
+  const diasVentana = Math.max(14, Math.round((deISO(hoy) - deISO(inicio)) / 86400000) + 1);
+  const nombreDe = (v) => { const m = new Map(); v.forEach((x) => { const n = limpiarComercio(x.descripcion) || x.descripcion; m.set(n, (m.get(n) || 0) + 1); }); return [...m].sort((a, b) => b[1] - a[1])[0][0]; };
+  const mensuales = [], habitos = [];
+  for (const v of grupos.values()) {
+    v.sort((a, b) => a.fecha.localeCompare(b.fecha));
+    const ult = v[v.length - 1];
+    const meses = new Set(v.map((x) => x.fecha.slice(0, 7)));
+    const porConcepto = v.some((x) => CONCEPTOS_MENSUALES.includes(normalizar(x.concepto || '')));
+    const parecidos = v.length >= 2 && v.every((x) => Math.abs(x.monto - ult.monto) <= Math.max(2, ult.monto * 0.1));
+    const cadaMes = v.length >= 2 && v.slice(1).every((x, i) => { const d = (deISO(x.fecha) - deISO(v[i].fecha)) / 86400000; return d >= 24 && d <= 38; });
+    if (porConcepto || (meses.size >= 2 && parecidos && cadaMes)) {
+      mensuales.push({ nombre: nombreDe(v), concepto: ult.concepto, mensual: Number(ult.monto), anual: Math.round(ult.monto * 12 * 100) / 100, veces: v.length, seguro: meses.size >= 2 });
+      continue;
+    }
+    const recientes = v.filter((x) => x.fecha >= inicio);
+    if (recientes.length >= 3) {
+      const total = recientes.reduce((t, x) => t + Number(x.monto), 0);
+      habitos.push({ nombre: nombreDe(v), concepto: ult.concepto, veces: recientes.length, total: Math.round(total * 100) / 100, anual: Math.round((total / diasVentana) * 365) });
+    }
+  }
+  mensuales.sort((a, b) => b.anual - a.anual);
+  habitos.sort((a, b) => b.anual - a.anual);
+  return { mensuales, habitos, diasVentana };
+}
+function abrirSeRepiten(tarjetas) {
+  const r = seRepiten(tarjetas);
+  const v = ventanita('repite-dlg', 'Lo que se repite');
+  const fila = (concepto, nombre, sub, monto, montoSub) => h('li', {},
+    h('span', { class: 'cv-ico' }, catIco(concepto)),
+    h('span', { class: 'rep-texto' }, h('strong', {}, nombre), h('small', {}, sub)),
+    h('span', { class: 'rep-monto' }, h('strong', {}, monto), h('small', {}, montoSub)));
+  const totalAnual = r.mensuales.reduce((t, x) => t + x.anual, 0) + r.habitos.reduce((t, x) => t + x.anual, 0);
+  v.caja.append(
+    h('p', { class: 'cierre-etq' }, 'Lo que se repite'),
+    h('p', { class: 'rep-intro' }, totalAnual > 0 ? ['Plata que se va poquito a poco: ', h('strong', {}, `~${soles(totalAnual)} al año`), '. Mira si todo sigue valiendo la pena.'] : 'Todavía no hay gastos que se repitan.'),
+    h('p', { class: 'etq' }, 'Cobros de cada mes'),
+    r.mensuales.length ? h('ul', { class: 'rep-lista' }, r.mensuales.map((x) => fila(x.concepto, x.nombre,
+      x.seguro ? `Llega cada mes · ${x.veces} veces` : 'Parece de cada mes (falta otro mes para confirmarlo)', `${soles(x.mensual)} al mes`, `${soles(x.anual)} al año`)))
+      : h('p', { class: 'suave' }, 'Todavía no hay cobros que lleguen cada mes.'),
+    h('p', { class: 'etq' }, `Donde más vuelves · últimos ${r.diasVentana} días`),
+    r.habitos.length ? h('ul', { class: 'rep-lista' }, r.habitos.slice(0, 6).map((x) => fila(x.concepto, x.nombre,
+      `${x.veces} veces · ${soles(x.total)}`, `~${soles(x.anual)}`, 'al año a este ritmo')))
+      : h('p', { class: 'suave' }, 'Aún no hay lugares donde compres 3 veces o más.'),
+    h('div', { class: 'acciones modal-acciones' }, h('button', { type: 'button', class: 'boton primario', onclick: v.cerrar }, 'Entendido')));
+  v.abrir();
+}
+
 // v175: cómo vas en este mes de cobro (desde el último cobro): lo que llevas gastado en el día a día (tarjetas,
 // débito, Yape, Plin, Lemon y efectivo; los pagos fijos no son gastos anotados), a cuánto llegarías a este ritmo y
 // cuánto llevabas el mes anterior a la misma altura (mismo número de días desde el cobro), en total y por tipo.
@@ -3943,7 +4007,9 @@ async function vistaMovimientos() {
   const todos = consumosDe(r.datos.tarjetas || [], () => true)
     .sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')));
   const raiz = h('div', { class: 'pantalla movimientos' },
-    h('a', { class: 'volver', href: '#inicio' }, icono('atras'), 'Inicio'), h('header', { class: 'cabecera' }, h('h1', {}, 'Movimientos')));
+    h('a', { class: 'volver', href: '#inicio' }, icono('atras'), 'Inicio'),
+    h('header', { class: 'cabecera cabecera-con-accion' }, h('h1', {}, 'Movimientos'),
+      todos.length ? h('button', { type: 'button', class: 'boton chico boton-repite', onclick: () => abrirSeRepiten(r.datos.tarjetas) }, icono('recargar'), 'Lo que se repite') : null));
   if (!todos.length) { raiz.append(vacio('Todavía no hay gastos.')); return raiz; }
   const entrada = h('input', { type: 'search', id: 'buscar-mov', placeholder: 'Buscar gasto o fecha (ej. sábado 7)', 'aria-label': 'Buscar gasto o fecha', autocomplete: 'off' });
   const cuenta = h('span', { class: 'buscador-cuenta', 'aria-live': 'polite' });
@@ -5203,6 +5269,101 @@ if (typeof MutationObserver !== 'undefined') {
     .observe(document.documentElement, { childList: true, subtree: true });
 }
 
+// v177: bloqueo al abrir la app (huella, cara o PIN del equipo con WebAuthn; si el equipo no tiene, un PIN propio).
+// Todo queda en este equipo: no se envía nada a ningún servidor. Cerrar sesión también quita el bloqueo.
+const BLOQUEO_CLAVE = 'ff:bloqueo';
+const BLOQUEO_MINUTOS = 5;
+function bloqueoGuardado() { try { return JSON.parse(localStorage.getItem(BLOQUEO_CLAVE) || 'null'); } catch { return null; } }
+const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const deB64u = (t) => Uint8Array.from(atob(t.replace(/-/g, '+').replace(/_/g, '/')), (ch) => ch.charCodeAt(0));
+async function hayHuella() {
+  try { return !!window.PublicKeyCredential && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(); } catch { return false; }
+}
+async function hashPin(pin, sal) { return b64u(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${sal}:${pin}`))); }
+async function activarHuella() {
+  const cred = await navigator.credentials.create({ publicKey: {
+    challenge: crypto.getRandomValues(new Uint8Array(32)), rp: { name: 'FinFamily' },
+    user: { id: crypto.getRandomValues(new Uint8Array(16)), name: 'FinFamily', displayName: 'FinFamily' },
+    pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+    authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'discouraged' }, timeout: 60000 } });
+  localStorage.setItem(BLOQUEO_CLAVE, JSON.stringify({ tipo: 'huella', id: b64u(cred.rawId) }));
+}
+async function probarHuella(b) {
+  await navigator.credentials.get({ publicKey: { challenge: crypto.getRandomValues(new Uint8Array(32)),
+    allowCredentials: [{ type: 'public-key', id: deB64u(b.id) }], userVerification: 'required', timeout: 60000 } });
+}
+// Ventanita para elegir un PIN de 4 a 6 números (dos veces). Resuelve true si se guardó.
+function pedirPinNuevo() {
+  return new Promise((resolver) => {
+    const v = ventanita('pin-dlg', 'Elige un PIN');
+    const campoPin = (etq) => h('input', { type: 'password', inputmode: 'numeric', autocomplete: 'new-password', maxlength: '6', 'aria-label': etq, placeholder: '••••', class: 'pin-campo' });
+    const a = campoPin('PIN'), b = campoPin('Repite el PIN');
+    const msg = h('p', { class: 'mensaje error', hidden: true });
+    let listo = false;
+    const guardar = async () => {
+      const p1 = a.value.trim(), p2 = b.value.trim();
+      if (!/^\d{4,6}$/.test(p1)) { msg.textContent = 'El PIN debe tener de 4 a 6 números.'; msg.hidden = false; a.focus(); return; }
+      if (p1 !== p2) { msg.textContent = 'Los dos PIN no son iguales.'; msg.hidden = false; b.focus(); return; }
+      const sal = b64u(crypto.getRandomValues(new Uint8Array(12)));
+      localStorage.setItem(BLOQUEO_CLAVE, JSON.stringify({ tipo: 'pin', sal, hash: await hashPin(p1, sal) }));
+      listo = true; v.cerrar(); resolver(true);
+    };
+    [a, b].forEach((x) => x.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); guardar(); } }));
+    v.dlg.addEventListener('close', () => { if (!listo) resolver(false); });
+    v.caja.append(h('p', { class: 'cierre-etq' }, 'Elige un PIN'),
+      h('p', { class: 'suave' }, 'Este equipo no tiene huella ni Windows Hello: la app te pedirá este PIN al abrirla.'),
+      h('div', { class: 'pin-fila' }, a, b), msg,
+      h('div', { class: 'acciones modal-acciones' }, h('button', { type: 'button', class: 'boton primario', onclick: guardar }, 'Guardar PIN'),
+        h('button', { type: 'button', class: 'boton', onclick: v.cerrar }, 'Cancelar')));
+    v.abrir();
+    a.focus();
+  });
+}
+function mostrarBloqueo() {
+  const b = bloqueoGuardado();
+  if (!b || SOLO_GASTO || document.querySelector('.bloqueo') || !api.emailGuardado()) return;
+  document.body.classList.add('con-bloqueo');
+  const msg = h('p', { class: 'bloqueo-msg', 'aria-live': 'polite' });
+  const capa = h('div', { class: 'bloqueo', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'FinFamily está bloqueada' });
+  const abrir = () => { capa.classList.add('saliendo'); document.body.classList.remove('con-bloqueo'); setTimeout(() => capa.remove(), 260); };
+  const salir = h('button', { type: 'button', class: 'boton enlace bloqueo-salir', onclick: () => {
+    try { localStorage.removeItem(BLOQUEO_CLAVE); } catch { /* nada */ }
+    borrarCaches(); api.cerrarSesion(); estado.tsDatos = null; estado.cola = []; estado.filasEnEspera = new Set();
+    abrir(); mostrar(pantallaLogin('Sesión cerrada.')); construirNav(); pintarAvisos();
+  } }, '¿No puedes? Cerrar sesión y entrar con Google');
+  const cab = [h('span', { class: 'bloqueo-ico', 'aria-hidden': 'true' }, icono('candado')), h('h2', {}, 'FinFamily está bloqueada')];
+  if (b.tipo === 'huella') {
+    const boton = h('button', { type: 'button', class: 'boton primario bloqueo-boton', onclick: async () => {
+      msg.textContent = '';
+      try { await probarHuella(b); abrir(); } catch { msg.textContent = 'No se pudo. Toca el botón para intentar otra vez.'; }
+    } }, 'Desbloquear');
+    capa.append(...cab, h('p', { class: 'suave' }, 'Usa tu huella, tu cara o el PIN de tu equipo.'), boton, msg, salir);
+    document.body.append(capa);
+    setTimeout(() => { if (capa.isConnected && document.visibilityState === 'visible') boton.click(); }, 350);
+  } else {
+    const campo = h('input', { type: 'password', inputmode: 'numeric', autocomplete: 'off', maxlength: '6', class: 'pin-campo', 'aria-label': 'Tu PIN', placeholder: '••••' });
+    const probar = async () => {
+      if (!/^\d{4,6}$/.test(campo.value)) return;
+      if (await hashPin(campo.value, b.sal) === b.hash) { abrir(); return; }
+      if (campo.value.length >= 6 || campo.dataset.enter) { msg.textContent = 'PIN incorrecto.'; campo.value = ''; capa.classList.remove('tiembla'); void capa.offsetWidth; capa.classList.add('tiembla'); }
+    };
+    campo.addEventListener('input', () => { campo.dataset.enter = ''; probar(); });
+    campo.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { campo.dataset.enter = '1'; probar(); } });
+    capa.append(...cab, h('p', { class: 'suave' }, 'Escribe tu PIN.'), campo, msg, salir);
+    document.body.append(capa);
+    setTimeout(() => campo.focus(), 100);
+  }
+}
+function iniciarBloqueo() {
+  if (SOLO_GASTO) return;
+  mostrarBloqueo();
+  let oculta = 0;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') oculta = Date.now();
+    else if (oculta && Date.now() - oculta >= BLOQUEO_MINUTOS * 60000) mostrarBloqueo();
+  });
+}
+
 function interruptor(activo, etiqueta, alCambiar) {
   const b = h('button', { type: 'button', class: 'interruptor', role: 'switch', 'aria-checked': String(!!activo), 'aria-label': etiqueta }, h('i'));
   b.addEventListener('click', () => {
@@ -5501,6 +5662,19 @@ async function vistaConfiguracion(seccion) {
         try { localStorage.setItem('ff:ocultar', v ? '1' : ''); } catch { /* nada */ }
         alCambiarOcultos();
       })),
+    filaConfig('Bloquear la app', 'Al abrirla (y al volver después de 5 minutos) te pide tu huella, tu cara o el PIN de este equipo. La app solo para gastos no se bloquea.',
+      (() => {
+        const sw = interruptor(!!bloqueoGuardado(), 'Bloquear la app', async (v) => {
+          if (!v) { try { localStorage.removeItem(BLOQUEO_CLAVE); } catch { /* nada */ } avisar('Listo: la app ya no se bloquea.', 'ok'); return; }
+          let ok = false;
+          try {
+            if (await hayHuella()) { await activarHuella(); ok = true; } else ok = await pedirPinNuevo();
+          } catch { ok = false; }
+          if (!ok) { sw.setAttribute('aria-checked', 'false'); avisar('No se activó el bloqueo.', 'error'); return; }
+          avisar(bloqueoGuardado()?.tipo === 'pin' ? 'Listo: la app te pedirá tu PIN al abrirla.' : 'Listo: la app te pedirá tu huella al abrirla.', 'ok');
+        });
+        return sw;
+      })()),
     ));
 
   // Tipos de gasto y personas (motor 1.4: se administran desde aquí)
@@ -7571,6 +7745,7 @@ async function arrancar() {
   }, true);
   document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') cerrarMenusCuenta(); });
   try { if (localStorage.getItem('ff:ocultar')) document.body.classList.add('montos-ocultos'); } catch { /* nada */ }
+  iniciarBloqueo();
   // Atajos de teclado en computadora: N nuevo gasto, 1 Inicio, 2 Tarjetas, 3 Presupuesto, M movimientos, / buscar.
   document.addEventListener('keydown', (ev) => {
     if (ev.ctrlKey || ev.metaKey || ev.altKey || SOLO_GASTO || document.querySelector('dialog[open]')) return;

@@ -4850,3 +4850,37 @@ body .seccion-ahorros li.meta.aho { overflow: hidden; }
 .cv-comparo.sube strong { color: var(--mal); }
 .cv-comparo.baja { background: var(--ok-suave, rgba(18, 145, 111, 0.12)); }
 .cv-comparo.baja strong { color: var(--ok); }
+/* ---------- v177: Lo que se repite ---------- */
+.cabecera-con-accion { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.boton-repite { gap: 6px; }
+.boton-repite .icono, .boton-repite .icono svg { width: 15px; height: 15px; }
+.repite-dlg .cierre-caja { max-width: 520px; }
+.rep-intro { margin: 0; font-size: 0.92rem; color: var(--tinta-2); }
+.rep-intro strong { color: var(--tinta); }
+.rep-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.rep-lista li { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid color-mix(in srgb, var(--tinta) 8%, transparent); }
+.rep-lista li:first-child { border-top: 0; }
+.rep-texto, .rep-monto { display: grid; line-height: 1.25; min-width: 0; }
+.rep-texto strong { font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rep-texto small, .rep-monto small { font-size: 0.8rem; color: var(--tinta-3); }
+.rep-monto { text-align: right; }
+.rep-monto strong { font-size: 0.95rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* ---------- v177: pantalla de bloqueo ---------- */
+body.con-bloqueo { overflow: hidden; }
+.bloqueo { position: fixed; inset: 0; z-index: 10000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px; text-align: center;
+  background: radial-gradient(120% 80% at 50% 0%, color-mix(in srgb, var(--accion) 22%, var(--fondo)), var(--fondo) 70%); color: var(--tinta); animation: aparecer 200ms ease both; }
+.bloqueo.saliendo { opacity: 0; transition: opacity 240ms ease; }
+.bloqueo h2 { margin: 0; font-size: 1.35rem; }
+.bloqueo .suave { margin: 0; font-size: 0.95rem; }
+.bloqueo-ico { width: 64px; height: 64px; border-radius: 20px; display: grid; place-items: center; background: color-mix(in srgb, var(--accion) 18%, transparent); color: var(--accion); }
+.bloqueo-ico .icono, .bloqueo-ico .icono svg { width: 30px; height: 30px; }
+.bloqueo-boton { min-width: 220px; min-height: 48px; font-size: 1rem; }
+.bloqueo-msg { margin: 0; min-height: 1.2em; font-size: 0.9rem; color: var(--mal); }
+.bloqueo-salir { font-size: 0.85rem; margin-top: 8px; }
+.bloqueo.tiembla { animation: temblar-pin 380ms ease; }
+.pin-campo { width: 180px; min-height: 52px; text-align: center; font-size: 1.6rem; letter-spacing: 0.4em; border: 1px solid var(--borde-fuerte); border-radius: 14px; background: var(--sup); color: inherit; font-family: inherit; }
+.pin-campo:focus { outline: none; border-color: var(--accion); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accion) 22%, transparent); }
+.pin-fila { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+@keyframes temblar-pin { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
+/* v177: modo claro: la etiqueta verde "Al día" con un poco más de contraste */
+.pill.ok { color: color-mix(in srgb, var(--ok) 85%, var(--tinta)); }
