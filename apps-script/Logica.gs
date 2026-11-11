@@ -2224,11 +2224,15 @@ function datosTarjetasDesde(crudo, catalogo) {
     var red = (t.red === 'visa' || t.red === 'mastercard') ? t.red : '';
     var nombre = String(t.nombre || '').replace(/\s+/g, ' ').trim().slice(0, 26);
     salida[id] = { digitos: digitos, red: red, nombre: nombre };
+    if (DISENO_TARJETA_RE.test(String(t.diseno || ''))) salida[id].diseno = String(t.diseno);
   });
   return salida;
 }
 
-/** Revisa {id, digitos, red, nombre} de una tarjeta. Devuelve {tarjeta} o {error}. */
+/** Diseño del plástico (motor 1.20.1): 'propio' o el id de un diseño real del banco, p. ej. 'ibk-clasica'. */
+var DISENO_TARJETA_RE = /^(propio|[a-z]{2,8}(-[a-z]{2,12}){0,3})$/;
+
+/** Revisa {id, digitos, red, nombre, diseno?} de una tarjeta. Devuelve {tarjeta} o {error}. */
 function validarDatosTarjeta(datos, catalogo) {
   var d = datos || {};
   var ids = idsDeTarjetas_(catalogo);
@@ -2239,7 +2243,11 @@ function validarDatosTarjeta(datos, catalogo) {
   if (red && red !== 'visa' && red !== 'mastercard') return { error: 'La red debe ser visa o mastercard.' };
   var nombre = d.nombre === undefined || d.nombre === null ? '' : String(d.nombre).replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
   if (nombre.length > 26) return { error: 'El nombre de la tarjeta es muy largo (máximo 26 caracteres).' };
-  return { tarjeta: { id: d.id, digitos: digitos, red: red, nombre: nombre } };
+  var tarjeta = { id: d.id, digitos: digitos, red: red, nombre: nombre };
+  var diseno = d.diseno === undefined || d.diseno === null ? '' : String(d.diseno).trim().toLowerCase();
+  if (diseno && !DISENO_TARJETA_RE.test(diseno)) return { error: 'El diseño de la tarjeta no es válido.' };
+  if (diseno) tarjeta.diseno = diseno;
+  return { tarjeta: tarjeta };
 }
 
 // ---------------------------------------------------------------------------

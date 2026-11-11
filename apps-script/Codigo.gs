@@ -26,7 +26,7 @@
  *   FINFAMILY_ICONOS               ícono elegido para cada tipo de gasto (motor 1.5.1).
  */
 
-var VERSION = '1.20.0';
+var VERSION = '1.20.1';
 var ZONA_HORARIA = 'America/Lima';
 var DIAS_AVISO = 3;
 var SEGUNDOS_CACHE_TOKEN = 300;
@@ -2169,6 +2169,7 @@ function accionGuardarDatosTarjeta_(usuario, datos) {
   if (r.error) throw errorApp_('datos_invalidos', r.error);
   var todas = leerDatosTarjetas_();
   todas[r.tarjeta.id] = { digitos: r.tarjeta.digitos, red: r.tarjeta.red, nombre: r.tarjeta.nombre };
+  if (r.tarjeta.diseno) todas[r.tarjeta.id].diseno = r.tarjeta.diseno;
   PropertiesService.getScriptProperties().setProperty(PROPIEDAD_TARJETAS, JSON.stringify(todas));
   return { tarjetas: todas };
 }

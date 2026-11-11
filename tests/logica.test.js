@@ -1260,3 +1260,13 @@ test('1.9.3: con el ciclo, lo gastado del 1 al 29 de noviembre cuenta para el pr
   // Sin rango sigue contando por mes calendario.
   assert.equal(L.gastoRealDeLinea(linea, consumos, '2026-11', {}, ['Alacena']), 80);
 });
+
+test('validarDatosTarjeta y datosTarjetasDesde guardan el diseño del plástico (1.20.1)', () => {
+  assert.deepEqual(L.validarDatosTarjeta({ id: 'SIP', red: 'visa', diseno: 'sip-negra' }), { tarjeta: { id: 'SIP', digitos: '', red: 'visa', nombre: '', diseno: 'sip-negra' } });
+  assert.deepEqual(L.validarDatosTarjeta({ id: 'BCP', diseno: 'propio' }).tarjeta.diseno, 'propio');
+  assert.equal(L.validarDatosTarjeta({ id: 'BCP', diseno: '<script>' }).error, 'El diseño de la tarjeta no es válido.');
+  assert.equal('diseno' in L.validarDatosTarjeta({ id: 'BCP', diseno: '' }).tarjeta, false);
+  const d = L.datosTarjetasDesde(JSON.stringify({ IBK_P: { digitos: '1234', diseno: 'ibk-oro' }, BCP: { diseno: 'MAL DISEÑO' } }));
+  assert.equal(d.IBK_P.diseno, 'ibk-oro');
+  assert.equal('diseno' in d.BCP, false);
+});
