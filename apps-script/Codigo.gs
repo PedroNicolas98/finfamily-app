@@ -26,7 +26,7 @@
  *   FINFAMILY_ICONOS               ícono elegido para cada tipo de gasto (motor 1.5.1).
  */
 
-var VERSION = '1.23.0';
+var VERSION = '1.24.0';
 var ZONA_HORARIA = 'America/Lima';
 var DIAS_AVISO = 3;
 var SEGUNDOS_CACHE_TOKEN = 300;
@@ -55,6 +55,7 @@ var PROPIEDAD_WA_GREEN = 'FINFAMILY_WA_GREEN';         // motor 1.19.0: {apiUrl,
 var PROPIEDAD_WA_META = 'FINFAMILY_WA_META';           // motor 1.18.0: {token, phoneId, plantilla, idioma, version} (privado)
 var PROPIEDAD_CUADRES = 'FINFAMILY_CUADRES';           // motor 1.16.0: último cuadre de cada cuenta
 var PROPIEDAD_METAS = 'FINFAMILY_METAS';               // motor 1.15.0: objetivo y mes límite por línea de ahorro
+var PROPIEDAD_META_ANUAL = 'FINFAMILY_META_ANUAL';     // motor 1.24.0: meta de ahorro de cada año {'2027': 12000}
 var PROPIEDAD_FIJOS = 'FINFAMILY_FIJOS';               // motor 1.13.0: día y si se paga solo, por línea fija
 var PROPIEDAD_FIJOS_HECHOS = 'FINFAMILY_FIJOS_HECHOS'; // lo ya marcado o avisado, por línea y mes
 var PROPIEDAD_PAGOS_FIJOS = 'FINFAMILY_PAGOS_FIJOS';   // motor 1.23.0: pagos de servicios leídos del correo, por mes y línea
@@ -74,7 +75,7 @@ var ACCIONES = ['inicio', 'tarjetas', 'presupuesto', 'config', 'registrar', 'mar
   'agregarConcepto', 'renombrarConcepto', 'quitarConcepto',
   'usuarios', 'agregarUsuario', 'quitarUsuario',
   'lineasPresupuesto', 'agregarLinea', 'renombrarLinea', 'quitarLinea', 'asignarConceptos', 'editarLineaMeses',
-  'guardarIconoConcepto', 'bolsas', 'debitos', 'guardarDebito', 'pasarEfectivoADebito'];
+  'guardarIconoConcepto', 'bolsas', 'debitos', 'guardarDebito', 'pasarEfectivoADebito', 'metaAnual', 'guardarMetaAnual'];
 
 /** Tarjetas de débito de la casa (motor 1.21). */
 var PROPIEDAD_TARJETAS_DEBITO = 'FINFAMILY_TARJETAS_DEBITO';
@@ -161,6 +162,8 @@ function doPost(e) {
       case 'anotarCuenta': resultado = accionAnotarCuenta_(usuario, datos); break;
       case 'borrarCuenta': resultado = accionBorrarCuenta_(usuario, datos); break;
       case 'guardarMeta': resultado = accionGuardarMeta_(usuario, datos); break;
+      case 'metaAnual': resultado = { metas: metasAnualesDesde(propiedad_(PROPIEDAD_META_ANUAL)) }; break;
+      case 'guardarMetaAnual': resultado = accionGuardarMetaAnual_(usuario, datos); break;
       case 'cuadres': resultado = { cuadres: cuadresDesde(propiedad_(PROPIEDAD_CUADRES)) }; break;
       case 'guardarCuadre': resultado = accionGuardarCuadre_(usuario, datos); break;
       case 'debitos': resultado = { debitos: leerDebitos_() }; break;
@@ -2047,6 +2050,16 @@ function leerMetas_() { return metasDesde(propiedad_(PROPIEDAD_METAS)); }
 function guardarMetas_(config) { PropertiesService.getScriptProperties().setProperty(PROPIEDAD_METAS, JSON.stringify(config)); }
 
 /** {concepto, objetivo (0 = quitar), fecha 'YYYY-MM', mes?}. La línea debe ser un ahorro del presupuesto. */
+/** Motor 1.24.0: {anio, monto} guarda la meta de ahorro de ese año (0 la quita). Devuelve {metas}. */
+function accionGuardarMetaAnual_(usuario, datos) {
+  var v = validarMetaAnual(datos);
+  if (v.error) throw errorApp_('datos_invalidos', v.error);
+  var metas = metasAnualesDesde(propiedad_(PROPIEDAD_META_ANUAL));
+  if (v.monto === 0) delete metas[v.anio]; else metas[v.anio] = v.monto;
+  PropertiesService.getScriptProperties().setProperty(PROPIEDAD_META_ANUAL, JSON.stringify(metas));
+  return { metas: metas };
+}
+
 function accionGuardarMeta_(usuario, datos) {
   var concepto = String(datos.concepto || '').replace(/\s+/g, ' ').trim();
   if (!concepto || concepto.length > 80) throw errorApp_('datos_invalidos', 'Falta la línea de ahorro.');

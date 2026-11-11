@@ -382,13 +382,13 @@ test('version: informa 1.7.1 y la lista de acciones; inicio y config traen el ca
     new HojaFalsa('Configuración', [['Conceptos de Gasto', 'Responsable'], ['Limpieza', 'PersonaB']])]) });
   const r = m.llamar('version', {});
   assert.equal(r.ok, true);
-  assert.equal(r.datos.version, '1.23.0');
+  assert.equal(r.datos.version, '1.24.0');
   for (const a of ['desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'marcarPagado', 'inicio',
     'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos', 'datosTarjetas', 'guardarDatosTarjeta']) {
     assert.ok(r.datos.acciones.includes(a), 'falta la acción ' + a);
   }
-  assert.equal(m.llamar('inicio', {}).datos.version, '1.23.0');
-  assert.equal(m.llamar('config', {}).datos.version, '1.23.0');
+  assert.equal(m.llamar('inicio', {}).datos.version, '1.24.0');
+  assert.equal(m.llamar('config', {}).datos.version, '1.24.0');
 });
 
 test('la lista ACCIONES coincide con las acciones que atiende doPost', () => {
@@ -2049,7 +2049,7 @@ test('config: un ícono guardado para un concepto que ya no existe en Configurac
   assert.deepEqual(m.llamar('config', {}).datos.iconos, { Supermercado: 'carrito' });
   const danado = motorCompleto({ propiedades: { FINFAMILY_ICONOS: '{roto' } });
   assert.deepEqual(danado.llamar('config', {}).datos.iconos, {});
-  assert.equal(danado.llamar('version', {}).datos.version, '1.23.0');
+  assert.equal(danado.llamar('version', {}).datos.version, '1.24.0');
   assert.ok(danado.llamar('version', {}).datos.acciones.includes('guardarIconoConcepto'));
 });
 
@@ -2287,7 +2287,7 @@ test('gasto grande con tarjeta prestada: el correo dice quién gastó; versión 
   const m = motorCompleto();
   m.llamar('registrar', Object.assign({}, GASTO_PRESTADO, { monto: 450, descripcion: 'Saga Falabella' }));
   assert.equal(m.correos[0].subject, 'FinFamily: PersonaA registró S/ 450 en Saga Falabella (TC Interbank)');
-  assert.equal(m.llamar('version', {}).datos.version, '1.23.0');
+  assert.equal(m.llamar('version', {}).datos.version, '1.24.0');
 });
 
 // ===========================================================================
@@ -2567,7 +2567,7 @@ test('bolsas con un solo usuario (N = 1): todo el saldo de los meses anteriores 
 test('versión 1.7.0: la acción bolsas está en la lista y presupuesto no cambió', () => {
   const m = motorBolsas();
   const v = m.llamar('version', {}).datos;
-  assert.equal(v.version, '1.23.0');
+  assert.equal(v.version, '1.24.0');
   assert.ok(v.acciones.includes('bolsas'));
   const p = m.llamar('presupuesto', { mes: '2026-11' }).datos;
   assert.equal(p.totales.saldo, 985.57);
@@ -3603,4 +3603,24 @@ test('1.23.0: guardarFijoAuto con empresas solo cambia las empresas; el día las
   // Sin día no recuerda nada ni se marca solo por fecha.
   assert.equal(m.contexto.revisarFijos_('2026-11-30', true).motivo, 'nada para hoy');
   assert.equal(m.llamar('guardarFijoAuto', { concepto: 'Ahorro Casa', palabras: ['x y'] }).ok, false);
+});
+
+// ---------- 1.24.0: meta de ahorro del año ----------
+
+test('1.24.0: metaAnual y guardarMetaAnual guardan, cambian y quitan la meta de cada año', () => {
+  const m = motorCompleto();
+  assert.deepEqual(JSON.parse(JSON.stringify(m.llamar('metaAnual', {}).datos)), { metas: {} });
+  assert.deepEqual(JSON.parse(JSON.stringify(m.llamar('guardarMetaAnual', { anio: '2027', monto: '12,000' }).datos)), { metas: { 2027: 12000 } });
+  m.llamar('guardarMetaAnual', { anio: '2026', monto: 6500.5 });
+  assert.deepEqual(JSON.parse(m.propiedades.FINFAMILY_META_ANUAL), { 2026: 6500.5, 2027: 12000 });
+  assert.deepEqual(JSON.parse(JSON.stringify(m.llamar('guardarMetaAnual', { anio: '2026', monto: 0 }).datos)), { metas: { 2027: 12000 } });
+  const errores = [
+    [{ anio: '27', monto: 100 }, 'Elige el año de la meta.'],
+    [{ anio: '2027', monto: 'mucho' }, 'Escribe un monto válido.'],
+    [{ anio: '2027', monto: -5 }, 'Escribe un monto válido.'],
+    [{ anio: '2027', monto: 20000000 }, 'La meta es demasiado alta.']
+  ];
+  for (const [datos, error] of errores) assert.deepEqual(m.llamar('guardarMetaAnual', datos), { ok: false, codigo: 'datos_invalidos', error });
+  // Una propiedad dañada no rompe.
+  assert.deepEqual(JSON.parse(JSON.stringify(motorCompleto({ propiedades: { FINFAMILY_META_ANUAL: '{roto' } }).llamar('metaAnual', {}).datos)), { metas: {} });
 });

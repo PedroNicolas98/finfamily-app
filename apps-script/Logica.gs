@@ -2554,6 +2554,36 @@ function textoPagadoPorCorreo(fecha) {
   return 'Pagado el ' + fechaCorta_(fecha) + ' · automático (correo)';
 }
 
+// ---------------------------------------------------------------------------
+// Meta de ahorro del año (motor 1.24.0): cuánto quieren ahorrar en cada año, la misma para los dos.
+// ---------------------------------------------------------------------------
+
+var MAXIMO_META_ANUAL = 10000000;
+
+/** Metas guardadas (texto JSON o null) saneadas: {'2027': 12000}. */
+function metasAnualesDesde(texto) {
+  var g = null;
+  try { g = JSON.parse(texto || 'null'); } catch (err) { g = null; }
+  var salida = {};
+  if (!g || typeof g !== 'object') return salida;
+  Object.keys(g).forEach(function (anio) {
+    var v = Number(g[anio]);
+    if (/^20\d{2}$/.test(anio) && v > 0 && v <= MAXIMO_META_ANUAL) salida[anio] = Math.round(v * 100) / 100;
+  });
+  return salida;
+}
+
+/** Revisa {anio, monto} y devuelve {anio, monto} (monto 0 = quitar) o {error}. */
+function validarMetaAnual(datos) {
+  var d = datos || {};
+  var anio = String(d.anio || '');
+  if (!/^20\d{2}$/.test(anio)) return { error: 'Elige el año de la meta.' };
+  var monto = typeof d.monto === 'number' ? d.monto : parsearMonto(String(d.monto === undefined ? '' : d.monto));
+  if (monto === null || !isFinite(monto) || monto < 0) return { error: 'Escribe un monto válido.' };
+  if (monto > MAXIMO_META_ANUAL) return { error: 'La meta es demasiado alta.' };
+  return { anio: anio, monto: Math.round(monto * 100) / 100 };
+}
+
 /** Umbrales del presupuesto en que se avisa (porcentaje gastado). */
 var UMBRALES_PRESUPUESTO = [80, 100];
 
@@ -3054,6 +3084,8 @@ if (typeof module !== 'undefined') {
     datosTarjetasDesde: datosTarjetasDesde,
     validarDatosTarjeta: validarDatosTarjeta,
     textoGastoGrande: textoGastoGrande,
+    metasAnualesDesde: metasAnualesDesde,
+    validarMetaAnual: validarMetaAnual,
     palabrasValidas: palabrasValidas,
     palabrasDeFijo: palabrasDeFijo,
     pagoDeServicioDeCorreo: pagoDeServicioDeCorreo,
