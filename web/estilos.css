@@ -3906,3 +3906,13 @@ body .formulario.registro-uno .f-cierre .r-guardar .boton.grande { flex: 1; min-
 .antojos-dlg .antojos-chips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
 .antojos-dlg .antojos-chips .opcion { min-height: 34px; padding: 4px 8px; font-size: 0.78rem; }
 @media (max-width: 520px) { .antojos-dlg .antojos-chips { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ---------- v134: menú de Configuración en cuadrícula (entra sin scroll en computadora) ---------- */
+@media (min-width: 900px) {
+  body .config-menu { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; max-width: 1080px; }
+  body .config-menu .config-item { min-height: 76px; padding: 14px 16px; }
+  body .config-menu .config-item:hover { transform: translateY(-2px); }
+}
+@media (min-width: 1360px) {
+  body .config-menu { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 1320px; }
+}
