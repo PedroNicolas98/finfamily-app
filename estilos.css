@@ -4884,3 +4884,111 @@ body.con-bloqueo { overflow: hidden; }
 @keyframes temblar-pin { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
 /* v177: modo claro: la etiqueta verde "Al día" con un poco más de contraste */
 .pill.ok { color: color-mix(in srgb, var(--ok) 85%, var(--tinta)); }
+/* ---------- v178: Ajustar el presupuesto con lo real ---------- */
+.ajuste-dlg .cierre-caja { text-align: left; gap: 12px; }
+.aj-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.aj-fila { display: grid; grid-template-columns: 24px 30px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--radio-chico); background: var(--sup-2); border: 1.5px solid transparent; cursor: pointer; transition: border-color 200ms ease, background 200ms ease, opacity 200ms ease; animation: subir 480ms var(--suave) both; animation-delay: calc(80ms + var(--i, 0) * 60ms); }
+.aj-fila:not(.elegida) { opacity: 0.75; }
+.aj-fila:hover { opacity: 1; }
+.aj-fila.elegida { border-color: color-mix(in srgb, var(--accion) 55%, transparent); background: color-mix(in srgb, var(--accion) 7%, var(--sup-2)); }
+.aj-fila.hecha { opacity: 0.5; pointer-events: none; }
+.aj-fila .cat-ico { width: 30px; height: 30px; }
+.aj-marca { width: 24px; height: 24px; border-radius: 7px; border: 2px solid var(--borde-fuerte); background: var(--sup); display: grid; place-items: center; padding: 0; cursor: pointer; color: #FFFFFF; transition: background 180ms ease, border-color 180ms ease; }
+.aj-marca .icono, .aj-marca svg { width: 16px; height: 16px; }
+.aj-marca svg { stroke: currentColor; stroke-width: 3; fill: none; opacity: 0; transform: scale(0.4); transition: opacity 160ms ease, transform 280ms var(--suave); }
+.aj-marca[aria-checked="true"] { background: var(--accion); border-color: var(--accion); }
+.aj-marca[aria-checked="true"] svg { opacity: 1; transform: none; }
+.aj-texto { display: grid; min-width: 0; line-height: 1.3; }
+.aj-texto strong { font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aj-texto small { font-size: 0.875rem; color: var(--tinta-2); }
+.aj-montos { display: grid; justify-items: end; line-height: 1.25; font-variant-numeric: tabular-nums; }
+.aj-montos s { font-size: 0.875rem; color: var(--tinta-3); }
+.aj-montos strong { font-size: 1rem; white-space: nowrap; }
+.aj-fila.sube .aj-montos strong { color: var(--mal); }
+.aj-fila.baja .aj-montos strong { color: var(--ok); }
+.aj-pie { margin: 0; font-size: 0.95rem; color: var(--tinta-2); }
+.aj-pie strong { color: var(--tinta); font-variant-numeric: tabular-nums; }
+.aj-pie strong.aj-falta { color: var(--mal); }
+.hero-personal:has(.boton-ajuste) { flex-wrap: wrap; row-gap: 6px; }
+.hero-personal .boton-ajuste { margin: 0; }
+.boton-hero { display: inline-flex; align-items: center; gap: 7px; width: fit-content; padding: 5px 10px; border: 1px solid color-mix(in srgb, #FFFFFF 22%, transparent); border-radius: 99px; background: color-mix(in srgb, #FFFFFF 12%, transparent); color: inherit; font: inherit; font-size: 0.875rem; font-weight: 650; white-space: nowrap; cursor: pointer; transition: background 180ms ease, transform 180ms ease; }
+.boton-hero:hover { background: color-mix(in srgb, #FFFFFF 20%, transparent); transform: translateY(-1px); }
+.boton-hero .icono, .boton-hero svg { width: 16px; height: 16px; }
+.boton-ajuste { display: inline-flex; align-items: center; gap: 7px; width: fit-content; margin-top: 8px; padding: 5px 8px 5px 10px; border: 1px solid color-mix(in srgb, #FFFFFF 22%, transparent); border-radius: 99px; background: color-mix(in srgb, #FFFFFF 12%, transparent); color: inherit; font: inherit; font-size: 0.875rem; font-weight: 650; cursor: pointer; animation: subir 520ms var(--suave) 300ms both; transition: background 180ms ease, transform 180ms ease; }
+.boton-ajuste:hover { background: color-mix(in srgb, #FFFFFF 20%, transparent); transform: translateY(-1px); }
+.boton-ajuste .icono, .boton-ajuste svg { width: 16px; height: 16px; }
+.boton-ajuste .aj-cuenta { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 99px; background: var(--accion); color: #FFFFFF; font-size: 0.8rem; font-weight: 800; animation: latido-aj 1.2s ease-in-out 600ms 2; }
+@keyframes latido-aj { 0%, 100% { transform: none; } 50% { transform: scale(1.2); } }
+.cierre-mes .modal-acciones .boton .icono { margin-right: 6px; }
+
+/* ---------- v178: Cómo te fue en el año ---------- */
+.hoja-modal.anio-dlg { width: min(780px, calc(100vw - 24px)); }
+.anio-dlg .cierre-caja { text-align: left; gap: 14px; padding: 22px 22px 16px; }
+.anio-cab { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.anio-titulo { margin: 0; font-size: 1.2rem; color: var(--tinta); }
+.anio-flechas { display: flex; gap: 6px; }
+.anio-flecha:disabled { opacity: 0.35; cursor: default; }
+.anio-totales { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.anio-totales li { display: grid; gap: 4px; padding: 10px 12px; border-radius: var(--radio-chico); background: var(--sup-2); min-width: 0; animation: subir 520ms var(--suave) both; }
+.anio-totales li:nth-child(2) { animation-delay: 60ms; }
+.anio-totales li:nth-child(3) { animation-delay: 120ms; }
+.anio-totales li:nth-child(4) { animation-delay: 180ms; }
+.anio-tot-etq { display: flex; align-items: center; gap: 6px; font-size: 0.875rem; font-weight: 650; color: var(--tinta-2); }
+.anio-tot-etq .icono, .anio-tot-etq svg { width: 16px; height: 16px; }
+.anio-totales strong { font-size: 1.2rem; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.anio-totales li.sobra strong { color: var(--ok); }
+.anio-totales li.falta strong { color: var(--mal); }
+.anio-plano { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 6px; height: 220px; align-items: stretch; }
+.anio-col { display: flex; flex-direction: column; min-width: 0; height: 100%; padding: 0; border: 0; border-radius: 10px; background: none; color: inherit; font: inherit; transition: opacity 200ms ease, background 200ms ease; }
+button.anio-col { cursor: pointer; }
+button.anio-col:hover, .anio-col.elegida { background: color-mix(in srgb, var(--tinta) 5%, transparent); }
+.anio-plano:hover > button.anio-col:not(:hover) { opacity: 0.6; }
+.anio-zona { position: relative; flex: 1; min-height: 0; display: flex; align-items: flex-end; justify-content: center; border-bottom: 1px solid var(--borde); }
+.anio-pila { display: flex; flex-direction: column; gap: 2px; width: min(70%, 34px); height: var(--h); border-radius: 7px 7px 2px 2px; overflow: hidden; transform-origin: bottom; }
+.anio-pila i { display: block; min-height: 3px; }
+.anio-pila i.pf-sobra { background: linear-gradient(180deg, #57E3A3, #22B573); }
+.anio-pila i.pf-ahorro { background: linear-gradient(180deg, #7FB8FF, #4C8FE8); }
+.anio-pila i.pf-gasto { background: linear-gradient(180deg, #F2A93B, #D9822B); }
+.anio-col.nuevo .anio-pila { animation: anio-crece 760ms var(--suave) both; animation-delay: calc(var(--i, 0) * 50ms); }
+.anio-col.nuevo .anio-valor { animation: aparecer 400ms ease both; animation-delay: calc(300ms + var(--i, 0) * 50ms); }
+@keyframes anio-crece { from { transform: scaleY(0); } to { transform: none; } }
+.anio-col.plan .anio-pila { opacity: 0.4; }
+.anio-valor { position: absolute; left: 0; right: 0; bottom: calc(var(--h) + 4px); text-align: center; font-size: 0.8rem; font-weight: 750; color: var(--ok); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.anio-col.falta .anio-valor { color: var(--mal); }
+.anio-col.plan .anio-valor { color: var(--tinta-3); }
+.anio-tope { position: absolute; left: 12%; right: 12%; bottom: var(--tope); height: 0; border-top: 2px dashed var(--mal); }
+.anio-vacio { display: block; width: min(70%, 34px); height: 4px; border-radius: 99px; background: var(--sup-2); }
+.anio-col.cargando .anio-vacio { animation: pulso-anio 1.2s ease-in-out infinite; height: 30%; border-radius: 7px; }
+@keyframes pulso-anio { 50% { opacity: 0.45; } }
+.anio-col.fuera { opacity: 0.4; }
+.anio-mes { display: grid; justify-items: center; padding: 6px 0 4px; font-size: 0.875rem; font-weight: 650; color: var(--tinta-2); text-transform: capitalize; line-height: 1.15; }
+.anio-mes .am-corto { display: none; text-transform: uppercase; }
+.anio-mes em { font-style: normal; font-size: 0.8rem; font-weight: 800; color: var(--accion); text-transform: none; }
+.anio-col.elegida .anio-mes { color: var(--tinta); }
+.anio-leyenda { list-style: none; margin: -4px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.875rem; color: var(--tinta-2); }
+.anio-leyenda li { display: inline-flex; align-items: center; gap: 6px; }
+.anio-punto { display: inline-block; width: 12px; height: 12px; border-radius: 4px; }
+.anio-punto.anio-tope-ley { height: 0; border-top: 2px dashed var(--mal); border-radius: 0; width: 16px; }
+.anio-punto.anio-plan-ley { background: linear-gradient(90deg, #F2A93B, #D9822B); opacity: 0.4; }
+.anio-detalle { margin: 0; min-height: 2.6em; font-size: 0.95rem; color: var(--tinta-2); line-height: 1.35; }
+.anio-detalle strong { color: var(--tinta); }
+.anio-detalle .anio-sobra { color: var(--ok); }
+.anio-detalle .anio-falta { color: var(--mal); }
+.anio-pista { color: var(--tinta-3); }
+.mb-cab .boton-anio { margin-left: auto; }
+@media (max-width: 640px) {
+  .anio-dlg .cierre-caja { padding: 18px 14px 14px; }
+  .anio-totales { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .anio-plano { height: 180px; gap: 2px; }
+  .anio-valor { display: none; }
+  .anio-mes { font-size: 0.875rem; }
+  .anio-mes .am-largo { display: none; }
+  .anio-mes .am-corto { display: inline; }
+  .anio-pila { width: 70%; }
+  .anio-totales strong { font-size: 1.05rem; }
+  .aj-fila { grid-template-columns: 24px minmax(0, 1fr) auto; gap: 10px; }
+  .aj-fila .cat-ico { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .anio-col.nuevo .anio-pila, .anio-col.nuevo .anio-valor, .aj-fila, .boton-ajuste .aj-cuenta { animation: none; }
+}
