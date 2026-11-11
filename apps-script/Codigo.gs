@@ -26,7 +26,7 @@
  *   FINFAMILY_ICONOS               ícono elegido para cada tipo de gasto (motor 1.5.1).
  */
 
-var VERSION = '1.13.0';
+var VERSION = '1.14.0';
 var ZONA_HORARIA = 'America/Lima';
 var DIAS_AVISO = 3;
 var SEGUNDOS_CACHE_TOKEN = 300;
@@ -43,6 +43,7 @@ var PROPIEDAD_CALENDARIO = 'FINFAMILY_CALENDARIO';
 var PROPIEDAD_CATALOGO = 'FINFAMILY_CATALOGO';
 var PROPIEDAD_LINEAS = 'FINFAMILY_LINEAS';
 var PROPIEDAD_ICONOS = 'FINFAMILY_ICONOS';
+var PROPIEDAD_CUENTAS = 'FINFAMILY_CUENTAS';           // motor 1.14.0: préstamos y devoluciones entre ustedes
 var PROPIEDAD_FIJOS = 'FINFAMILY_FIJOS';               // motor 1.13.0: día y si se paga solo, por línea fija
 var PROPIEDAD_FIJOS_HECHOS = 'FINFAMILY_FIJOS_HECHOS'; // lo ya marcado o avisado, por línea y mes
 var FUNCION_AVISOS = 'avisosDeVencimiento';
@@ -54,7 +55,7 @@ var DIAS_CORREOS = 3; // cuántos días hacia atrás busca el lector
 
 /** Acciones que entiende este motor (la acción 'version' las devuelve). */
 var ACCIONES = ['inicio', 'tarjetas', 'presupuesto', 'config', 'registrar', 'marcarPagado', 'marcarFijo',
-  'editarGasto', 'borrarGasto', 'personas', 'desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'abrirSesion', 'cerrarSesion', 'reenvio', 'pasarACuotas', 'fijosAuto', 'guardarFijoAuto',
+  'editarGasto', 'borrarGasto', 'personas', 'desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'abrirSesion', 'cerrarSesion', 'reenvio', 'pasarACuotas', 'fijosAuto', 'guardarFijoAuto', 'cuentas', 'anotarCuenta', 'borrarCuenta',
   'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos',
   'datosTarjetas', 'guardarDatosTarjeta',
   'agregarTarjeta', 'editarTarjeta', 'quitarTarjeta', 'restaurarTarjeta',
@@ -138,6 +139,9 @@ function doPost(e) {
       case 'pasarACuotas': resultado = accionPasarACuotas_(usuario, datos); break;
       case 'fijosAuto': resultado = accionFijosAuto_(usuario, datos); break;
       case 'guardarFijoAuto': resultado = accionGuardarFijoAuto_(usuario, datos); break;
+      case 'cuentas': resultado = accionCuentas_(usuario, datos); break;
+      case 'anotarCuenta': resultado = accionAnotarCuenta_(usuario, datos); break;
+      case 'borrarCuenta': resultado = accionBorrarCuenta_(usuario, datos); break;
       case 'pendientes': resultado = accionPendientes_(usuario, datos); break;
       case 'confirmarPendiente': resultado = accionConfirmarPendiente_(usuario, datos); break;
       case 'descartarPendiente': resultado = accionDescartarPendiente_(usuario, datos); break;
@@ -1478,6 +1482,69 @@ function revisarFijos_(hoy, conCorreo) {
     try { salida.correo = enviarCorreoAUsuarios_(textoFijosDeHoy(paraCorreo), 'fijos').enviado; } catch (err) { salida.correo = false; }
   }
   return salida;
+}
+
+// ---------------------------------------------------------------------------
+// Cuentas entre ustedes (motor 1.14.0)
+// ---------------------------------------------------------------------------
+
+function nombresUsuarios_() {
+  var u = leerUsuarios_();
+  return Object.keys(u).map(function (k) { return u[k].nombre; }).filter(Boolean);
+}
+
+/** Lo guardado; la primera vez anota desde cuándo se cuentan los gastos (hoy). */
+function leerCuentas_() {
+  var c = cuentasDesde(propiedad_(PROPIEDAD_CUENTAS));
+  if (!c.desde) { c.desde = hoyServidor_(); guardarCuentas_(c); }
+  return c;
+}
+function guardarCuentas_(c) { PropertiesService.getScriptProperties().setProperty(PROPIEDAD_CUENTAS, JSON.stringify(c)); }
+
+function accionCuentas_(usuario) {
+  return cuentasEntre(leerTodosLosConsumos_(), leerCuentas_(), nombresUsuarios_(), leerCatalogo_());
+}
+
+/** {idCliente, de, a, monto, nota?, fecha?}: 'de' le dio plata a 'a' (préstamo, devolución o "Saldar"). */
+function accionAnotarCuenta_(usuario, datos) {
+  var id = validarIdCliente_(datos.idCliente);
+  var nombres = nombresUsuarios_();
+  var de = nombreDeLista(datos.de, nombres), a = nombreDeLista(datos.a, nombres);
+  if (!de || !a) throw errorApp_('datos_invalidos', 'Esa persona no está en la lista.');
+  if (de === a) throw errorApp_('datos_invalidos', 'Elige a dos personas distintas.');
+  var monto = typeof datos.monto === 'number' ? datos.monto : parsearMonto(String(datos.monto || ''));
+  if (monto === null || !isFinite(monto) || monto <= 0 || monto > 100000) throw errorApp_('datos_invalidos', 'El monto debe ser mayor a cero.');
+  var nota = textoLimpio_(datos.nota, 120, 'la nota', false);
+  var hoy = hoyServidor_();
+  var fecha = typeof datos.fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(datos.fecha) ? fechaISO(parsearFecha(datos.fecha)) : hoy;
+  if (!fecha || diasEntre_(hoy, fecha) > 1) throw errorApp_('datos_invalidos', 'La fecha no es válida.');
+  var candado = tomarCandado_();
+  try {
+    var c = leerCuentas_();
+    var ya = c.movimientos.some(function (m) { return m.id === id; });
+    if (!ya) {
+      c.movimientos.push({ id: id, fecha: fecha, de: de, a: a, monto: Math.round(monto * 100) / 100, nota: neutralizarTexto(nota), por: usuario.nombre });
+      guardarCuentas_(compactarCuentas(c));
+    }
+  } finally {
+    candado.releaseLock();
+  }
+  return accionCuentas_(usuario);
+}
+
+function accionBorrarCuenta_(usuario, datos) {
+  var id = String(datos.id || '');
+  if (!id || id.length > 64) throw errorApp_('datos_invalidos', 'Falta el movimiento.');
+  var candado = tomarCandado_();
+  try {
+    var c = leerCuentas_();
+    var antes = c.movimientos.length;
+    c.movimientos = c.movimientos.filter(function (m) { return m.id !== id; });
+    if (c.movimientos.length !== antes) guardarCuentas_(c);
+  } finally {
+    candado.releaseLock();
+  }
+  return accionCuentas_(usuario);
 }
 
 function sumarMesesClave_(clave, n) {

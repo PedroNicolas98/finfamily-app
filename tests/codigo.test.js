@@ -347,13 +347,13 @@ test('version: informa 1.7.1 y la lista de acciones; inicio y config traen el ca
     new HojaFalsa('Configuración', [['Conceptos de Gasto', 'Responsable'], ['Limpieza', 'PersonaB']])]) });
   const r = m.llamar('version', {});
   assert.equal(r.ok, true);
-  assert.equal(r.datos.version, '1.13.0');
+  assert.equal(r.datos.version, '1.14.0');
   for (const a of ['desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'marcarPagado', 'inicio',
     'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos', 'datosTarjetas', 'guardarDatosTarjeta']) {
     assert.ok(r.datos.acciones.includes(a), 'falta la acción ' + a);
   }
-  assert.equal(m.llamar('inicio', {}).datos.version, '1.13.0');
-  assert.equal(m.llamar('config', {}).datos.version, '1.13.0');
+  assert.equal(m.llamar('inicio', {}).datos.version, '1.14.0');
+  assert.equal(m.llamar('config', {}).datos.version, '1.14.0');
 });
 
 test('la lista ACCIONES coincide con las acciones que atiende doPost', () => {
@@ -1986,7 +1986,7 @@ test('config: un ícono guardado para un concepto que ya no existe en Configurac
   assert.deepEqual(m.llamar('config', {}).datos.iconos, { Supermercado: 'carrito' });
   const danado = motorCompleto({ propiedades: { FINFAMILY_ICONOS: '{roto' } });
   assert.deepEqual(danado.llamar('config', {}).datos.iconos, {});
-  assert.equal(danado.llamar('version', {}).datos.version, '1.13.0');
+  assert.equal(danado.llamar('version', {}).datos.version, '1.14.0');
   assert.ok(danado.llamar('version', {}).datos.acciones.includes('guardarIconoConcepto'));
 });
 
@@ -2224,7 +2224,7 @@ test('gasto grande con tarjeta prestada: el correo dice quién gastó; versión 
   const m = motorCompleto();
   m.llamar('registrar', Object.assign({}, GASTO_PRESTADO, { monto: 450, descripcion: 'Saga Falabella' }));
   assert.equal(m.correos[0].subject, 'FinFamily: PersonaA registró S/ 450 en Saga Falabella (TC Interbank)');
-  assert.equal(m.llamar('version', {}).datos.version, '1.13.0');
+  assert.equal(m.llamar('version', {}).datos.version, '1.14.0');
 });
 
 // ===========================================================================
@@ -2504,7 +2504,7 @@ test('bolsas con un solo usuario (N = 1): todo el saldo de los meses anteriores 
 test('versión 1.7.0: la acción bolsas está en la lista y presupuesto no cambió', () => {
   const m = motorBolsas();
   const v = m.llamar('version', {}).datos;
-  assert.equal(v.version, '1.13.0');
+  assert.equal(v.version, '1.14.0');
   assert.ok(v.acciones.includes('bolsas'));
   const p = m.llamar('presupuesto', { mes: '2026-11' }).datos;
   assert.equal(p.totales.saldo, 985.57);
@@ -3169,4 +3169,63 @@ test('1.13.0: fechaDelFijo y fijosVencidos', () => {
   assert.equal(L.fechaDelFijo(31, '2027-02'), '2027-02-28');
   const v = L.fijosVencidos({ luz: { concepto: 'Luz', dia: 30, auto: false }, agua: { concepto: 'Agua', dia: 2, auto: true } }, '2026-11-30');
   assert.deepEqual(JSON.parse(JSON.stringify(v)).map((x) => [x.concepto, x.fecha, x.mes]), [['Agua', '2026-11-02', '2026-10'], ['Luz', '2026-11-30', '2026-11']]);
+});
+
+
+// ---------- 1.14.0: cuentas entre ustedes ----------
+
+test('1.14.0: quien paga con lo suyo un gasto que sale del otro queda como acreedor; el fondo común no genera deudas', () => {
+  const m = motorCompleto({ hoy: '2026-11-10' });
+  const vacio = m.llamar('cuentas', {});
+  assert.equal(vacio.ok, true, JSON.stringify(vacio));
+  assert.equal(vacio.datos.desde, '2026-11-10');
+  assert.deepEqual(vacio.datos.saldos, []);
+  const base = { concepto: 'Ropa y Calzado', fecha: '2026-11-10' };
+  // PersonaA paga con su tarjeta (IBK_P) algo que sale de PersonaB: PersonaB le debe 120.
+  m.llamar('registrar', { ...base, idCliente: 'cuentas-0001', monto: 120, medio: 'TC_IBK', descripcion: 'Zapatillas', origen: 'P:PersonaB' });
+  // Lo suyo con lo suyo y el fondo común: nada.
+  m.llamar('registrar', { ...base, idCliente: 'cuentas-0002', monto: 40, medio: 'TC_IBK', descripcion: 'Polo', origen: 'P:PersonaA' });
+  m.llamar('registrar', { ...base, idCliente: 'cuentas-0003', monto: 300, medio: 'TC_IBK', descripcion: 'Mercado' });
+  const r = m.llamar('cuentas', {});
+  assert.deepEqual(r.datos.saldos, [{ deudor: 'PersonaB', acreedor: 'PersonaA', monto: 120 }]);
+  assert.deepEqual(r.datos.movimientos.map((x) => [x.tipo, x.paga, x.para, x.monto]), [['gasto', 'PersonaA', 'PersonaB', 120]]);
+  // PersonaB paga con su Yape (Gastos Hormiga: paga quien gastó) algo que sale de PersonaA: PersonaA le debe 20.
+  const yape = { tarjeta: 'HORMIGA', responsable: 'PersonaB', origen: 'P:PersonaA', fecha: '2026-11-10', monto: 20, descripcion: 'Taxi' };
+  const antes = { tarjeta: 'HORMIGA', responsable: 'PersonaB', origen: 'P:PersonaA', fecha: '2026-11-09', monto: 99, descripcion: 'Antes de empezar' };
+  const c = m.contexto.cuentasEntre([yape, antes, { tarjeta: 'IBK_P', responsable: 'PersonaA', origen: 'P:PersonaB', fecha: '2026-11-10', monto: 120 }],
+    { desde: '2026-11-10', movimientos: [] }, ['PersonaA', 'PersonaB'], m.contexto.CATALOGO_DEFECTO);
+  assert.deepEqual(JSON.parse(JSON.stringify(c.saldos)), [{ deudor: 'PersonaB', acreedor: 'PersonaA', monto: 100 }]);
+});
+
+test('1.14.0: préstamos y devoluciones a mano, saldar y borrar', () => {
+  const m = motorCompleto({ hoy: '2026-11-10' });
+  const p = m.llamar('anotarCuenta', { idCliente: 'cuentas-0101', de: 'PersonaA', a: 'personab', monto: 50, nota: 'Para el cine' });
+  assert.equal(p.ok, true, JSON.stringify(p));
+  assert.deepEqual(p.datos.saldos, [{ deudor: 'PersonaB', acreedor: 'PersonaA', monto: 50 }]);
+  assert.equal(p.datos.movimientos[0].texto, 'Para el cine');
+  assert.equal(p.datos.movimientos[0].por, 'PersonaA');
+  // Reintento: no duplica.
+  m.llamar('anotarCuenta', { idCliente: 'cuentas-0101', de: 'PersonaA', a: 'PersonaB', monto: 50 });
+  // Devuelve 20 y luego salda.
+  m.llamar('anotarCuenta', { idCliente: 'cuentas-0102', de: 'PersonaB', a: 'PersonaA', monto: 20 });
+  assert.equal(m.llamar('cuentas', {}).datos.saldos[0].monto, 30);
+  const s = m.llamar('anotarCuenta', { idCliente: 'cuentas-0103', de: 'PersonaB', a: 'PersonaA', monto: 30, nota: 'Saldado' });
+  assert.deepEqual(s.datos.saldos, [], 'quedan a mano');
+  // Borrar el saldado vuelve a dejar la deuda.
+  const b = m.llamar('borrarCuenta', { id: 'cuentas-0103' });
+  assert.equal(b.datos.saldos[0].monto, 30);
+  assert.equal(m.llamar('anotarCuenta', { idCliente: 'cuentas-0104', de: 'PersonaA', a: 'PersonaA', monto: 5 }).ok, false);
+  assert.equal(m.llamar('anotarCuenta', { idCliente: 'cuentas-0105', de: 'PersonaA', a: 'Nadie', monto: 5 }).ok, false);
+});
+
+test('1.14.0: compactarCuentas junta lo viejo en "Saldo anterior" sin cambiar el saldo', () => {
+  const m = crearMotor({});
+  const L = m.contexto;
+  const movs = Array.from({ length: 320 }, (_, i) => ({ id: 'm' + i, fecha: `2026-${String(1 + Math.floor(i / 40)).padStart(2, '0')}-10`,
+    de: i % 3 ? 'PersonaA' : 'PersonaB', a: i % 3 ? 'PersonaB' : 'PersonaA', monto: 10, nota: '', por: '' }));
+  const antes = L.cuentasEntre([], { desde: '2026-01-01', movimientos: movs }, ['PersonaA', 'PersonaB'], []);
+  const c = L.compactarCuentas({ desde: '2026-01-01', movimientos: movs });
+  assert.ok(c.movimientos.length < 300);
+  const despues = L.cuentasEntre([], c, ['PersonaA', 'PersonaB'], []);
+  assert.deepEqual(JSON.parse(JSON.stringify(despues.saldos)), JSON.parse(JSON.stringify(antes.saldos)));
 });

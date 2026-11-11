@@ -1949,6 +1949,173 @@ function avisoFijos() {
   return sitio;
 }
 
+// ---------------------------------------------------------------------------
+// Cuentas entre ustedes (v126, motor 1.14): quién le debe a quién. Cuenta sola cuando uno paga con lo suyo un
+// gasto que "sale de" el otro, y se pueden anotar préstamos y devoluciones a mano. El fondo común no cuenta.
+// ---------------------------------------------------------------------------
+function motorCuentas() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 14); }
+const mismoNombre = (x, y) => normalizar(nombreCorto(x)) === normalizar(nombreCorto(y));
+
+// Ventanita base (se cierra con Esc o tocando afuera). Devuelve {dlg, caja, cerrar}.
+function ventanita(clase, etiqueta) {
+  const dlg = h('dialog', { class: `hoja-modal ${clase}`, 'aria-label': etiqueta });
+  const caja = h('div', { class: 'cierre-caja' });
+  let cerrado = false;
+  const cerrar = () => {
+    if (cerrado) return; cerrado = true;
+    dlg.classList.add('cerrando');
+    setTimeout(() => { if (dlg.open) dlg.close(); dlg.remove(); }, sinMovimiento() ? 0 : 190);
+  };
+  dlg.addEventListener('cancel', (ev) => { ev.preventDefault(); cerrar(); });
+  dlg.addEventListener('click', (ev) => { if (ev.target === dlg) cerrar(); });
+  dlg.append(caja);
+  const abrir = () => { document.body.append(dlg); dlg.showModal(); animarVista(dlg); };
+  return { dlg, caja, cerrar, abrir };
+}
+
+async function enviarCuenta(datos, alTerminar) {
+  const r = await llamarApi('anotarCuenta', { idCliente: uuid(), ...datos }, { email: emailSesion() });
+  guardarCache('cuentas', r);
+  alTerminar?.(r);
+  return r;
+}
+
+// "Anotar": quién le dio plata a quién, cuánto y para qué.
+function abrirAnotarCuenta(alTerminar) {
+  const yo = usuarioActual()?.nombre || '';
+  const otros = responsables().filter((n) => !mismoNombre(n, yo));
+  if (!yo || !otros.length) return;
+  let otro = otros[0];
+  let yoDi = true;
+  const v = ventanita('cuenta-dlg', 'Anotar entre ustedes');
+  const inMonto = h('input', { type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: '0', 'aria-label': 'Monto' });
+  const inNota = h('input', { type: 'text', maxlength: '120', autocomplete: 'off', placeholder: '¿Para qué? (opcional)', 'aria-label': 'Nota' });
+  const msg = h('p', { class: 'mensaje error', hidden: true });
+  const dir = h('div', { class: 'cuenta-dir', role: 'group', 'aria-label': 'Quién le dio a quién' });
+  const quienes = otros.length > 1 ? h('div', { class: 'opciones cuenta-otro' }) : null;
+  const btn = h('button', { type: 'button', class: 'boton primario' }, 'Guardar');
+  const pintar = () => {
+    dir.replaceChildren(
+      h('button', { type: 'button', class: 'opcion', 'aria-pressed': String(yoDi), onclick: () => { yoDi = true; pintar(); } },
+        avatar(yo, 'mini'), h('span', { class: 'opcion-texto' }, `Yo le di a ${nombreCorto(otro)}`)),
+      h('button', { type: 'button', class: 'opcion', 'aria-pressed': String(!yoDi), onclick: () => { yoDi = false; pintar(); } },
+        avatar(otro, 'mini'), h('span', { class: 'opcion-texto' }, `${nombreCorto(otro)} me dio`)));
+    quienes?.replaceChildren(...otros.map((n) => h('button', { type: 'button', class: 'opcion chica', 'aria-pressed': String(n === otro), onclick: () => { otro = n; pintar(); } }, nombreCorto(n))));
+  };
+  btn.onclick = async () => {
+    const monto = leerMonto(inMonto.value);
+    if (!monto) { inMonto.focus(); msg.textContent = 'Escribe cuánto fue.'; msg.hidden = false; return; }
+    msg.hidden = true;
+    ocuparBoton(btn, 'Guardando…');
+    try {
+      await enviarCuenta({ de: yoDi ? yo : otro, a: yoDi ? otro : yo, monto, nota: inNota.value.trim() }, alTerminar);
+      avisar('Anotado', 'ok');
+      v.cerrar();
+    } catch (e) {
+      liberarBoton(btn, 'Guardar');
+      msg.textContent = mensajeError(e, 'No se pudo anotar. Intenta de nuevo.'); msg.hidden = false;
+    }
+  };
+  [inMonto, inNota].forEach((x) => x.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); btn.click(); } }));
+  v.caja.append(...[
+    h('p', { class: 'cierre-etq' }, 'Anotar entre ustedes'),
+    quienes, dir,
+    h('label', { class: 'cuenta-monto' }, h('span', {}, 'S/'), inMonto),
+    h('div', { class: 'campo' }, inNota),
+    msg,
+    h('div', { class: 'acciones modal-acciones' }, btn, h('button', { type: 'button', class: 'boton', onclick: v.cerrar }, 'Cancelar'))].filter(Boolean));
+  pintar();
+  v.abrir();
+  inMonto.focus();
+}
+
+// "Saldar": el que debe le paga todo al otro.
+function abrirSaldar(s, alTerminar) {
+  const yo = usuarioActual()?.nombre || '';
+  const v = ventanita('cuenta-dlg', 'Saldar');
+  const btn = h('button', { type: 'button', class: 'boton primario' }, 'Sí, quedamos a mano');
+  btn.onclick = async () => {
+    ocuparBoton(btn, 'Guardando…');
+    try {
+      await enviarCuenta({ de: s.deudor, a: s.acreedor, monto: s.monto, nota: 'Saldado' }, alTerminar);
+      avisar('¡A mano!', 'ok');
+      v.cerrar();
+    } catch (e) {
+      liberarBoton(btn, 'Sí, quedamos a mano');
+      avisar(mensajeError(e, 'No se pudo saldar.'), 'error');
+    }
+  };
+  const quien = mismoNombre(s.deudor, yo) ? `¿Le pagaste ${soles(s.monto)} a ${nombreCorto(s.acreedor)}?`
+    : mismoNombre(s.acreedor, yo) ? `¿${nombreCorto(s.deudor)} te pagó ${soles(s.monto)}?`
+      : `¿${nombreCorto(s.deudor)} le pagó ${soles(s.monto)} a ${nombreCorto(s.acreedor)}?`;
+  v.caja.append(
+    h('div', { class: 'cuenta-pareja' }, avatar(s.deudor, 'grande'), h('span', { class: 'cuenta-flecha' }, icono('adelante')), avatar(s.acreedor, 'grande')),
+    h('p', { class: 'cierre-etq' }, quien),
+    h('p', { class: 'suave' }, 'Se anota como pago y la cuenta queda en cero.'),
+    h('div', { class: 'acciones modal-acciones' }, btn, h('button', { type: 'button', class: 'boton', onclick: v.cerrar }, 'Cancelar')));
+  v.abrir();
+}
+
+function filaMovCuenta(m, conBorrar, alBorrar) {
+  const yo = usuarioActual()?.nombre || '';
+  const pagaYo = mismoNombre(m.paga, yo), paraYo = mismoNombre(m.para, yo);
+  const quien = m.tipo === 'gasto'
+    ? (pagaYo ? `Pagaste por ${nombreCorto(m.para)}` : paraYo ? `${nombreCorto(m.paga)} pagó por ti` : `${nombreCorto(m.paga)} pagó por ${nombreCorto(m.para)}`)
+    : (pagaYo ? `Le diste a ${nombreCorto(m.para)}` : paraYo ? `${nombreCorto(m.paga)} te dio` : `${nombreCorto(m.paga)} le dio a ${nombreCorto(m.para)}`);
+  return h('li', { class: 'cuenta-mov' },
+    h('span', { class: 'cuenta-mov-ico' }, icono(m.tipo === 'gasto' ? 'tarjetas' : 'billetera')),
+    h('span', { class: 'cuenta-mov-texto' }, h('strong', {}, limpiarComercio(m.texto || '') || m.texto), h('small', { class: 'suave' }, `${quien} · ${fechaCorta(m.fecha)}`)),
+    h('strong', { class: 'cuenta-mov-monto' }, soles(m.monto)),
+    conBorrar && m.tipo === 'mano' ? h('button', { type: 'button', class: 'boton icono-solo', 'aria-label': 'Borrar', title: 'Borrar', onclick: async (ev) => {
+      const b = ev.currentTarget; b.disabled = true;
+      try { const r = await llamarApi('borrarCuenta', { id: m.id }, { email: emailSesion() }); guardarCache('cuentas', r); alBorrar?.(r); avisar('Borrado', 'ok'); }
+      catch (e) { b.disabled = false; avisar(mensajeError(e, 'No se pudo borrar.'), 'error'); }
+    } }, icono('papelera')) : null);
+}
+
+function abrirMovimientosCuenta(datos, alCambiar) {
+  const v = ventanita('cuenta-dlg cuenta-lista-dlg', 'Movimientos entre ustedes');
+  const lista = h('ul', { class: 'cuenta-movs' });
+  const pintar = (d) => lista.replaceChildren(...(d.movimientos || []).map((m) => filaMovCuenta(m, true, (r) => { pintar(r); alCambiar?.(r); })));
+  pintar(datos);
+  v.caja.append(
+    h('p', { class: 'cierre-etq' }, 'Movimientos entre ustedes'),
+    h('p', { class: 'suave' }, `Desde el ${fechaCorta(datos.desde)}. Los anotados a mano se pueden borrar.`),
+    (datos.movimientos || []).length ? lista : h('p', { class: 'suave' }, 'Todavía no hay movimientos.'),
+    h('div', { class: 'acciones modal-acciones' }, h('button', { type: 'button', class: 'boton primario', onclick: v.cerrar }, 'Listo')));
+  v.abrir();
+}
+
+function panelCuentas() {
+  const cuerpo = h('div', { class: 'cuentas-cuerpo' }, h('p', { class: 'suave' }, 'Cargando…'));
+  const caja = panel('panel-cuentas revelar', 'Cuentas entre ustedes', null, cuerpo);
+  const pintar = (d) => {
+    if (!d) return;
+    const yo = usuarioActual()?.nombre || '';
+    const s = (d.saldos || [])[0];
+    const titulo = !s ? 'Están a mano'
+      : mismoNombre(s.deudor, yo) ? `Le debes a ${nombreCorto(s.acreedor)}`
+        : mismoNombre(s.acreedor, yo) ? `${nombreCorto(s.deudor)} te debe`
+          : `${nombreCorto(s.deudor)} le debe a ${nombreCorto(s.acreedor)}`;
+    const recargar = (r) => pintar(r);
+    cuerpo.replaceChildren(...[
+      h('div', { class: 'cuentas-estado' + (s ? '' : ' a-mano') },
+        s ? h('div', { class: 'cuenta-pareja' }, avatar(s.deudor), h('span', { class: 'cuenta-flecha' }, icono('adelante')), avatar(s.acreedor))
+          : h('span', { class: 'cuentas-ok' }, icono('check')),
+        h('div', { class: 'cuentas-texto' }, h('span', { class: 'suave' }, titulo),
+          s ? h('strong', { class: 'cuentas-monto', 'data-contar': String(s.monto) }, soles(s.monto)) : h('strong', {}, 'S/ 0'))),
+      (d.saldos || []).length > 1 ? h('ul', { class: 'cuentas-otros' }, d.saldos.slice(1).map((x) => h('li', { class: 'suave' }, `${nombreCorto(x.deudor)} → ${nombreCorto(x.acreedor)}: ${soles(x.monto)}`))) : null,
+      h('div', { class: 'cuentas-acciones' },
+        h('button', { type: 'button', class: 'boton chico', onclick: () => abrirAnotarCuenta(recargar) }, icono('mas'), 'Anotar'),
+        s ? h('button', { type: 'button', class: 'boton chico primario', onclick: () => abrirSaldar(s, recargar) }, icono('check'), 'Saldar') : null),
+      (d.movimientos || []).length ? h('ul', { class: 'cuenta-movs' }, d.movimientos.slice(0, 3).map((m) => filaMovCuenta(m, false))) : null,
+      (d.movimientos || []).length > 0 ? h('button', { type: 'button', class: 'panel-enlace boton enlace', onclick: () => abrirMovimientosCuenta(d, recargar) }, 'Ver todo', icono('adelante')) : null].filter(Boolean));
+    animarVista(cuerpo);
+  };
+  cargarRapido('cuentas', {}, 'cuentas').then((r) => pintar(r?.datos)).catch(() => { cuerpo.replaceChildren(h('p', { class: 'suave' }, 'No se pudo cargar.')); });
+  return caja;
+}
+
 function actualizarCacheFijo(mes, f) {
   const c = leerCache('presupuesto:' + mes);
   const linea = c?.datos?.filas?.find((x) => x.fila === f.fila);
@@ -2519,6 +2686,7 @@ async function vistaInicio() {
   const personasPanel = panelPersonas(rp?.datos);
   const pila = personasPanel || extraPanel ? h('div', { class: 'col-pila' }, personasPanel, extraPanel) : null;
   if (fijosPanel || pila) raiz.append(h('div', { class: 'rejilla-2b' }, fijosPanel, pila));
+  if (esHoy && motorCuentas() && emailSesion() && responsables().length > 1) raiz.append(panelCuentas());
 
   if (esHoy && rt?.datos?.tarjetas) {
     const todas = rt.datos.tarjetas;

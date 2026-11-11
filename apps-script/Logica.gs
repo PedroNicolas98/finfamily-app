@@ -642,6 +642,113 @@ function leerConsumos(valores2D, hoja, catalogo) {
   return salida;
 }
 
+// ---------------------------------------------------------------------------
+// Cuentas entre ustedes (motor 1.14.0). Regla: cuando alguien le da plata a otro (le presta, le devuelve, o
+// paga con SU tarjeta o SU Yape un gasto que "sale de" la otra persona), esa otra persona le debe ese monto.
+// El fondo común no genera deudas.
+// ---------------------------------------------------------------------------
+
+var MAXIMO_MOVIMIENTOS_CUENTAS = 300;
+
+/** Nombre completo de la lista que corresponde a 'nombre' (igual o mismo primer nombre), o ''. */
+function nombreDeLista(nombre, nombres) {
+  var n = normalizar(nombre);
+  if (!n) return '';
+  var lista = nombres || [];
+  for (var i = 0; i < lista.length; i++) if (normalizar(lista[i]) === n) return lista[i];
+  for (var j = 0; j < lista.length; j++) if (normalizar(lista[j]).split(' ')[0] === n.split(' ')[0]) return lista[j];
+  return '';
+}
+
+/** Quién puso la plata: en tarjetas, su titular (si el catálogo lo tiene); si no, quien hizo el gasto. */
+function pagadorDe(consumo, catalogo, nombres) {
+  if (consumo.tarjeta && consumo.tarjeta !== 'HORMIGA') {
+    var t = buscarTarjetaCatalogo(catalogo || CATALOGO_DEFECTO, consumo.tarjeta);
+    var titular = t && t.titular ? nombreDeLista(t.titular, nombres) : '';
+    if (titular) return titular;
+  }
+  return nombreDeLista(consumo.responsable, nombres);
+}
+
+/** Lo guardado, saneado: {desde, movimientos: [{id, fecha, de, a, monto, nota, por}]}. */
+function cuentasDesde(texto) {
+  var obj = {};
+  try { obj = typeof texto === 'string' ? JSON.parse(texto || '{}') : (texto || {}); } catch (err) { obj = {}; }
+  var desde = /^\d{4}-\d{2}-\d{2}$/.test(String(obj.desde || '')) ? obj.desde : '';
+  var movimientos = (Array.isArray(obj.movimientos) ? obj.movimientos : []).filter(function (m) {
+    return m && m.id && m.de && m.a && Number(m.monto) > 0 && /^\d{4}-\d{2}-\d{2}$/.test(String(m.fecha || ''));
+  }).map(function (m) {
+    return { id: String(m.id).slice(0, 64), fecha: m.fecha, de: String(m.de), a: String(m.a), monto: Math.round(Number(m.monto) * 100) / 100,
+      nota: String(m.nota || '').slice(0, 120), por: String(m.por || '') };
+  });
+  return { desde: desde, movimientos: movimientos };
+}
+
+/**
+ * Junta los movimientos más viejos en un "Saldo anterior" por pareja cuando pasan del máximo,
+ * así la lista no crece sin fin y el saldo no cambia.
+ */
+function compactarCuentas(cuentas) {
+  var movs = cuentas.movimientos.slice().sort(function (x, y) { return x.fecha < y.fecha ? -1 : x.fecha > y.fecha ? 1 : 0; });
+  if (movs.length <= MAXIMO_MOVIMIENTOS_CUENTAS) return cuentas;
+  var cuantos = movs.length - MAXIMO_MOVIMIENTOS_CUENTAS + 50;
+  var viejos = movs.slice(0, cuantos), resto = movs.slice(cuantos);
+  var neto = {}, fecha = viejos[viejos.length - 1].fecha;
+  viejos.forEach(function (m) {
+    var k = [m.de, m.a].sort().join('|');
+    var signo = m.de < m.a ? 1 : -1; // positivo: el primero (en orden) le dio plata al segundo
+    neto[k] = (neto[k] || 0) + signo * Math.round(m.monto * 100);
+  });
+  var resumen = [];
+  Object.keys(neto).forEach(function (k) {
+    if (!neto[k]) return;
+    var p = k.split('|');
+    resumen.push({ id: 'saldo-' + fecha + '-' + resumen.length, fecha: fecha, de: neto[k] > 0 ? p[0] : p[1], a: neto[k] > 0 ? p[1] : p[0],
+      monto: Math.abs(neto[k]) / 100, nota: 'Saldo anterior', por: '' });
+  });
+  return { desde: cuentas.desde, movimientos: resumen.concat(resto) };
+}
+
+/**
+ * Saldos entre las personas y los últimos movimientos que los explican.
+ * Devuelve {desde, saldos: [{deudor, acreedor, monto}], movimientos: [{tipo, id?, fecha, paga, para, monto, texto}]}.
+ */
+function cuentasEntre(consumos, cuentas, nombres, catalogo) {
+  var desde = cuentas.desde || '';
+  var deuda = {}; // deuda[deudor|acreedor] = centavos
+  var items = [];
+  var sumar = function (deudor, acreedor, monto) {
+    var k = deudor + '|' + acreedor;
+    deuda[k] = (deuda[k] || 0) + Math.round(Number(monto) * 100);
+  };
+  (consumos || []).forEach(function (c) {
+    if (!c.fecha || (desde && c.fecha < desde)) return;
+    var o = partesOrigen(c.origen);
+    if (o.tipo !== 'P') return; // fondo común y ahorros: sin deudas
+    var para = nombreDeLista(o.nombre, nombres);
+    var paga = pagadorDe(c, catalogo, nombres);
+    if (!para || !paga || para === paga) return;
+    sumar(para, paga, c.monto);
+    items.push({ tipo: 'gasto', fecha: c.fecha, paga: paga, para: para, monto: c.monto, texto: c.descripcion || c.concepto || 'Gasto' });
+  });
+  (cuentas.movimientos || []).forEach(function (m) {
+    var de = nombreDeLista(m.de, nombres), a = nombreDeLista(m.a, nombres);
+    if (!de || !a || de === a) return;
+    sumar(a, de, m.monto);
+    items.push({ tipo: 'mano', id: m.id, fecha: m.fecha, paga: de, para: a, monto: m.monto, texto: m.nota || 'Préstamo', por: m.por });
+  });
+  var saldos = [];
+  for (var i = 0; i < nombres.length; i++) {
+    for (var j = i + 1; j < nombres.length; j++) {
+      var x = (deuda[nombres[i] + '|' + nombres[j]] || 0) - (deuda[nombres[j] + '|' + nombres[i]] || 0);
+      if (x > 0) saldos.push({ deudor: nombres[i], acreedor: nombres[j], monto: x / 100 });
+      else if (x < 0) saldos.push({ deudor: nombres[j], acreedor: nombres[i], monto: -x / 100 });
+    }
+  }
+  items.sort(function (x, y) { return x.fecha < y.fecha ? 1 : x.fecha > y.fecha ? -1 : 0; });
+  return { desde: desde, saldos: saldos, movimientos: items.slice(0, 40) };
+}
+
 function estaPagado_(estado) {
   return normalizar(estado) === 'pagado';
 }
