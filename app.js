@@ -2133,35 +2133,6 @@ function abrirMovimientosCuenta(datos, alCambiar) {
   v.abrir();
 }
 
-function panelCuentas() {
-  const cuerpo = h('div', { class: 'cuentas-cuerpo' }, h('p', { class: 'suave' }, 'Cargando…'));
-  const caja = panel('panel-cuentas revelar', 'Cuentas entre ustedes', null, cuerpo);
-  const pintar = (d) => {
-    if (!d) return;
-    const yo = usuarioActual()?.nombre || '';
-    const s = (d.saldos || [])[0];
-    const titulo = !s ? 'Están a mano'
-      : mismoNombre(s.deudor, yo) ? `Le debes a ${nombreCorto(s.acreedor)}`
-        : mismoNombre(s.acreedor, yo) ? `${nombreCorto(s.deudor)} te debe`
-          : `${nombreCorto(s.deudor)} le debe a ${nombreCorto(s.acreedor)}`;
-    const recargar = (r) => pintar(r);
-    cuerpo.replaceChildren(...[
-      h('div', { class: 'cuentas-estado' + (s ? '' : ' a-mano') },
-        s ? h('div', { class: 'cuenta-pareja' }, avatar(s.deudor), h('span', { class: 'cuenta-flecha' }, icono('adelante')), avatar(s.acreedor))
-          : h('span', { class: 'cuentas-ok' }, icono('check')),
-        h('div', { class: 'cuentas-texto' }, h('span', { class: 'suave' }, titulo),
-          s ? h('strong', { class: 'cuentas-monto', 'data-contar': String(s.monto) }, soles(s.monto)) : h('strong', {}, 'S/ 0'))),
-      (d.saldos || []).length > 1 ? h('ul', { class: 'cuentas-otros' }, d.saldos.slice(1).map((x) => h('li', { class: 'suave' }, `${nombreCorto(x.deudor)} → ${nombreCorto(x.acreedor)}: ${soles(x.monto)}`))) : null,
-      h('div', { class: 'cuentas-acciones' },
-        h('button', { type: 'button', class: 'boton chico', onclick: () => abrirAnotarCuenta(recargar) }, icono('mas'), 'Anotar'),
-        s ? h('button', { type: 'button', class: 'boton chico primario', onclick: () => abrirSaldar(s, recargar) }, icono('check'), 'Saldar') : null),
-      (d.movimientos || []).length ? h('ul', { class: 'cuenta-movs' }, d.movimientos.slice(0, 3).map((m) => filaMovCuenta(m, false))) : null,
-      (d.movimientos || []).length > 0 ? h('button', { type: 'button', class: 'panel-enlace boton enlace', onclick: () => abrirMovimientosCuenta(d, recargar) }, 'Ver todo', icono('adelante')) : null].filter(Boolean));
-    animarVista(cuerpo);
-  };
-  cargarRapido('cuentas', {}, 'cuentas').then((r) => pintar(r?.datos)).catch(() => { cuerpo.replaceChildren(h('p', { class: 'suave' }, 'No se pudo cargar.')); });
-  return caja;
-}
 
 // ---------------------------------------------------------------------------
 // Metas de ahorro con fecha (v127, motor 1.15): objetivo y mes límite por ahorro; cuánto falta, cuánto apartar
@@ -2679,36 +2650,92 @@ function abrirAntojos(d, alGuardar) {
   v.abrir();
 }
 
-function panelAntojos() {
-  const caja = h('section', { class: 'panel panel-antojos revelar' });
+// Inicio: "Entre ustedes" y "Antojos" como dos tiras compactas lado a lado (v139), en vez de dos paneles casi vacíos.
+// SVG armado aquí con números, nunca con datos de afuera.
+function svgFijo(texto) { const s = document.createElement('span'); s.className = 'anillo-svg'; s.innerHTML = texto; return s; }
+function anilloTira(pct, nivel) {
+  const C = 2 * Math.PI * 17;
+  return h('span', { class: `tira-ico tira-anillo ${nivel}` },
+    svgFijo(`<svg viewBox="0 0 44 44" aria-hidden="true"><circle class="anillo-fondo" cx="22" cy="22" r="17"/><circle class="anillo-valor" cx="22" cy="22" r="17" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${C.toFixed(1)}" data-offset="${(C * (1 - Math.min(100, pct) / 100)).toFixed(1)}"/></svg>`),
+    h('b', {}, `${Math.min(999, Math.round(pct))}%`));
+}
+function tira(clase) {
+  const principal = h('button', { type: 'button', class: 'tira-principal' });
+  const accion = h('span', { class: 'tira-accion' });
+  const caja = h('div', { class: `tira ${clase}` }, principal, accion);
+  caja.pintar = ({ ico, etiqueta, valor, contar, sub, alTocar, boton, titulo }) => {
+    principal.replaceChildren(ico, h('span', { class: 'tira-texto' },
+      h('small', {}, etiqueta),
+      h('strong', contar != null ? { 'data-contar': String(contar) } : {}, contar != null ? soles(0) : valor),
+      sub ? h('span', {}, sub) : null));
+    principal.onclick = alTocar;
+    principal.title = titulo || '';
+    accion.replaceChildren(...[boton || icono('adelante')].filter(Boolean));
+    caja.classList.add('tira-lista');
+    animarVista(caja);
+  };
+  return caja;
+}
+function tiraCuentas() {
+  const t = tira('tira-cuentas');
   const pintar = (d) => {
-    if (!d) { caja.remove(); return; }
+    if (!d) { t.remove(); return; }
     const recargar = (r) => pintar(r);
+    const yo = usuarioActual()?.nombre || '';
+    const s = (d.saldos || [])[0];
+    const quien = !s ? '' : mismoNombre(s.deudor, yo) ? `Le debes a ${nombreCorto(s.acreedor)}`
+      : mismoNombre(s.acreedor, yo) ? `${nombreCorto(s.deudor)} te debe` : `${nombreCorto(s.deudor)} le debe a ${nombreCorto(s.acreedor)}`;
+    const movs = (d.movimientos || []).length;
+    t.classList.toggle('a-mano', !s);
+    t.pintar({
+      ico: s ? h('span', { class: 'tira-ico pareja' }, avatar(s.deudor, 'mini'), avatar(s.acreedor, 'mini')) : h('span', { class: 'tira-ico ok' }, icono('check')),
+      etiqueta: 'Entre ustedes',
+      valor: 'A mano', contar: s ? s.monto : null,
+      sub: s ? quien : movs ? `${movs} movimiento${movs === 1 ? '' : 's'} anotado${movs === 1 ? '' : 's'}` : 'Nadie le debe a nadie',
+      titulo: movs ? 'Ver lo anotado entre ustedes' : 'Anotar algo entre ustedes',
+      alTocar: () => (movs ? abrirMovimientosCuenta(d, recargar) : abrirAnotarCuenta(recargar)),
+      boton: s ? h('button', { type: 'button', class: 'boton chico primario', onclick: () => abrirSaldar(s, recargar) }, icono('check'), 'Saldar')
+        : h('button', { type: 'button', class: 'tira-mas', title: 'Anotar', 'aria-label': 'Anotar entre ustedes', onclick: () => abrirAnotarCuenta(recargar) }, icono('mas')),
+    });
+  };
+  cargarRapido('cuentas', {}, 'cuentas').then((r) => pintar(r?.datos)).catch(() => t.remove());
+  return t;
+}
+function tiraAntojos() {
+  const t = tira('tira-antojos');
+  const pintar = (d) => {
+    if (!d || (!d.configurado && !(d.promedioSemanal > 0))) { t.remove(); return; }
+    const recargar = (r) => pintar(r);
+    const que = (d.conceptos || []).slice(0, 3).map((x) => x.split(' ')[0].toLowerCase()).join(', ');
     if (!d.configurado) {
-      if (!(d.promedioSemanal > 0)) { caja.remove(); return; }
       const sugerido = Math.max(10, Math.round((d.promedioSemanal * 0.8) / 10) * 10);
-      caja.replaceChildren(
-        h('div', { class: 'panel-cab' }, tituloSeccion('Antojos'), null),
-        h('p', { class: 'antojos-invita' }, `Gastan unos ${soles(d.promedioSemanal)} por semana en ${d.conceptos.slice(0, 3).map((x) => x.split(' ')[0].toLowerCase()).join(', ')}.`),
-        h('div', { class: 'cuentas-acciones' },
-          h('button', { type: 'button', class: 'boton chico primario', onclick: () => abrirAntojos(d, recargar) }, icono('meta'), `Ponerle tope (${soles(sugerido)})`)));
+      t.pintar({
+        ico: h('span', { class: 'tira-ico antojo' }, icono('meta')),
+        etiqueta: 'Antojos por semana', contar: d.promedioSemanal,
+        sub: que ? `En ${que}` : 'Promedio de las últimas semanas',
+        titulo: 'Ponerle un tope a los antojos', alTocar: () => abrirAntojos(d, recargar),
+        boton: h('button', { type: 'button', class: 'boton chico primario', onclick: () => abrirAntojos(d, recargar) }, `Tope ${soles(sugerido)}`),
+      });
       return;
     }
     const pct = d.tope > 0 ? (d.semana.gastado / d.tope) * 100 : 0;
     const nivel = pct >= 100 ? 'mal' : pct >= 80 ? 'aviso' : 'ok';
-    caja.replaceChildren(
-      h('div', { class: 'panel-cab' }, tituloSeccion('Antojos de la semana'),
-        h('button', { type: 'button', class: 'boton chico enlace', onclick: () => abrirAntojos(d, recargar) }, 'Ajustar')),
-      h('div', { class: 'antojos-cifras' },
-        h('strong', { 'data-contar': String(d.semana.gastado) }, soles(0)),
-        h('span', { class: 'suave' }, ` de ${soles(d.tope)}`),
-        h('span', { class: `meta-estado ${nivel}` }, pct >= 100 ? `Se pasaron ${soles(d.semana.gastado - d.tope)}` : `Quedan ${soles(d.tope - d.semana.gastado)} · ${d.semana.diasQuedan} día${d.semana.diasQuedan === 1 ? '' : 's'}`)),
-      h('div', { class: 'gp-barra antojos-barra ' + nivel }, h('i', { 'data-w': `${Math.min(100, Math.round(pct))}%` })),
-      (d.semana.porConcepto || []).length ? h('p', { class: 'suave antojos-detalle' }, d.semana.porConcepto.map((x) => `${x.concepto}: ${soles(x.monto)}`).join(' · ')) : null);
-    animarVista(caja);
+    t.pintar({
+      ico: anilloTira(pct, nivel),
+      etiqueta: 'Antojos de la semana', contar: d.semana.gastado,
+      sub: pct >= 100 ? `Se pasaron ${soles(d.semana.gastado - d.tope)} del tope` : `de ${soles(d.tope)} · quedan ${d.semana.diasQuedan} día${d.semana.diasQuedan === 1 ? '' : 's'}`,
+      titulo: (d.semana.porConcepto || []).map((x) => `${x.concepto}: ${soles(x.monto)}`).join(' · ') || 'Ajustar el tope',
+      alTocar: () => abrirAntojos(d, recargar),
+    });
   };
-  cargarRapido('antojos', {}, 'antojos').then((r) => pintar(r?.datos)).catch(() => caja.remove());
-  return caja;
+  cargarRapido('antojos', {}, 'antojos').then((r) => pintar(r?.datos)).catch(() => t.remove());
+  return t;
+}
+function tirasInicio(conCuentas, conAntojos) {
+  const fila = h('div', { class: 'tiras-inicio revelar' }, conCuentas ? tiraCuentas() : null, conAntojos ? tiraAntojos() : null);
+  // Si una tira se quita (sin datos), la otra ocupa todo; si no queda ninguna, la fila desaparece.
+  new MutationObserver(() => { if (!fila.children.length) fila.remove(); fila.classList.toggle('una', fila.children.length === 1); }).observe(fila, { childList: true });
+  return fila;
 }
 
 // ---- Anotar gastos por WhatsApp (en la fila de WhatsApp de Ajustes) ----
@@ -3322,8 +3349,9 @@ async function vistaInicio() {
   const personasPanel = panelPersonas(rp?.datos);
   const pila = personasPanel || extraPanel ? h('div', { class: 'col-pila' }, personasPanel, extraPanel) : null;
   if (fijosPanel || pila) raiz.append(h('div', { class: 'rejilla-2b' }, fijosPanel, pila));
-  if (esHoy && motorCuentas() && emailSesion() && responsables().length > 1) raiz.append(panelCuentas());
-  if (esHoy && motorV120() && emailSesion()) raiz.append(panelAntojos());
+  const conCuentas = esHoy && motorCuentas() && emailSesion() && responsables().length > 1;
+  const conAntojos = esHoy && motorV120() && emailSesion();
+  if (conCuentas || conAntojos) raiz.append(tirasInicio(conCuentas, conAntojos));
 
   if (esHoy && rt?.datos?.tarjetas) {
     const todas = rt.datos.tarjetas;
