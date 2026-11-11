@@ -4283,3 +4283,11 @@ body .config-presupuesto .pres-admin { display: grid; grid-template-columns: min
   body .config-presupuesto .pres-admin { row-gap: 12px; }
   body .config-presupuesto .pa-tcs { padding: 6px 10px; }
 }
+/* v151: el espacio para la barra de selección solo cuando la barra está a la vista (antes daba scroll vacío) */
+@media (min-width: 900px) {
+  body .con-barra { padding-bottom: 16px; }
+  body .con-barra:has(> .barra-seleccion:not([hidden])) { padding-bottom: 110px; }
+  body:has(.pantalla.detalle) { padding-bottom: 8px; }
+}
+/* v151: "Marcar todo pagado" sin recuadro alrededor (era un recuadro dentro de otro) */
+body .grupo-cabecera .derecha .acciones { background: none; border: 0; box-shadow: none; padding: 0; border-radius: 0; -webkit-backdrop-filter: none; backdrop-filter: none; }
