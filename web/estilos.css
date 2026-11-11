@@ -4291,3 +4291,28 @@ body .config-presupuesto .pres-admin { display: grid; grid-template-columns: min
 }
 /* v151: "Marcar todo pagado" sin recuadro alrededor (era un recuadro dentro de otro) */
 body .grupo-cabecera .derecha .acciones { background: none; border: 0; box-shadow: none; padding: 0; border-radius: 0; -webkit-backdrop-filter: none; backdrop-filter: none; }
+/* ---------- Nuevo gasto en computadora (v152): teclado grande a la izquierda y todo hasta el borde de abajo ---------- */
+@media (min-width: 1024px) {
+  body:not(.solo-gasto) .registrar .formulario.registro-uno { align-items: stretch; min-height: calc(100dvh - 118px); }
+  body:not(.solo-gasto) .registrar .formulario.registro-uno > .r-izq,
+  body:not(.solo-gasto) .registrar .formulario.registro-uno > .r-der { align-self: stretch; display: flex; flex-direction: column; min-height: 0; }
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .r-izq > .monto-caja { flex: 1; display: flex; flex-direction: column; flex-wrap: nowrap; align-items: stretch; justify-content: flex-start; gap: 14px; padding: 18px 20px; }
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .monto-caja .teclado,
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .monto-caja.plegado .teclado {
+    display: grid; flex: 1; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: minmax(48px, 1fr); gap: 10px;
+    max-height: none; opacity: 1; margin: 0; pointer-events: auto; flex-basis: auto;
+  }
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .tecla { min-height: 48px; height: auto; font-size: 1.5rem; border-radius: 16px; }
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .tecla:hover { background: rgba(255, 255, 255, 0.22); transform: translateY(-1px); }
+  /* Derecha: los tipos de gasto crecen para llenar el alto */
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .r-der { gap: 12px; }
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .r-der > .f-conceptos { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .r-der .opciones.chicas { flex: 1; grid-auto-rows: minmax(44px, 1fr); }
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .r-der .opcion.chica { min-height: 44px; font-size: 0.86rem; }
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .r-der .opcion.medio,
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .r-der .opcion.origen { min-height: 44px; }
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .r-der .boton.grande { min-height: 54px; font-size: 1.05rem; }
+}
+@media (min-width: 1024px) {
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .r-izq > .monto-caja > .campo-monto-caja { flex: none; }
+}
