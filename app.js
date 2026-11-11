@@ -4580,6 +4580,7 @@ function armarMenuConfig(raiz, rejilla, seccion) {
   const [, titulo] = MENU_CONFIG.find(([id]) => id === seccion);
   cab.replaceChildren(h('a', { class: 'volver', href: '#configuracion' }, icono('atras'), 'Configuración'), h('h1', {}, titulo));
   rejilla.classList.add('una');
+  rejilla.dataset.seccion = seccion;
   paneles.forEach((p, i) => {
     const ver = p.dataset.seccion === seccion;
     p.hidden = !ver;
