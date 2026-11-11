@@ -1,0 +1,38 @@
+<!doctype html>
+<!-- App aparte, solo para registrar gastos. Usa el mismo código que la app completa (app.js) en modo "gasto". -->
+<html lang="es-PE" data-app="gasto">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Gasto rápido</title>
+  <meta name="description" content="Registra un gasto de la casa en segundos.">
+  <meta name="theme-color" content="#F2F4F8">
+  <script>
+    // Aplica el modo y el color elegidos antes de pintar, para que no parpadee.
+    try {
+      document.documentElement.dataset.modo = (localStorage.getItem('ff:modo') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'oscuro' : 'claro')) === 'oscuro' ? 'oscuro' : 'claro';
+      document.documentElement.dataset.color = localStorage.getItem('ff:color') || 'marino';
+    } catch (e) { document.documentElement.dataset.modo = 'claro'; }
+  </script>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Gasto">
+  <link rel="manifest" href="gasto.webmanifest">
+  <link rel="icon" href="iconos/gasto.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="iconos/gasto-fondo-192.png">
+  <link rel="preload" href="fuentes/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="estilos.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body class="solo-gasto">
+  <div id="avisos" class="avisos"></div>
+  <main id="vista" class="vista" tabindex="-1">
+    <div class="pantalla arranque" aria-busy="true" aria-label="Abriendo FinFamily">
+      <svg class="logo-marca vivo" viewBox="11 13 98 98" aria-hidden="true"><defs><linearGradient id="lm-degradado" gradientUnits="userSpaceOnUse" x1="14" y1="16" x2="106" y2="108"><stop offset="0" class="lm-g1"/><stop offset="1" class="lm-g2"/></linearGradient></defs><path class="lm-t lm-casa" pathLength="100" d="M98 74v26H22V58l38-34 26 23"/><path class="lm-t lm-flecha" pathLength="100" d="M42 82l14-14 12 10 30-32"/><path class="lm-t lm-punta" pathLength="100" d="M84 46h14v14"/><path class="lm-t lm-pulso" pathLength="100" d="M42 82l14-14 12 10 30-32"/></svg>
+      <i class="arranque-barra" aria-hidden="true"><b></b></i>
+    </div>
+  </main>
+  <nav id="nav" class="barra-nav" aria-label="Secciones"></nav>
+  <noscript><p class="pantalla">Esta app necesita JavaScript activado.</p></noscript>
+</body>
+</html>
