@@ -26,7 +26,7 @@
  *   FINFAMILY_ICONOS               ícono elegido para cada tipo de gasto (motor 1.5.1).
  */
 
-var VERSION = '1.18.1';
+var VERSION = '1.19.0';
 var ZONA_HORARIA = 'America/Lima';
 var DIAS_AVISO = 3;
 var SEGUNDOS_CACHE_TOKEN = 300;
@@ -45,6 +45,7 @@ var PROPIEDAD_LINEAS = 'FINFAMILY_LINEAS';
 var PROPIEDAD_ICONOS = 'FINFAMILY_ICONOS';
 var PROPIEDAD_CUENTAS = 'FINFAMILY_CUENTAS';           // motor 1.14.0: préstamos y devoluciones entre ustedes
 var PROPIEDAD_WHATSAPP = 'FINFAMILY_WHATSAPP';         // motor 1.17.0: {correo: {telefono, apikey, desde}} (privado)
+var PROPIEDAD_WA_GREEN = 'FINFAMILY_WA_GREEN';         // motor 1.19.0: {apiUrl, idInstance, token} de Green API (privado)
 var PROPIEDAD_WA_META = 'FINFAMILY_WA_META';           // motor 1.18.0: {token, phoneId, plantilla, idioma, version} (privado)
 var PROPIEDAD_CUADRES = 'FINFAMILY_CUADRES';           // motor 1.16.0: último cuadre de cada cuenta
 var PROPIEDAD_METAS = 'FINFAMILY_METAS';               // motor 1.15.0: objetivo y mes límite por línea de ahorro
@@ -59,7 +60,7 @@ var DIAS_CORREOS = 3; // cuántos días hacia atrás busca el lector
 
 /** Acciones que entiende este motor (la acción 'version' las devuelve). */
 var ACCIONES = ['inicio', 'tarjetas', 'presupuesto', 'config', 'registrar', 'marcarPagado', 'marcarFijo',
-  'editarGasto', 'borrarGasto', 'personas', 'desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'abrirSesion', 'cerrarSesion', 'reenvio', 'pasarACuotas', 'fijosAuto', 'guardarFijoAuto', 'cuentas', 'anotarCuenta', 'borrarCuenta', 'guardarMeta', 'cuadres', 'guardarCuadre', 'whatsapp', 'guardarWhatsapp', 'probarWhatsapp', 'guardarWhatsappMeta',
+  'editarGasto', 'borrarGasto', 'personas', 'desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'abrirSesion', 'cerrarSesion', 'reenvio', 'pasarACuotas', 'fijosAuto', 'guardarFijoAuto', 'cuentas', 'anotarCuenta', 'borrarCuenta', 'guardarMeta', 'cuadres', 'guardarCuadre', 'whatsapp', 'guardarWhatsapp', 'probarWhatsapp', 'guardarWhatsappMeta', 'guardarWhatsappGreen',
   'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos',
   'datosTarjetas', 'guardarDatosTarjeta',
   'agregarTarjeta', 'editarTarjeta', 'quitarTarjeta', 'restaurarTarjeta',
@@ -153,6 +154,7 @@ function doPost(e) {
       case 'guardarWhatsapp': resultado = accionGuardarWhatsapp_(usuario, datos); break;
       case 'probarWhatsapp': resultado = accionProbarWhatsapp_(usuario); break;
       case 'guardarWhatsappMeta': resultado = accionGuardarWhatsappMeta_(usuario, datos); break;
+      case 'guardarWhatsappGreen': resultado = accionGuardarWhatsappGreen_(usuario, datos); break;
       case 'pendientes': resultado = accionPendientes_(usuario, datos); break;
       case 'confirmarPendiente': resultado = accionConfirmarPendiente_(usuario, datos); break;
       case 'descartarPendiente': resultado = accionDescartarPendiente_(usuario, datos); break;
@@ -1955,9 +1957,75 @@ function leerWhatsapp_() {
 function estadoWhatsapp_(usuario) {
   var w = leerWhatsapp_()[usuario.email];
   var meta = leerWaMeta_();
-  var salida = w && w.telefono ? { conectado: true, telefono: telefonoOculto(w.telefono), desde: w.desde || '', via: w.via === 'meta' ? 'meta' : 'callmebot' } : { conectado: false };
+  var salida = w && w.telefono ? { conectado: true, telefono: telefonoOculto(w.telefono), desde: w.desde || '', via: w.via === 'meta' || w.via === 'green' ? w.via : 'callmebot' } : { conectado: false };
   salida.meta = meta ? { configurado: true, plantilla: meta.plantilla } : { configurado: false };
+  var green = leerWaGreen_();
+  salida.green = green ? { configurado: true, numero: green.numero ? telefonoOculto(green.numero) : '' } : { configurado: false };
   return salida;
+}
+
+// ---------------------------------------------------------------------------
+// WhatsApp con Green API (motor 1.19.0): un WhatsApp vinculado por QR (como WhatsApp Web) manda los avisos.
+// Plan Developer gratis: hasta 3 chats.
+// ---------------------------------------------------------------------------
+
+var URL_GREEN_DEFECTO = 'https://api.greenapi.com';
+
+function leerWaGreen_() {
+  try {
+    var g = JSON.parse(propiedad_(PROPIEDAD_WA_GREEN) || 'null');
+    return g && g.idInstance && g.token ? g : null;
+  } catch (err) { return null; }
+}
+
+/** Llamada a Green API. Nunca lanza: {ok, codigo, datos, motivo}. */
+function llamarGreen_(g, metodo, cuerpo) {
+  try {
+    var url = String(g.apiUrl || URL_GREEN_DEFECTO).replace(/\/+$/, '') + '/waInstance' + g.idInstance + '/' + metodo + '/' + g.token;
+    var opciones = { muteHttpExceptions: true };
+    if (cuerpo) { opciones.method = 'post'; opciones.contentType = 'application/json'; opciones.payload = JSON.stringify(cuerpo); }
+    var resp = UrlFetchApp.fetch(url, opciones);
+    var codigo = resp.getResponseCode();
+    var texto = String(resp.getContentText() || '');
+    var datos = {};
+    try { datos = JSON.parse(texto || '{}'); } catch (err) { datos = {}; }
+    return { ok: codigo === 200, codigo: codigo, datos: datos, motivo: codigo === 200 ? '' : (datos.message || texto.replace(/<[^>]+>/g, ' ').trim().slice(0, 120) || 'código ' + codigo) };
+  } catch (err) {
+    return { ok: false, codigo: 0, datos: {}, motivo: String(err).slice(0, 120) };
+  }
+}
+
+function mandarGreen_(telefono, texto) {
+  var g = leerWaGreen_();
+  if (!g) return { ok: false, motivo: 'faltan los datos de Green API' };
+  var r = llamarGreen_(g, 'sendMessage', { chatId: String(telefono).replace(/\D/g, '') + '@c.us', message: texto });
+  if (r.ok && !(r.datos && r.datos.idMessage)) return { ok: false, motivo: 'Green API no devolvió el mensaje' };
+  return r;
+}
+
+/** {apiUrl?, idInstance, apiToken}: guarda la instancia de Green API después de comprobar que está vinculada. {quitar: true} la borra. */
+function accionGuardarWhatsappGreen_(usuario, datos) {
+  var props = PropertiesService.getScriptProperties();
+  if (datos.quitar === true) { props.deleteProperty(PROPIEDAD_WA_GREEN); return estadoWhatsapp_(usuario); }
+  var apiUrl = String(datos.apiUrl || URL_GREEN_DEFECTO).trim().replace(/\/+$/, '');
+  if (!/^https:\/\/[a-z0-9.-]+\.(green-?api)\.com$/i.test(apiUrl)) throw errorApp_('datos_invalidos', 'El apiUrl debe ser de Green API (ej. https://api.greenapi.com).');
+  var idInstance = String(datos.idInstance || '').replace(/\D/g, '');
+  if (!/^\d{6,15}$/.test(idInstance)) throw errorApp_('datos_invalidos', 'El idInstance son solo números (cópialo de la consola).');
+  var token = String(datos.apiToken || '').trim();
+  if (!/^[A-Za-z0-9]{20,120}$/.test(token)) throw errorApp_('datos_invalidos', 'El apiTokenInstance no es válido: cópialo entero.');
+  var g = { apiUrl: apiUrl, idInstance: idInstance, token: token };
+  var estado = llamarGreen_(g, 'getStateInstance');
+  if (!estado.ok) throw errorApp_('datos_invalidos', 'Green API no aceptó los datos: ' + estado.motivo + '.');
+  var st = String((estado.datos || {}).stateInstance || '');
+  if (st !== 'authorized') {
+    throw errorApp_('datos_invalidos', st === 'notAuthorized' ? 'Falta vincular tu WhatsApp: en la consola toca «Get QR» y escanéalo desde WhatsApp › Dispositivos vinculados.'
+      : 'La instancia está en estado «' + (st || 'desconocido') + '». Espera unos minutos y vuelve a intentar.');
+  }
+  var info = llamarGreen_(g, 'getWaSettings');
+  var numero = info.ok ? telefonoWhatsapp((info.datos || {}).phone || (info.datos || {}).wid || '') : '';
+  if (numero) g.numero = numero;
+  props.setProperty(PROPIEDAD_WA_GREEN, JSON.stringify(g));
+  return estadoWhatsapp_(usuario);
 }
 
 // ---------------------------------------------------------------------------
@@ -2034,6 +2102,14 @@ function accionGuardarWhatsapp_(usuario, datos) {
   }
   var telefono = telefonoWhatsapp(datos.telefono);
   if (!telefono) throw errorApp_('datos_invalidos', 'Escribe tu número con el código del país (ej. +51 987 654 321).');
+  if (datos.via === 'green') {
+    if (!leerWaGreen_()) throw errorApp_('datos_invalidos', 'Primero guarda los datos de Green API.');
+    var hola = mandarGreen_(telefono, '*FinFamily*\n\n¡Listo! Aquí te llegarán los avisos de FinFamily.');
+    if (!hola.ok) throw errorApp_('datos_invalidos', 'Green API no pudo mandar el mensaje: ' + hola.motivo + '.');
+    todos[usuario.email] = { via: 'green', telefono: telefono, desde: hoyServidor_() };
+    PropertiesService.getScriptProperties().setProperty(PROPIEDAD_WHATSAPP, JSON.stringify(todos));
+    return estadoWhatsapp_(usuario);
+  }
   if (datos.via === 'meta') {
     var meta = leerWaMeta_();
     if (!meta) throw errorApp_('datos_invalidos', 'Primero guarda los datos de la app de Meta.');
@@ -2061,6 +2137,7 @@ function accionProbarWhatsapp_(usuario) {
   var w = leerWhatsapp_()[usuario.email];
   if (!w || !w.telefono) throw errorApp_('datos_invalidos', 'Primero conecta tu WhatsApp.');
   var r = w.via === 'meta' ? mandarAvisoMeta_(w.telefono, 'Mensaje de prueba: tus avisos llegan bien')
+    : w.via === 'green' ? mandarGreen_(w.telefono, '*FinFamily*\n\nMensaje de prueba: tus avisos llegan bien. 👍')
     : mandarWhatsapp_(w.telefono, w.apikey, '*FinFamily*\n\nMensaje de prueba: tus avisos llegan bien. 👍');
   var motivo = r.motivo || '';
   if (!r.ok && /132001|template name does not exist|does not exist in/i.test(motivo)) motivo = 'Meta todavía no aprueba la plantilla «' + ((leerWaMeta_() || {}).plantilla || PLANTILLA_WA_DEFECTO) + '» (' + motivo + ')';
@@ -2096,7 +2173,8 @@ function avisarWhatsapp_(texto, correos) {
     var mensaje = textoWhatsapp(texto);
     var parametro = textoPlantillaWhatsapp(texto);
     lista.forEach(function (c) {
-      var r = todos[c].via === 'meta' ? mandarAvisoMeta_(todos[c].telefono, parametro) : mandarWhatsapp_(todos[c].telefono, todos[c].apikey, mensaje);
+      var r = todos[c].via === 'meta' ? mandarAvisoMeta_(todos[c].telefono, parametro)
+        : todos[c].via === 'green' ? mandarGreen_(todos[c].telefono, mensaje) : mandarWhatsapp_(todos[c].telefono, todos[c].apikey, mensaje);
       if (r.ok) enviados++;
       else console.warn('FinFamily WhatsApp: no se pudo avisar a ' + c.split('@')[0] + ': ' + r.motivo);
     });

@@ -23,6 +23,7 @@ const USUARIOS = {
   'persona-b@example.test': { nombre: 'PersonaB', clave: 'B' }
 };
 const TOKEN_PERSONA_A = 'token-PersonaA';
+const TOKEN_GREEN_PRUEBA = 'd75b3a66374942c5b3c019c698abc2067e151558acbd412345';
 const TOKEN_META_PRUEBA = 'EAAprueba0123456789abcdefghijklmnopqrstuvwxyz';
 const ID = 'prueba-0001';
 
@@ -184,6 +185,7 @@ function crearMotor(config) {
   const correos = [];
   const whatsapps = [];
   const metaLlamadas = [];
+  const greenLlamadas = [];
   const activadores = (c.activadores || []).map((nombre) => ({ nombre }));
   const cache = {};
   const estado = { hoy: c.hoy || '2026-11-06', cuotaCorreo: c.cuotaCorreo === undefined ? 100 : c.cuotaCorreo, idsHojaAbiertos: [] };
@@ -284,6 +286,18 @@ function crearMotor(config) {
     UrlFetchApp: {
       // Imita la respuesta de Google al verificar el inicio de sesión (y CallMeBot, motor 1.17.0).
       fetch: (url, opciones) => {
+        if (/^https:\/\/[a-z0-9.-]*greenapi\.com\/waInstance/.test(String(url))) {
+          const m = String(url).match(/waInstance(\d+)\/(\w+)\/(\w+)/);
+          const cuerpo = opciones && opciones.payload ? JSON.parse(opciones.payload) : null;
+          greenLlamadas.push({ metodo: m[2], cuerpo });
+          const resp = (codigo, obj) => ({ getResponseCode: () => codigo, getContentText: () => JSON.stringify(obj) });
+          if (m[3] !== TOKEN_GREEN_PRUEBA) return resp(401, { message: 'Unauthorized' });
+          if (m[1] === '1100000002') return m[2] === 'getStateInstance' ? resp(200, { stateInstance: 'notAuthorized' }) : resp(200, {});
+          if (m[2] === 'getStateInstance') return resp(200, { stateInstance: 'authorized' });
+          if (m[2] === 'getWaSettings') return resp(200, { phone: '51987654321', stateInstance: 'authorized' });
+          if (m[2] === 'sendMessage') return resp(200, { idMessage: '3EB0C767D097B7C7C030' });
+          return resp(404, { message: 'not found' });
+        }
         if (String(url).indexOf('https://graph.facebook.com/') === 0) {
           const auth = ((opciones || {}).headers || {}).Authorization || '';
           const cuerpo = opciones && opciones.payload ? JSON.parse(opciones.payload) : null;
@@ -345,7 +359,7 @@ function crearMotor(config) {
   vm.runInContext(FUENTE_CODIGO, contexto, { filename: 'Codigo.gs' });
 
   return {
-    contexto, propiedades, correos, whatsapps, metaLlamadas, activadores, estado, hojas, hilos, etiquetasGmail, consultasGmail, eventos, avisosConsola,
+    contexto, propiedades, correos, whatsapps, metaLlamadas, greenLlamadas, activadores, estado, hojas, hilos, etiquetasGmail, consultasGmail, eventos, avisosConsola,
     // Llama al motor igual que la web: POST con {accion, token, datos}.
     llamar(accion, datos, token) {
       const cuerpo = JSON.stringify({ accion, token: token === undefined ? TOKEN_PERSONA_A : token, datos });
@@ -367,13 +381,13 @@ test('version: informa 1.7.1 y la lista de acciones; inicio y config traen el ca
     new HojaFalsa('Configuración', [['Conceptos de Gasto', 'Responsable'], ['Limpieza', 'PersonaB']])]) });
   const r = m.llamar('version', {});
   assert.equal(r.ok, true);
-  assert.equal(r.datos.version, '1.18.1');
+  assert.equal(r.datos.version, '1.19.0');
   for (const a of ['desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'marcarPagado', 'inicio',
     'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos', 'datosTarjetas', 'guardarDatosTarjeta']) {
     assert.ok(r.datos.acciones.includes(a), 'falta la acción ' + a);
   }
-  assert.equal(m.llamar('inicio', {}).datos.version, '1.18.1');
-  assert.equal(m.llamar('config', {}).datos.version, '1.18.1');
+  assert.equal(m.llamar('inicio', {}).datos.version, '1.19.0');
+  assert.equal(m.llamar('config', {}).datos.version, '1.19.0');
 });
 
 test('la lista ACCIONES coincide con las acciones que atiende doPost', () => {
@@ -2006,7 +2020,7 @@ test('config: un ícono guardado para un concepto que ya no existe en Configurac
   assert.deepEqual(m.llamar('config', {}).datos.iconos, { Supermercado: 'carrito' });
   const danado = motorCompleto({ propiedades: { FINFAMILY_ICONOS: '{roto' } });
   assert.deepEqual(danado.llamar('config', {}).datos.iconos, {});
-  assert.equal(danado.llamar('version', {}).datos.version, '1.18.1');
+  assert.equal(danado.llamar('version', {}).datos.version, '1.19.0');
   assert.ok(danado.llamar('version', {}).datos.acciones.includes('guardarIconoConcepto'));
 });
 
@@ -2244,7 +2258,7 @@ test('gasto grande con tarjeta prestada: el correo dice quién gastó; versión 
   const m = motorCompleto();
   m.llamar('registrar', Object.assign({}, GASTO_PRESTADO, { monto: 450, descripcion: 'Saga Falabella' }));
   assert.equal(m.correos[0].subject, 'FinFamily: PersonaA registró S/ 450 en Saga Falabella (TC Interbank)');
-  assert.equal(m.llamar('version', {}).datos.version, '1.18.1');
+  assert.equal(m.llamar('version', {}).datos.version, '1.19.0');
 });
 
 // ===========================================================================
@@ -2524,7 +2538,7 @@ test('bolsas con un solo usuario (N = 1): todo el saldo de los meses anteriores 
 test('versión 1.7.0: la acción bolsas está en la lista y presupuesto no cambió', () => {
   const m = motorBolsas();
   const v = m.llamar('version', {}).datos;
-  assert.equal(v.version, '1.18.1');
+  assert.equal(v.version, '1.19.0');
   assert.ok(v.acciones.includes('bolsas'));
   const p = m.llamar('presupuesto', { mes: '2026-11' }).datos;
   assert.equal(p.totales.saldo, 985.57);
@@ -3306,13 +3320,13 @@ test('1.16.0: guardarCuadre guarda el último cuadre por cuenta y valida la clav
 
 test('1.17.0: conectar WhatsApp prueba la clave, la guarda en privado y nunca la devuelve', () => {
   const m = motorCompleto({ hoy: '2026-11-10' });
-  assert.deepEqual(m.llamar('whatsapp', {}).datos, { conectado: false, meta: { configurado: false } });
+  assert.deepEqual(m.llamar('whatsapp', {}).datos, { conectado: false, meta: { configurado: false }, green: { configurado: false } });
   const mal = m.llamar('guardarWhatsapp', { telefono: '+51 987 654 321', apikey: '0000' });
   assert.equal(mal.ok, false, 'clave rechazada por CallMeBot');
   assert.equal(m.llamar('guardarWhatsapp', { telefono: '123', apikey: '1234567' }).ok, false);
   const r = m.llamar('guardarWhatsapp', { telefono: '+51 987 654 321', apikey: '1234567' });
   assert.equal(r.ok, true, JSON.stringify(r));
-  assert.deepEqual(r.datos, { conectado: true, telefono: '+51 ••• ••• 321', desde: '2026-11-10', via: 'callmebot', meta: { configurado: false } });
+  assert.deepEqual(r.datos, { conectado: true, telefono: '+51 ••• ••• 321', desde: '2026-11-10', via: 'callmebot', meta: { configurado: false }, green: { configurado: false } });
   assert.ok(!JSON.stringify(r).includes('1234567'), 'la clave no vuelve a la app');
   assert.equal(m.whatsapps.at(-1).phone, '+51987654321');
   const p = m.llamar('probarWhatsapp', {});
@@ -3393,4 +3407,34 @@ test('1.18.1: guardarFijoAuto con todos pone fin de mes a todas las líneas fija
   assert.equal(m.correos.length, 1);
   assert.match(m.correos[0].subject, /^Hoy vence: /);
   assert.match(m.correos[0].body, /Total: S\/ 690/);
+});
+
+
+// ---------- 1.19.0: WhatsApp con Green API ----------
+
+test('1.19.0: guardar Green API comprueba que la instancia está vinculada y nunca devuelve el token', () => {
+  const m = motorCompleto({ hoy: '2026-11-10' });
+  assert.equal(m.llamar('guardarWhatsappGreen', { idInstance: '1100000001', apiToken: 'x'.repeat(30) }).ok, false, 'token malo');
+  assert.equal(m.llamar('guardarWhatsappGreen', { apiUrl: 'https://otro.com', idInstance: '1100000001', apiToken: TOKEN_GREEN_PRUEBA }).ok, false, 'host ajeno');
+  const sinQr = m.llamar('guardarWhatsappGreen', { idInstance: '1100000002', apiToken: TOKEN_GREEN_PRUEBA });
+  assert.equal(sinQr.ok, false);
+  assert.match(sinQr.error, /Get QR/);
+  const r = m.llamar('guardarWhatsappGreen', { apiUrl: 'https://7103.api.greenapi.com/', idInstance: '1100000001', apiToken: TOKEN_GREEN_PRUEBA });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual(r.datos.green, { configurado: true, numero: '+51 ••• ••• 321' });
+  assert.ok(!JSON.stringify(r).includes(TOKEN_GREEN_PRUEBA));
+});
+
+test('1.19.0: conectar por Green API manda la bienvenida y los avisos salen con su texto completo', () => {
+  const m = motorCompleto({ hoy: '2026-11-10' });
+  assert.equal(m.llamar('guardarWhatsapp', { via: 'green', telefono: '+51 987 654 321' }).ok, false, 'sin datos de Green API');
+  m.llamar('guardarWhatsappGreen', { idInstance: '1100000001', apiToken: TOKEN_GREEN_PRUEBA });
+  const r = m.llamar('guardarWhatsapp', { via: 'green', telefono: '+51 987 654 321' });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.datos.via, 'green');
+  assert.equal(m.greenLlamadas.at(-1).cuerpo.chatId, '51987654321@c.us');
+  const e = m.contexto.enviarCorreoAUsuarios_({ asunto: 'Hoy vence: Luz', cuerpo: 'Hoy toca pagar:\n\n• Luz: S/ 80' }, 'prueba');
+  assert.equal(e.whatsapp, 1);
+  assert.equal(m.greenLlamadas.at(-1).cuerpo.message, '*Hoy vence: Luz*\n\nHoy toca pagar:\n\n• Luz: S/ 80');
+  assert.equal(m.llamar('probarWhatsapp', {}).datos.enviado, true);
 });
