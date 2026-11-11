@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v154';
+const VERSION_APP = 'finfamily-v155';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -515,6 +515,11 @@ function colorAppTC(t) {
   if (dis && DISENOS_TC[dis].banco === 'Interbank') return t.color === 'verde' || !t.color ? COLORES_TC.verde : VERDE_IBK_2;
   return dis ? DISENOS_TC[dis].c : COLORES_TC[t.color] || COLORES_TC.azul;
 }
+// Pedido del usuario (v155): con las tarjetas de débito sobran Efectivo y Lemon en "Pagué con" (lo ya anotado queda).
+// Yape sale de la cuenta BCP y Plin de la de Interbank: se muestran con su banco y, como un débito, piden de dónde sale.
+const MEDIOS_OCULTOS_REGISTRO = ['EFECTIVO', 'LEMON'];
+const CUENTA_DE_MEDIO = { YAPE: 'BCP', PLIN: 'Interbank' };
+const comoDebito = (m) => !!m && (m.tipo === 'debito' || !!CUENTA_DE_MEDIO[m.id]);
 // Clase de color de una tarjeta de débito: por su banco (Interbank verde, BCP azul, Sip negra).
 const claseDebito = (banco) => `TD-${normalizar(banco || '').replace(/[^a-z]/g, '') || 'otro'}`;
 // Diseño de una tarjeta: el elegido; si no eligió, el de su banco según el nombre; 'propio' = colores de la app.
@@ -4015,7 +4020,7 @@ async function abrirPendientes() {
   const comercioDe = (p) => limpiarComercio(p.comercio || '') || p.comercio || 'Consumo';
   const montoDe = (p) => (enDolares(p) ? `US$ ${Number(p.monto).toFixed(2)}` : soles(p.monto));
   const debitoDe = (p) => (/^TD_/.test(String(p.medioSugerido || '')) ? (leerCache('config')?.datos?.medios || []).find((m) => m.id === p.medioSugerido) || { id: p.medioSugerido, etiqueta: 'Débito' } : null);
-  const faltaOrigen = (p) => motorBolsas() && !!debitoDe(p) && p._origen === undefined; // débito: se pregunta cada vez
+  const faltaOrigen = (p) => motorBolsas() && (!!debitoDe(p) || !!CUENTA_DE_MEDIO[directoDe(p)]) && p._origen === undefined; // débito, Yape o Plin: se pregunta cada vez
   const listos = () => cola.filter((p) => sugeridoDe(p) && !enDolares(p) && !faltaOrigen(p));
   const sacarDeMemoria = (p) => { if (Array.isArray(estado.ultimosPendientes)) estado.ultimosPendientes = estado.ultimosPendientes.filter((x) => x.id !== p.id); borrarCaches(['pendientes']); };
   const devolver = (p, nota) => { p._nota = nota; cola.push(p); if (!cerrado && cola.length === 1) pintar(); else if (!cerrado) refrescarProgreso(); };
@@ -4086,7 +4091,7 @@ async function abrirPendientes() {
     }
     const p = cola[0];
     const id = idDe(p), directo = directoDe(p), dolar = enDolares(p), sugerido = sugeridoDe(p);
-    if (directo && motorBolsas() && p._origen === undefined) p._origen = 'P'; // Plin o Yape: sale de lo que ya se tiene
+    if (directo && !CUENTA_DE_MEDIO[directo] && motorBolsas() && p._origen === undefined) p._origen = 'P'; // efectivo: sale de lo que ya se tiene
     const hora = (p.fechaCorreo || '').slice(11, 16);
     const deBilletera = ['YAPE', 'LEMON'].includes(String(p.banco || '').toUpperCase()); // leído del correo de Yape o Lemon
     const deb = debitoDe(p);
@@ -4127,7 +4132,7 @@ async function abrirPendientes() {
       h('p', { class: 'etq pend-pregunta' }, dolar ? 'Tipo de gasto' : 'Toca el tipo de gasto y queda confirmado'),
       chips,
       faltaOrigen(p) ? (cajaElige = h('div', { class: 'pend-elige-origen' },
-        h('span', {}, 'Pagaste con débito. ¿De dónde sale?'),
+        h('span', {}, `Pagaste con ${deb ? 'débito' : directo === 'YAPE' ? 'Yape (cuenta BCP)' : 'Plin (cuenta Interbank)'}. ¿De dónde sale?`),
         h('div', { class: 'pend-pase-botones' },
           h('button', { type: 'button', class: 'boton chico', onclick: () => { p._origen = ''; pintar(); } }, icono('inicio'), 'Presupuesto'),
           h('button', { type: 'button', class: 'boton chico', onclick: () => { p._origen = 'P'; pintar(); } }, avatar(quienDe(p), 'mini'), `Sobrante de ${nombreCorto(quienDe(p))}`)))) : motorBolsas() ? (() => {
@@ -5455,7 +5460,7 @@ async function vistaRegistrar() {
   let medioRecordado = '';
   try { medioRecordado = localStorage.getItem('ff:medio') || ''; } catch { /* nada */ }
   const f = estado.form || (estado.form = {
-    monto: '', medio: medios.some((m) => m.id === medioRecordado) ? medioRecordado : null,
+    monto: '', medio: medios.some((m) => m.id === medioRecordado) && !MEDIOS_OCULTOS_REGISTRO.includes(medioRecordado) ? medioRecordado : null,
     descripcion: '', concepto: null, conceptoManual: false, nota: '', fecha: hoyISO(), fechaManual: false, responsable: null,
   });
   // Quién gastó: por defecto quien tiene la sesión; con el motor 1.3 se puede registrar a nombre de la otra persona.
@@ -5491,7 +5496,7 @@ async function vistaRegistrar() {
   const plegar = () => cajaMonto?.classList.add('plegado');
 
   const quien = () => (f.responsable ? { nombre: f.responsable } : usuario);
-  const colorMedio = (m) => (m.tipo === 'tarjeta' ? (idCicloDeMedio(m, quien()) || 'HORMIGA') : m.tipo === 'debito' ? claseDebito(m.banco) : (COLOR_MEDIO[m.id] || 'HORMIGA'));
+  const colorMedio = (m) => (m.tipo === 'tarjeta' ? (idCicloDeMedio(m, quien()) || 'HORMIGA') : m.tipo === 'debito' ? claseDebito(m.banco) : CUENTA_DE_MEDIO[m.id] ? claseDebito(CUENTA_DE_MEDIO[m.id]) : (COLOR_MEDIO[m.id] || 'HORMIGA'));
   // Tarjetas de débito (motor 1.21): se muestran las de quien gastó (y la que ya esté elegida).
   const debitoAjeno = (m) => m.tipo === 'debito' && !!m.titular && !mismoNombre(m.titular, quien().nombre || '') && f.medio !== m.id;
   const tarjetasDe = (m) => catalogoTC().filter((t) => t.medio === m.id);
@@ -5499,6 +5504,7 @@ async function vistaRegistrar() {
   const tarjetaDe = (m) => (f.tarjeta && tarjetasDe(m).some((t) => t.id === f.tarjeta) ? f.tarjeta : idCicloDeMedio(m, quien()));
   const opcionesMedio = [];
   for (const m of medios) {
+    if (MEDIOS_OCULTOS_REGISTRO.includes(m.id) && f.medio !== m.id) continue;
     const ts = m.tipo === 'tarjeta' ? tarjetasDe(m) : [];
     if (motorPrestada() && ts.length > 1) ts.forEach((t) => opcionesMedio.push({ m, t }));
     else opcionesMedio.push({ m, t: null });
@@ -5521,7 +5527,7 @@ async function vistaRegistrar() {
         limpiarError(campoMedio);
         try { alElegirMedio(); } catch { /* aún no está listo */ }
       } }, h('span', { class: `chip-tc mini tc-${c}`, 'aria-hidden': 'true' }),
-      o.t ? `${m.etiqueta} · ${nombreTitular(o.t) || o.t.nombre}` : m.tipo === 'debito' ? m.etiqueta.split(' · ')[0] : (medioCompartido(m) ? `${m.etiqueta} · ${DUENIO_TC[colorMedio(m)] || ''}`.trim() : m.etiqueta));
+      o.t ? `${m.etiqueta} · ${nombreTitular(o.t) || o.t.nombre}` : m.tipo === 'debito' ? m.etiqueta.split(' · ')[0] : CUENTA_DE_MEDIO[m.id] ? `${m.etiqueta} · ${CUENTA_DE_MEDIO[m.id]}` : (medioCompartido(m) ? `${m.etiqueta} · ${DUENIO_TC[colorMedio(m)] || ''}`.trim() : m.etiqueta));
   });
   botonesMedio.forEach((b, i) => { b.hidden = debitoAjeno(opcionesMedio[i].m); });
   function medioCompartido(m) { return catalogoTC().filter((t) => t.medio === m.id).length > 1; }
@@ -5653,7 +5659,7 @@ async function vistaRegistrar() {
     if (!campoOrigen) return;
     const medioAhora = medios.find((x) => x.id === f.medio);
     const directo = !!medioAhora && medioAhora.tipo !== 'tarjeta';
-    const faltaElegir = medioAhora?.tipo === 'debito' && !f.origenManual; // con débito se pregunta cada vez
+    const faltaElegir = comoDebito(medioAhora) && !f.origenManual; // con débito (y Yape o Plin, que salen de una cuenta) se pregunta cada vez
     campoOrigen.classList.toggle('pide', faltaElegir);
     const mesPago = medioAhora && !directo ? (calcularCiclo(tarjetaDe(medioAhora), f.fecha, ciclos).pago || f.fecha || '').slice(0, 7) : '';
     const billetera = lineaDeBilletera(f.medio) ? f.medio : null;
@@ -5705,7 +5711,7 @@ async function vistaRegistrar() {
     notaOrigen.classList.toggle('no-alcanza', noAlcanzaAhora);
     pintarSemaforo();
     try { pintarResumen(); } catch { /* aún no está listo */ }
-    notaOrigen.textContent = faltaElegir ? 'Pagaste con débito: elige si sale del presupuesto (Fondo común) o del sobrante de alguien.'
+    notaOrigen.textContent = faltaElegir ? `Pagaste con ${medioAhora?.tipo === 'debito' ? 'débito' : `${medioAhora.etiqueta} (cuenta ${CUENTA_DE_MEDIO[medioAhora.id]})`}: elige si sale del presupuesto (Fondo común) o del sobrante de alguien.`
       : conSobrante
       ? (quedaria >= 0 ? `Te alcanza: te quedarían ${soles(quedaria)}${deDonde}.` : `No te alcanza: te faltarían ${soles(-quedaria)}${deDonde}.`)
       : !medioAhora ? '' : billetera && !f.origen
@@ -6060,7 +6066,7 @@ async function vistaRegistrar() {
     const fallos = [];
     if (!monto) fallos.push([cajaMonto, 'Escribe cuánto fue.']);
     if (!f.medio) fallos.push([campoMedio, 'Elige con qué pagaste.']);
-    else if (campoOrigen && medios.find((x) => x.id === f.medio)?.tipo === 'debito' && !f.origenManual) fallos.push([campoOrigen, 'Elige de dónde sale.']);
+    else if (campoOrigen && comoDebito(medios.find((x) => x.id === f.medio)) && !f.origenManual) fallos.push([campoOrigen, 'Elige de dónde sale.']);
     if (!f.concepto) fallos.push([campoConcepto, 'Elige un concepto.']);
     if (!deISO(f.fecha)) fallos.push([campoFecha, 'Revisa la fecha.']);
     else if (f.fecha > manana) fallos.push([campoFecha, 'La fecha no puede ser futura.']);
