@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v170';
+const VERSION_APP = 'finfamily-v171';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -594,13 +594,16 @@ function mesDelCiclo(fecha) {
   const clave = fecha.slice(0, 7);
   return d.getDate() === new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate() ? clave : sumarMes(clave, -1);
 }
-// Lo gastado por concepto dentro del ciclo de ese mes (tarjetas y gastos hormiga, pagado o no).
+// Lo gastado por concepto dentro del ciclo de ese mes (solo débito, Yape, Plin, Lemon y efectivo del fondo común).
 function gastadoEnCiclo(tarjetas, mes) {
   const { desde, hasta } = cicloDelMes(mes);
   const real = new Map();
   for (const c of consumosDe(tarjetas || [], () => true)) {
     if (!c.fecha || c.fecha < desde || c.fecha > hasta) continue;
     if (c.origen) continue; // sale del sobrante (P:) o de un ahorro (A:): no gasta la línea del presupuesto
+    // Regla del usuario (v171): lo pagado con tarjeta de crédito ya cuenta en la línea de esa tarjeta (TC …);
+    // nunca descuenta de las líneas de gastos fijos, que tienen su plata separada para otra cosa.
+    if (c.tarjeta && c.tarjeta.id !== 'HORMIGA') continue;
     const k = normalizar(c.concepto || '');
     real.set(k, (real.get(k) || 0) + (Number(c.monto) || 0));
   }
@@ -6014,7 +6017,7 @@ async function vistaRegistrar() {
       return { nivel, tiene, monto, queda, costo: Math.round((tiene - queda) * 100) / 100, etqTiene: `Te sobra de ${mesMinuscula(mesFondo)}`, titulo: titulos[nivel],
         sub: mesPago ? `La tarjeta se paga con el sueldo de ${mesMinuscula(mesFondo)}.` : 'Sale del fondo común de este mes.' };
     })();
-    const pres = restoDelPresupuesto(f.concepto, f.fecha);
+    const pres = mesPago ? null : restoDelPresupuesto(f.concepto, f.fecha); // con tarjeta de crédito no toca la línea
     const conPres = !pres ? null : (() => {
       const nivel = pres.queda - monto < 0 ? 'alto' : (pres.gastado + monto) / pres.plan >= 0.9 ? 'ojo' : 'ok';
       return armar(nivel, Math.max(0, pres.queda), `Queda en ${pres.nombre}`,
