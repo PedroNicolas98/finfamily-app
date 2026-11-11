@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v158';
+const VERSION_APP = 'finfamily-v159';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -768,7 +768,7 @@ function tarjetaVisual(t, comoEnlace = true, opciones = {}) {
         esDeb ? h('span', { class: 'plastico-dato' }, h('small', {}, 'Titular'), h('span', { class: 'plastico-titular' }, nombreCorto(cta.titular) || '—'))
           : h('span', { class: 'plastico-dato' }, h('small', {}, esH ? 'Medios de pago' : 'Titular'), h('span', { class: 'plastico-titular' }, cta ? (cta.usos.join(' · ') || cta.nombre) : esH ? 'Yape · Plin · Efectivo' : (d.nombre || duenioTC(t)))),
         esDeb ? h('span', { class: 'plastico-dato' }, h('small', {}, 'Pagos con'), h('span', {}, cta.usos.join(' · ') || 'Sin gastos')) : null,
-        e ? h('span', { class: `plastico-dato vence ${e.clase}`.trim() }, h('small', {}, rotulo), h('span', {}, valor)) : null),
+        e ? h('span', { class: `plastico-dato vence${e.clase ? ` est-${e.clase}` : ''}` }, h('small', {}, rotulo), h('span', {}, valor)) : null),
       esH ? null : marcaRed(redTC(t))));
 }
 
@@ -6309,7 +6309,7 @@ async function vistaTarjetas() {
         paso('hoy', hoy, 'Hoy', '', null, null, 0),
         porFecha.map((t, i) => {
           const e = estadoVence(t.proximoVence, t.pendiente, pagoDeTC(t));
-          return paso(`tc-${t.id} ${e.clase}`, deISO(fechaPagoTC(t)), nombreCortoTC(t), e.texto, t.pendiente, `#tarjeta-${t.id}`, i + 1);
+          return paso(`tc-${t.id}${e.clase ? ` ruta-${e.clase}` : ''}`, deISO(fechaPagoTC(t)), nombreCortoTC(t), e.texto, t.pendiente, `#tarjeta-${t.id}`, i + 1);
         })));
   }
 
