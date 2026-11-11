@@ -4764,3 +4764,5 @@ input[type="checkbox"]:active { transform: scale(0.9); }
 input[type="checkbox"]:disabled { opacity: 0.35; cursor: default; }
 /* El menú de las listas siempre opaco (en el tema oscuro --sup es semitransparente) */
 .sel-lista { background-color: var(--fondo, #0F1626); background-image: linear-gradient(var(--sup), var(--sup)); -webkit-backdrop-filter: none; backdrop-filter: none; }
+/* v172: Presupuesto explica en una línea por qué la hoja dice otro monto */
+.hero-nota-hoja { margin: 4px 0 0; font-size: 0.82rem; opacity: 0.8; line-height: 1.3; }
