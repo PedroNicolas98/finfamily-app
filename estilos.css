@@ -4766,3 +4766,65 @@ input[type="checkbox"]:disabled { opacity: 0.35; cursor: default; }
 .sel-lista { background-color: var(--fondo, #0F1626); background-image: linear-gradient(var(--sup), var(--sup)); -webkit-backdrop-filter: none; backdrop-filter: none; }
 /* v172: Presupuesto explica en una línea por qué la hoja dice otro monto */
 .hero-nota-hoja { margin: 4px 0 0; font-size: 0.82rem; opacity: 0.8; line-height: 1.3; }
+/* ---------- v174: Inicio en el celular más limpio ---------- */
+@media (max-width: 1023px) {
+  /* Cierre, Al cobrar y Cuadrar en una sola fila (tres partes iguales); el mes debajo */
+  body .pantalla.inicio .mes-inicio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: 100%; }
+  body .pantalla.inicio .mes-inicio > .boton-cierre { min-width: 0; width: 100%; padding: 0 6px; justify-content: center; font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body .pantalla.inicio .mes-inicio > .selector-mes { grid-column: 1 / -1; width: 100%; }
+  /* Resumen: el texto a todo lo ancho y el anillo chico en la esquina */
+  body .pantalla.inicio .hero { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'principal' 'pagar' 'datos'; position: relative; }
+  body .pantalla.inicio .hero > .anillo { position: absolute; top: 18px; right: 18px; width: 78px; height: 78px; margin: 0; z-index: 1; }
+  body .pantalla.inicio .hero > .anillo .anillo-texto strong { font-size: 1.15rem; }
+  body .pantalla.inicio .hero > .anillo .anillo-texto span { font-size: 0.68rem; }
+  body .pantalla.inicio .hero .hero-principal > .hero-etq, body .pantalla.inicio .hero .hero-principal > .hero-monto { padding-right: 84px; }
+  body .pantalla.inicio .hero .hp-lista { flex-wrap: wrap; gap: 10px 22px; }
+}
+@media (max-width: 1023px) {
+  /* Aviso de consumos por confirmar: el texto primero; "Revisar" queda como flecha */
+  .aviso-pend .aviso-pend-ir { font-size: 0; gap: 0; }
+  .aviso-pend .aviso-pend-ir .icono { font-size: 1rem; }
+  .aviso-pend .aviso-pend-texto { min-width: 0; flex: 1 1 auto; }
+  .aviso-pend .aviso-pend-total { font-size: 0.85rem; }
+}
+/* v174: en columnas angostas, "Este mes" y la meta bajan de línea en vez de salirse */
+.aho-pie { flex-wrap: wrap; row-gap: 6px; }
+body .seccion-ahorros li.meta.aho { overflow: hidden; }
+/* ---------- v174: letras legibles también en el celular (mínimo ~12–13 px) ---------- */
+@media (max-width: 899px) {
+  body .vista .formulario.registro-uno fieldset > legend, body .vista .formulario fieldset > legend { font-size: 0.8rem; }
+  body .vista .formulario.registro-uno .opcion, body .vista .formulario.registro-uno .opciones.chicas > .opcion, body .vista .formulario.registro-uno .opcion-texto { font-size: 0.85rem; }
+  body .vista .formulario.registro-uno .opcion.origen small, body .vista .formulario.registro-uno .vista-previa { font-size: 0.78rem; }
+  body .vista .formulario.registro-uno .opcion .avatar, body .vista .formulario.registro-uno .origen-ico .avatar { font-size: 0.72rem; }
+  body .vista .pantalla.presupuesto :is(.mb-leyenda li, .mb-valor, .mb-mes small, .mb-mes em) { font-size: 0.75rem; }
+  body .vista .pantalla :is(.hero-dato-etq) { font-size: 0.82rem; }
+  body .vista .pantalla :is(.hero-delta, .pres-flujo small, .filas-pres .pct, .aho-este small) { font-size: 0.78rem; }
+  body .vista .pantalla :is(.pill, .estado-pill, .dia-n) { font-size: 0.78rem; }
+  body .vista .pantalla :is(.tira-texto small) { font-size: 0.8rem; }
+  body .vista .pantalla :is(.ruta-fecha i) { font-size: 0.72rem; }
+  body .vista .pantalla :is(.hero-personal .avatar, .gp-chip .avatar, .titular .avatar, .ico-quien .avatar, .tira-ico .avatar) { font-size: 0.72rem; }
+}
+@media (max-width: 899px) {
+  body .vista :is(.pa-tcs-etq, .pa-tc, .pa-nombre small, .nota-pagado, .ahorro-resumen .suave) { font-size: 0.8rem; }
+}
+@media (max-width: 1023px) {
+  /* Tarjetas en el celular: primero la pila de tarjetas, después el resumen y el calendario */
+  body .pantalla.tarjetas .rejilla-billetera { display: flex; flex-direction: column; gap: 16px; align-items: stretch; }
+  body .pantalla.tarjetas .rejilla-billetera > .billetera-caja { order: -1; }
+  body .pantalla.tarjetas .billetera { margin-inline: auto; width: 100%; max-width: 440px; align-self: center; }
+}
+@media (max-width: 1023px) {
+  body .pantalla.tarjetas .billetera { --paso: 52px; }
+  body .pantalla.tarjetas .billetera > .plastico + .plastico { margin-top: calc(-63.05% + var(--paso)); }
+}
+/* En las tarjetas de atrás solo se ve su franja (nombre y monto) y el dibujo; nada se asoma por debajo */
+.billetera .plastico:not(:last-child) > :not(.pila-franja):not(.plastico-brillo):not(.plastico-arte):not(.plastico-franja) { visibility: hidden; }
+/* v174: ventanas con letras legibles */
+.hoja-modal :is(.suave, .cobro-sub, .cuenta-mov-texto .suave) { font-size: 0.85rem; }
+.hoja-modal .meta-plazos .opcion, .hoja-modal .opciones .opcion .opcion-texto { font-size: 0.875rem; }
+/* v174: en Nuevo gasto los tipos de gasto largos usan dos líneas en vez de cortarse ("Supermercado", "Entretenimiento") */
+@media (min-width: 900px) {
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .f-conceptos .opciones.chicas { display: flex; flex-wrap: wrap; gap: 6px; }
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .f-conceptos .opciones.chicas > .opcion { flex: 1 1 auto; width: auto; min-width: 0; justify-content: flex-start; }
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .f-conceptos .opcion .opcion-texto { white-space: nowrap; overflow: visible; text-overflow: clip; }
+}

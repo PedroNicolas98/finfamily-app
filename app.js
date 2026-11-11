@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v173';
+const VERSION_APP = 'finfamily-v174';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -3211,8 +3211,8 @@ function editarConsumo(t, c) {
   pintarZona();
 
   const campo = (id, etiqueta, control, clase = '') => h('div', { class: `campo ${clase}`.trim() }, h('label', { for: id }, etiqueta), control);
-  const cMonto = campo('ed-monto', 'Monto (S/)', inMonto, 'campo-chico');
-  const cDesc = campo('ed-descripcion', 'Descripción', inDesc);
+  const cMonto = campo('ed-monto', '¿Cuánto? (S/)', inMonto, 'campo-chico');
+  const cDesc = campo('ed-descripcion', 'Detalle', inDesc);
   inMonto.addEventListener('input', () => limpiarError(cMonto));
   inDesc.addEventListener('input', () => limpiarError(cDesc));
   dlg.append(
@@ -3225,7 +3225,7 @@ function editarConsumo(t, c) {
       cDesc,
       campo('ed-concepto', '¿En qué fue?', selConcepto),
       conPagadoCon ? campo('ed-medio', 'Pagué con', selMedio) : null,
-      motorBolsas() ? campo('ed-origen', 'De dónde sale', selOrigen) : null,
+      motorBolsas() ? campo('ed-origen', '¿De dónde sale?', selOrigen) : null,
       campo('ed-nota', 'Nota', inNota)),
     msg, zona);
   dlg.addEventListener('click', (ev) => { if (ev.target === dlg) cerrar(); }); // clic fuera
@@ -3312,7 +3312,7 @@ async function vistaInicio() {
       h('h1', {}, nombre ? `${saludo}, ${nombre}` : saludo)),
     h('div', { class: 'mes-inicio' },
       esHoy ? h('button', { type: 'button', class: 'boton boton-hoy boton-cierre', title: 'Cómo cerró el último ciclo de cobro', onclick: () => abrirCierre(mesCerrado()) },
-        icono('check'), `Cierre de ${(nombreMesClave(mesCerrado()) || '').slice(0, 3).toLowerCase()}.`) : null,
+        icono('check'), h('span', { class: 'solo-pc' }, 'Cierre de '), h('span', { class: 'solo-movil' }, 'Cierre '), `${(nombreMesClave(mesCerrado()) || '').slice(0, 3).toLowerCase()}.`) : null,
       esHoy ? h('button', { type: 'button', class: 'boton boton-hoy boton-cierre boton-cobrar' + (diasQuedan <= 5 ? ' pronto' : ''),
         title: 'Qué pasa con el sueldo de este mes al cobrar', onclick: () => abrirAlCobrar(mesHoy) }, icono('billetera'), 'Al cobrar') : null,
       esHoy && motorCuadre() && emailSesion() ? h('button', { type: 'button', class: 'boton boton-hoy boton-cierre', title: 'Comparar con lo que dice el banco', onclick: () => abrirCuadre() }, icono('balanza' in ICONOS ? 'balanza' : 'lista'), 'Cuadrar') : null,
