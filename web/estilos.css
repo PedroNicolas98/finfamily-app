@@ -999,8 +999,8 @@ a.ruta-paso:hover .ruta-fecha { transform: scale(1.08) rotate(-4deg); }
 .ruta-texto { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .ruta-texto strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ruta-texto span { font-size: 0.8rem; color: var(--tinta-2); }
-.ruta-paso.aviso .ruta-texto span { color: var(--aviso); font-weight: 650; }
-.ruta-paso.mal .ruta-texto span { color: var(--mal); font-weight: 650; }
+.ruta-paso.ruta-aviso .ruta-texto span { color: var(--aviso); font-weight: 650; }
+.ruta-paso.ruta-mal .ruta-texto span { color: var(--mal); font-weight: 650; }
 .ruta-monto { white-space: nowrap; }
 
 /* Detalle de tarjeta */
@@ -2847,10 +2847,10 @@ a.plastico:active, .mov:active, a.nav-proximo:active { filter: brightness(0.96);
 .plastico-red.mastercard { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3)); }
 .datos-tc { align-self: flex-start; margin-top: -6px; }
 .lateral .datos-tc { margin-top: -4px; }
-.plastico-dato.vence.aviso > span { color: #FFE08A; }
-.plastico-dato.vence.mal > span { color: #FFB8AC; }
-.plastico-dato.vence.ok > span { color: #CFFFE0; }
-.plastico-dato.vence.aviso small, .plastico-dato.vence.mal small { opacity: 0.92; }
+.plastico-dato.vence.est-aviso > span { color: #FFE08A; }
+.plastico-dato.vence.est-mal > span { color: #FFB8AC; }
+.plastico-dato.vence.est-ok > span { color: #CFFFE0; }
+.plastico-dato.vence.est-aviso small, .plastico-dato.vence.est-mal small { opacity: 0.92; }
 .plastico-titular { opacity: 1; letter-spacing: 0.1em; }
 /* La pila de la billetera deja ver la franja de arriba: que el nombre del banco quepa en ella */
 .billetera .plastico + .plastico { margin-top: calc(-63.05% + 64px); }
