@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v156';
+const VERSION_APP = 'finfamily-v157';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -654,11 +654,27 @@ function avatar(nombre, extra = '') {
   return el;
 }
 
-// Estado del próximo vencimiento: texto + clase de color (nunca solo color).
-function estadoVence(vence, pendiente) {
+// v157: el usuario paga las tarjetas a fin de mes (la "Fecha de pago" de la hoja), antes del vencimiento del banco.
+// Los días que faltan se cuentan hasta ese pago. Fecha de pago del estado que vence primero:
+function pagoDeTC(t) { return (t?.estados || []).find((g) => g.vence === t.proximoVence && g.pendiente > 0)?.pago || null; }
+// Si el día de pago ya pasó sin pagar, lo que manda es el vencimiento del banco.
+const fechaPagoTC = (t) => { const p = pagoDeTC(t); return p && p >= hoyISO() ? p : t?.proximoVence || p || null; };
+
+// Estado del próximo pago: texto + clase de color (nunca solo color).
+function estadoVence(vence, pendiente, pago) {
   if (!(pendiente > 0)) return { clase: 'ok', texto: 'Al día' };
-  if (!vence) return { clase: '', texto: 'Sin fecha' };
-  const dias = diasEntre(hoyISO(), vence);
+  if (!vence && !pago) return { clase: '', texto: 'Sin fecha' };
+  const dp = pago ? diasEntre(hoyISO(), pago) : null;
+  const dv = vence ? diasEntre(hoyISO(), vence) : null;
+  if (dp != null && dp >= 0 && !(dv < 0)) {
+    if (dp === 0) return { clase: 'aviso', texto: 'Pagas hoy' };
+    if (dp === 1) return { clase: 'aviso', texto: 'Pagas mañana' };
+    if (dp <= 7) return { clase: 'aviso', texto: `Pagas en ${dp} días` };
+    return { clase: '', texto: `Faltan ${dp} días` };
+  }
+  if (dp != null && dp < 0 && dv != null && dv > 1) return { clase: 'aviso', texto: `Pago atrasado · vence en ${dv} días` };
+  if (!vence) return { clase: 'mal', texto: `Era para el ${fechaCorta(pago)}` };
+  const dias = dv;
   if (dias < 0) return { clase: 'mal', texto: `Venció el ${fechaCorta(vence)}` };
   if (dias === 0) return { clase: 'aviso', texto: 'Vence hoy' };
   if (dias === 1) return { clase: 'aviso', texto: 'Vence mañana' };
@@ -666,8 +682,8 @@ function estadoVence(vence, pendiente) {
   return { clase: '', texto: `Faltan ${dias} días` };
 }
 
-function estadoPill(vence, pendiente) {
-  const e = estadoVence(vence, pendiente);
+function estadoPill(vence, pendiente, pago) {
+  const e = estadoVence(vence, pendiente, pago);
   return h('span', { class: `pill ${e.clase}`.trim() }, e.texto);
 }
 
@@ -676,15 +692,17 @@ function tarjetaVisual(t, comoEnlace = true, opciones = {}) {
   const esH = t.id === 'HORMIGA';
   const dis = esH ? null : disenoTC(t, opciones.diseno);
   const D = dis ? DISENOS_TC[dis] : null;
-  const e = esH ? null : estadoVence(t.proximoVence, t.pendiente);
+  const pagoTC = esH ? null : pagoDeTC(t);
+  const e = esH ? null : estadoVence(t.proximoVence, t.pendiente, pagoTC);
   const d = esH ? {} : datosTC(t.id);
-  const fecha = !esH && t.proximoVence ? fechaCorta(t.proximoVence) : null;
+  const fecha = !esH && (pagoTC || t.proximoVence) ? fechaCorta(pagoTC || t.proximoVence) : null;
   // Como una tarjeta de verdad: banco y pago sin contacto arriba, chip con el monto al lado,
   // número en relieve (con los últimos dígitos si se guardaron) y abajo titular, vencimiento y la marca.
-  let rotulo = 'Vence', valor = fecha || 'Sin fecha';
+  let rotulo = pagoTC ? 'Pagas' : 'Vence', valor = fecha || 'Sin fecha';
   if (e && e.clase === 'ok') { rotulo = 'Estado'; valor = 'Al día'; }
-  else if (e && e.clase === 'mal') { rotulo = 'Venció'; }
-  else if (e && e.clase === 'aviso') { valor = e.texto === 'Vence hoy' ? 'Hoy' : e.texto === 'Vence mañana' ? 'Mañana' : fecha; }
+  else if (e && e.clase === 'mal') { rotulo = 'Venció'; valor = t.proximoVence ? fechaCorta(t.proximoVence) : valor; }
+  else if (e && /atrasado/.test(e.texto)) { rotulo = 'Vence'; valor = fechaCorta(t.proximoVence); }
+  else if (e && e.clase === 'aviso') { valor = /hoy$/i.test(e.texto) ? 'Hoy' : /mañana$/.test(e.texto) ? 'Mañana' : fecha; }
   const digitos = /^\d{4}$/.test(d.digitos || '') ? d.digitos : null;
   // Con diseño real: logo y dibujo del banco; el nombre de la tarjeta queda para lectores de pantalla.
   const nombre = NOMBRE_TC[t.id] || t.nombre;
@@ -1498,7 +1516,7 @@ async function procesarHasta(id) {
 // Globo sobre "Tarjetas" en el menú: cuántas tarjetas con deuda vencen en los próximos 7 días (o ya vencieron).
 function pintarGlobos(lista) {
   document.querySelectorAll('.barra-nav a[data-ruta="tarjetas"]').forEach((a) => {
-    const n = api.emailGuardado() ? lista.filter((t) => t.id !== 'HORMIGA' && t.pendiente > 0 && t.proximoVence && diasEntre(hoyISO(), t.proximoVence) <= 7).length : 0;
+    const n = api.emailGuardado() ? lista.filter((t) => t.id !== 'HORMIGA' && t.pendiente > 0 && t.proximoVence && diasEntre(hoyISO(), fechaPagoTC(t)) <= 7).length : 0;
     let g = a.querySelector('.nav-globo');
     if (!n) { g?.remove(); return; }
     if (!g) { g = h('span', { class: 'nav-globo' }); a.append(g); }
@@ -1513,9 +1531,9 @@ function pintarProximoPago() {
   const caja = document.querySelector('.nav-proximo');
   if (!caja) return;
   const prox = lista.filter((t) => t.id !== 'HORMIGA' && t.pendiente > 0 && t.proximoVence)
-    .sort((a, b) => String(a.proximoVence).localeCompare(String(b.proximoVence)))[0];
+    .sort((a, b) => String(fechaPagoTC(a)).localeCompare(String(fechaPagoTC(b))))[0];
   if (!prox || !api.emailGuardado()) { caja.hidden = true; caja.dataset.clave = ''; return; }
-  const e = estadoVence(prox.proximoVence, prox.pendiente);
+  const e = estadoVence(prox.proximoVence, prox.pendiente, pagoDeTC(prox));
   const clave = [prox.id, prox.pendiente, e.texto].join('|');
   if (caja.dataset.clave === clave) return; // sin cambios: no se vuelve a animar
   caja.dataset.clave = clave;
@@ -3312,7 +3330,7 @@ async function vistaInicio() {
   const tarjetas = (d.tarjetas || []).filter((t) => t.id !== 'HORMIGA');
   const hormiga = (d.tarjetas || []).find((t) => t.id === 'HORMIGA');
   const conDeuda = tarjetas.filter((t) => t.pendiente > 0).sort((a, b) => b.pendiente - a.pendiente);
-  const proxima = conDeuda.filter((t) => t.proximoVence).sort((a, b) => a.proximoVence.localeCompare(b.proximoVence))[0];
+  const proxima = conDeuda.filter((t) => t.proximoVence).sort((a, b) => String(fechaPagoTC(a)).localeCompare(String(fechaPagoTC(b))))[0];
 
   // Panel del mes: saldo, avance, lo que falta pagar y los datos clave.
   const dato = (ico, etiqueta, valor, extra) => h('li', {},
@@ -3349,7 +3367,7 @@ async function vistaInicio() {
     conDeuda.length > 1 ? h('ul', { class: 'hero-leyenda compacta' }, conDeuda.slice(0, 3).map((t) => h('li', {},
       chipTC(t.id, 'mini'), h('span', {}, nombreCortoTC(t)), h('b', {}, pctTexto(t.pendiente, d.totalPorPagar))))) : null,
     h('span', { class: 'hero-pagar-pie' }, icono('calendario'),
-      proxima ? `Próximo: ${fechaCorta(proxima.proximoVence)} · ${nombreCortoTC(proxima)}` : 'Sin vencimientos pendientes')));
+      proxima ? `Próximo: ${fechaCorta(fechaPagoTC(proxima))} · ${nombreCortoTC(proxima)}` : 'Sin vencimientos pendientes')));
   if (p && !esHoy && p.ingresos > 0) {
     // Otro mes: en vez de lo que falta pagar hoy, cómo se repartió (o se repartirá) el ingreso de ese mes.
     const gastos = Math.max(p.gastos || 0, 0);
@@ -6217,7 +6235,7 @@ async function vistaTarjetas() {
   const hormiga = lista.find((t) => t.id === 'HORMIGA');
   const total = deCredito.reduce((s, t) => s + (t.pendiente || 0), 0);
   const conDeuda = deCredito.filter((t) => t.pendiente > 0).sort((a, b) => b.pendiente - a.pendiente);
-  const porFecha = conDeuda.filter((t) => t.proximoVence).sort((a, b) => a.proximoVence.localeCompare(b.proximoVence));
+  const porFecha = conDeuda.filter((t) => t.proximoVence).sort((a, b) => String(fechaPagoTC(a)).localeCompare(String(fechaPagoTC(b))));
   const proxima = porFecha[0];
   const raiz = h('div', { class: 'pantalla tarjetas' },
     h('header', { class: 'cabecera' }, h('h1', {}, 'Tarjetas')));
@@ -6234,7 +6252,7 @@ async function vistaTarjetas() {
       h('ul', { class: 'hero-leyenda' }, conDeuda.map((t) => h('li', {}, chipTC(t.id, 'mini'), h('span', {}, nombreCortoTC(t)),
         h('b', {}, pctTexto(t.pendiente, total)))))) : null,
     h('ul', { class: 'hero-datos' },
-      heroDato('calendario', 'Próximo pago', proxima ? fechaCorta(proxima.proximoVence) : 'Ninguno'),
+      heroDato('calendario', 'Próximo pago', proxima ? fechaCorta(fechaPagoTC(proxima)) : 'Ninguno'),
       heroDato('tarjetas', 'La más alta', conDeuda[0] ? nombreCortoTC(conDeuda[0]) : 'Ninguna'),
       heroDato('billetera', 'Gastos hormiga', soles(hormiga?.pendiente || 0))));
 
@@ -6251,8 +6269,8 @@ async function vistaTarjetas() {
       h('div', { class: 'ruta' },
         paso('hoy', hoy, 'Hoy', '', null, null, 0),
         porFecha.map((t, i) => {
-          const e = estadoVence(t.proximoVence, t.pendiente);
-          return paso(`tc-${t.id} ${e.clase}`, deISO(t.proximoVence), nombreCortoTC(t), e.texto, t.pendiente, `#tarjeta-${t.id}`, i + 1);
+          const e = estadoVence(t.proximoVence, t.pendiente, pagoDeTC(t));
+          return paso(`tc-${t.id} ${e.clase}`, deISO(fechaPagoTC(t)), nombreCortoTC(t), e.texto, t.pendiente, `#tarjeta-${t.id}`, i + 1);
         })));
   }
 
@@ -6298,7 +6316,7 @@ async function vistaTarjeta(id) {
       tarjetaVisual(t, false),
       esHormiga ? null : h('button', { type: 'button', class: 'boton datos-tc', onclick: () => editarDatosTC(t) }, 'Editar datos de la tarjeta'),
       h('section', { class: 'panel resumen-tc' },
-        esHormiga ? null : h('div', { class: 'linea' }, h('span', { class: 'suave' }, 'Próximo vencimiento'), estadoPill(t.proximoVence, t.pendiente)),
+        esHormiga ? null : h('div', { class: 'linea' }, h('span', { class: 'suave' }, 'Próximo pago'), estadoPill(t.proximoVence, t.pendiente, pagoDeTC(t))),
         h('div', { class: 'linea' }, h('span', { class: 'suave' }, esHormiga ? 'Gastos del mes' : 'Consumos por pagar'), h('strong', {}, String(porPagar))),
         duenioTC(t) ? h('div', { class: 'linea' }, h('span', { class: 'suave' }, 'Titular'),
           h('span', { class: 'titular' }, avatar(duenioTC(t), 'chico'), duenioTC(t))) : null,
@@ -6369,10 +6387,14 @@ async function vistaTarjeta(id) {
       });
     }
     const dias = !esHormiga && g.vence ? diasEntre(hoyISO(), g.vence) : null;
+    const diasPago = !esHormiga && g.pago ? diasEntre(hoyISO(), g.pago) : null;
     const pill = dias == null ? null
       : dias < 0 ? h('span', { class: 'estado-pill vencido' }, `Vencido hace ${-dias} día${dias === -1 ? '' : 's'}`)
-        : dias <= 7 ? h('span', { class: 'estado-pill pronto' }, dias === 0 ? 'Vence hoy' : `Vence en ${dias} día${dias === 1 ? '' : 's'}`)
-          : h('span', { class: 'estado-pill al-dia' }, `Faltan ${dias} días`);
+        : diasPago != null && diasPago >= 0
+          ? h('span', { class: `estado-pill ${diasPago <= 7 ? 'pronto' : 'al-dia'}` }, diasPago === 0 ? 'Pagas hoy' : diasPago === 1 ? 'Pagas mañana' : diasPago <= 7 ? `Pagas en ${diasPago} días` : `Faltan ${diasPago} días`)
+          : diasPago != null && pendientes.length ? h('span', { class: 'estado-pill pronto' }, dias === 0 ? 'Vence hoy' : `Pago atrasado · vence en ${dias} día${dias === 1 ? '' : 's'}`)
+            : dias <= 7 ? h('span', { class: 'estado-pill pronto' }, dias === 0 ? 'Vence hoy' : `Vence en ${dias} día${dias === 1 ? '' : 's'}`)
+              : h('span', { class: 'estado-pill al-dia' }, `Faltan ${dias} días`);
     col.append(h('section', { class: 'bloque grupo' + (dias != null && dias < 0 && pendientes.length ? ' vencido' : '') },
       h('div', { class: 'grupo-cabecera' },
         h('div', {}, pill, h('h2', {}, titulo),
