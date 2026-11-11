@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v169';
+const VERSION_APP = 'finfamily-v170';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -4772,9 +4772,9 @@ function panelPresupuestoAdmin() {
   const fila = (l, mostrarTipos) => {
     const tipos = mostrarTipos ? (l.conceptos || []) : [];
     return h('button', { type: 'button', class: 'pa-fila' + (l.sugerido ? ' sugerido' : ''), disabled: !editable, onclick: () => dialogoLineaEdit(l, mes, recargar),
-      title: mostrarTipos ? (tipos.length ? `Cuentan aquí: ${tipos.join(', ')}${l.sugerido ? ' (sugerido; tócalo para confirmarlo)' : ''}` : 'Ningún tipo de gasto cuenta aquí todavía') : 'Cambiar monto o nombre' },
+      title: mostrarTipos ? (tipos.length ? `Cuentan aquí: ${tipos.join(', ')}${l.sugerido ? ' (sugerido; tócalo para confirmarlo)' : ''}` : 'Pago fijo: aquí no se anotan gastos, se marca pagado a fin de mes. Tócalo si quieres que algún tipo de gasto cuente aquí.') : 'Cambiar monto o nombre' },
       h('span', { class: 'pa-nombre' }, h('strong', {}, nombreLinea(l.concepto)),
-        mostrarTipos ? h('small', { class: tipos.length ? '' : 'falta' }, tipos.length ? tipos.join(' · ') : 'Sin tipos de gasto') : null),
+        mostrarTipos ? h('small', { class: tipos.length ? '' : 'fijo-pago' }, tipos.length ? tipos.join(' · ') : 'Pago fijo · se marca pagado') : null),
       h('b', { class: 'pa-monto' }, soles(l.monto || 0)),
       editable ? h('span', { class: 'pa-lapiz', 'aria-hidden': 'true' }, icono('lapiz')) : null);
   };
