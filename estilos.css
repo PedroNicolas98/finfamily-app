@@ -4992,3 +4992,24 @@ button.anio-col:hover, .anio-col.elegida { background: color-mix(in srgb, var(--
 @media (prefers-reduced-motion: reduce) {
   .anio-col.nuevo .anio-pila, .anio-col.nuevo .anio-valor, .aj-fila, .boton-ajuste .aj-cuenta { animation: none; }
 }
+/* ---------- v179: pagos fijos que se marcan solos con el correo ---------- */
+.palabras-fijo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 10px; padding: 6px; border: 1.5px solid var(--borde); border-radius: var(--radio-chico); background: var(--sup); transition: border-color 180ms ease; }
+.palabras-fijo:focus-within { border-color: var(--accion); }
+.palabra-chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 4px 4px 10px; border-radius: 99px; background: color-mix(in srgb, var(--accion) 12%, var(--sup-2)); font-size: 0.875rem; font-weight: 650; animation: subir 320ms var(--suave) both; }
+.palabra-chip button { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--tinta-2); cursor: pointer; }
+.palabra-chip button:hover { background: color-mix(in srgb, var(--tinta) 10%, transparent); color: var(--tinta); }
+.palabra-chip .icono, .palabra-chip svg { width: 14px; height: 14px; }
+.palabra-entrada { flex: 1 1 120px; min-width: 100px; border: 0 !important; outline: 0; background: transparent !important; box-shadow: none !important; padding: 4px 6px !important; font: inherit; font-size: 0.92rem; color: var(--tinta); }
+.pago-correo { display: block; font-size: 0.8rem; font-weight: 650; color: var(--accion); }
+.check-fijo.parcial:not([aria-pressed="true"]) { border-style: dashed; border-color: var(--accion); background: color-mix(in srgb, var(--accion) 12%, transparent); }
+@media (min-width: 1024px) {
+  body .pantalla.presupuesto .seccion-gastos .pago-correo { display: none; }
+}
+.le-columnas { display: grid; gap: 4px 28px; }
+.le-col { min-width: 0; display: flex; flex-direction: column; }
+.le-col > .etq:first-child { margin-top: 0; }
+@media (min-width: 900px) {
+  .hoja-modal.linea-edit-dlg { width: min(900px, calc(100vw - 24px)); }
+  .le-columnas:has(> .le-col + .le-col) { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); align-items: start; }
+  .le-columnas .elige-conceptos { margin-top: 4px; }
+}

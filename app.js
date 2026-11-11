@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v178';
+const VERSION_APP = 'finfamily-v179';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -2046,7 +2046,15 @@ const fijosDe = (filas) => (filas || []).filter((f) => f.seccion === 'gastos' &&
 // pagados solos ese día; los demás se recuerdan en Inicio desde 2 días antes hasta que se marquen.
 // ---------------------------------------------------------------------------
 function motorFijosAuto() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 13); }
-const fijosAutoGuardados = () => leerCache('fijos-auto')?.datos?.fijos || [];
+const fijosAutoGuardados = () => (leerCache('fijos-auto')?.datos?.fijos || []).filter((x) => x.dia >= 1);
+// v179 (motor 1.23): empresas con las que una línea se marca pagada sola y lo ya pagado por correo en cada mes.
+const palabrasFijo = (concepto) => {
+  const mapa = leerCache('fijos-auto')?.datos?.palabras || {};
+  const k = Object.keys(mapa).find((x) => normalizar(x) === normalizar(concepto));
+  return k ? mapa[k] || [] : null;
+};
+const pagosFijo = (mes, concepto) => leerCache('fijos-auto')?.datos?.pagos?.[mes]?.[normalizar(concepto)] || null;
+const nombreEmpresa = (p) => String(p || '').split(' ').map((w, i) => (i && /^(de|del|la|las|los|y)$/.test(w) ? w : w.charAt(0).toUpperCase() + w.slice(1))).join(' ');
 const textoDia = (dia) => (dia >= 31 ? 'fin de mes' : `día ${dia}`);
 const fijoAutoDe = (concepto) => fijosAutoGuardados().find((x) => normalizar(x.concepto) === normalizar(concepto)) || null;
 function fechaDelFijo(dia, anioMes) {
@@ -2896,6 +2904,7 @@ function filaWhatsapp() {
 // ---------------------------------------------------------------------------
 function motorV120() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 20); }
 function motorV122() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 22); }
+function motorV123() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 23); }
 
 // ¿Es un pase de plata a la otra persona? ("Yape a PersonaB…", "Plin a PersonaA…"). Devuelve su nombre o ''.
 function otroDePase(texto, quien) {
@@ -5190,7 +5199,8 @@ function panelPresupuestoAdmin() {
     return h('button', { type: 'button', class: 'pa-fila' + (l.sugerido ? ' sugerido' : ''), disabled: !editable, onclick: () => dialogoLineaEdit(l, mes, recargar),
       title: mostrarTipos ? (tipos.length ? `Cuentan aquí: ${tipos.join(', ')}${l.sugerido ? ' (sugerido; tócalo para confirmarlo)' : ''}` : 'Pago fijo: aquí no se anotan gastos, se marca pagado a fin de mes. Tócalo si quieres que algún tipo de gasto cuente aquí.') : 'Cambiar monto o nombre' },
       h('span', { class: 'pa-nombre' }, h('strong', {}, nombreLinea(l.concepto)),
-        mostrarTipos ? h('small', { class: tipos.length ? '' : 'fijo-pago' }, tipos.length ? tipos.join(' · ') : 'Pago fijo · se marca pagado') : null),
+        mostrarTipos ? h('small', { class: tipos.length ? '' : 'fijo-pago' }, tipos.length ? tipos.join(' · ')
+          : (motorV123() && (palabrasFijo(l.concepto) || []).length ? `Se marca solo · ${(palabrasFijo(l.concepto) || []).slice(0, 2).map(nombreEmpresa).join(', ')}` : 'Pago fijo · se marca pagado')) : null),
       h('b', { class: 'pa-monto' }, soles(l.monto || 0)),
       editable ? h('span', { class: 'pa-lapiz', 'aria-hidden': 'true' }, icono('lapiz')) : null);
   };
@@ -5240,7 +5250,7 @@ function panelPresupuestoAdmin() {
 
 // Ventanita de una línea del presupuesto: nombre, monto desde este mes, qué tipos de gasto cuentan, y quitar.
 function dialogoLineaEdit(l, mes, alTerminar) {
-  const dlg = h('dialog', { class: 'hoja-modal', 'aria-label': 'Editar línea del presupuesto' });
+  const dlg = h('dialog', { class: 'hoja-modal' + (l.seccion === 'gastos' ? ' linea-edit-dlg' : ''), 'aria-label': 'Editar línea del presupuesto' });
   const cerrar = () => { if (dlg.classList.contains('cerrando')) return; dlg.classList.add('cerrando'); setTimeout(() => { if (dlg.open) dlg.close(); dlg.remove(); }, sinMovimiento() ? 0 : 190); };
   dlg.addEventListener('cancel', (ev) => { ev.preventDefault(); cerrar(); });
   dlg.addEventListener('click', (ev) => { if (ev.target === dlg) cerrar(); });
@@ -5253,6 +5263,30 @@ function dialogoLineaEdit(l, mes, alTerminar) {
     catIco(c), h('span', {}, c)))) : null;
   const msg = h('p', { class: 'mensaje error', hidden: true });
   const zona = h('div', { class: 'zona-confirmar' });
+  // v179: con qué empresas se marca pagada sola (cuando llega el correo del pago).
+  const conCorreo = l.seccion === 'gastos' && !l.esTarjeta && !/^TC\s/i.test(l.concepto || '') && motorV123();
+  let palabras = conCorreo ? (palabrasFijo(l.concepto) || []).slice() : [];
+  let palabrasAntes = JSON.stringify(palabras);
+  const cajaPalabras = conCorreo ? h('div', { class: 'palabras-fijo' }) : null;
+  const inPalabra = conCorreo ? h('input', { type: 'text', class: 'palabra-entrada', maxlength: '30', placeholder: palabras.length ? 'Otra empresa' : 'Ej. Entel', 'aria-label': 'Agregar empresa' }) : null;
+  const pintarPalabras = () => {
+    if (!cajaPalabras) return;
+    cajaPalabras.replaceChildren(...palabras.map((p) => h('span', { class: 'palabra-chip' }, nombreEmpresa(p),
+      h('button', { type: 'button', 'aria-label': `Quitar ${nombreEmpresa(p)}`, title: 'Quitar', onclick: () => { palabras = palabras.filter((x) => x !== p); pintarPalabras(); } }, icono('cerrar')))), inPalabra);
+    inPalabra.placeholder = palabras.length ? 'Otra empresa' : 'Ej. Entel';
+  };
+  const agregarPalabra = () => {
+    const t = normalizar(inPalabra.value).trim();
+    inPalabra.value = '';
+    if (t.length < 2 || palabras.includes(t) || palabras.length >= 8) return;
+    palabras.push(t); pintarPalabras(); inPalabra.focus();
+  };
+  if (inPalabra) {
+    inPalabra.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ',') { ev.preventDefault(); agregarPalabra(); } else if (ev.key === 'Backspace' && !inPalabra.value && palabras.length) { palabras.pop(); pintarPalabras(); } });
+    inPalabra.addEventListener('blur', () => { if (inPalabra.value.trim()) agregarPalabra(); });
+    pintarPalabras();
+    if (palabrasFijo(l.concepto) === null) cargarRapido('fijosAuto', {}, 'fijos-auto').then(() => { palabras = (palabrasFijo(l.concepto) || []).slice(); palabrasAntes = JSON.stringify(palabras); pintarPalabras(); }).catch(() => {});
+  }
   const btn = h('button', { type: 'submit', class: 'boton primario' }, 'Guardar');
   const btnQuitar = h('button', { type: 'button', class: 'boton enlace peligro', onclick: () => {
     const intentar = async (forzar) => {
@@ -5277,6 +5311,11 @@ function dialogoLineaEdit(l, mes, alTerminar) {
     ocuparBoton(btn, 'Guardando…');
     try {
       const correo = emailSesion();
+      if (inPalabra?.value.trim()) agregarPalabra();
+      if (conCorreo && JSON.stringify(palabras) !== palabrasAntes) {
+        const rp = await llamarApi('guardarFijoAuto', { concepto: l.concepto, palabras }, { email: correo });
+        try { await cargar('fijosAuto', {}, 'fijos-auto'); } catch { if (rp?.fijos) guardarCache('fijos-auto', { ...(leerCache('fijos-auto')?.datos || {}), fijos: rp.fijos }); }
+      }
       if (nombre !== l.concepto) await llamarApi('renombrarLinea', { fila: l.fila, nombre }, { email: correo });
       if (monto !== (l.monto || 0)) await llamarApi('editarLineaMeses', { fila: l.fila, monto, desdeMes: mes }, { email: correo });
       const antes = JSON.stringify((l.sugerido ? [] : (l.conceptos || [])).slice().sort());
@@ -5285,11 +5324,15 @@ function dialogoLineaEdit(l, mes, alTerminar) {
     } catch (e) { liberarBoton(btn, 'Guardar'); msg.textContent = mensajeError(e, 'No se pudo guardar.'); msg.hidden = false; }
   } },
     h('p', { class: 'cierre-etq' }, nombreLinea(l.concepto)),
-    h('div', { class: 'modal-cuerpo' },
-      h('div', { class: 'campo' }, h('label', { for: 'le-nombre' }, 'Nombre'), inNombre),
-      h('div', { class: 'campo campo-chico' }, h('label', { for: 'le-monto' }, `Monto mensual desde ${nombreMesClave(mes) || 'este mes'} (S/)`), inMonto)),
-    cajas ? h('p', { class: 'etq' }, 'Qué tipos de gasto cuentan aquí') : null,
-    cajas,
+    h('div', { class: 'le-columnas' },
+      h('div', { class: 'le-col' },
+        h('div', { class: 'modal-cuerpo' },
+          h('div', { class: 'campo' }, h('label', { for: 'le-nombre' }, 'Nombre'), inNombre),
+          h('div', { class: 'campo campo-chico' }, h('label', { for: 'le-monto' }, `Monto mensual desde ${nombreMesClave(mes) || 'este mes'} (S/)`), inMonto)),
+        cajaPalabras ? h('p', { class: 'etq', title: 'Cuando llega el correo del pago (débito automático, «cobro de tu recibo», pago o yapeo del servicio) o un consumo con tarjeta en estas empresas, lo pagado se suma; al llegar a lo planeado, la línea queda pagada sola.' },
+          'Se marca pagado solo con el correo de') : null,
+        cajaPalabras),
+      cajas ? h('div', { class: 'le-col' }, h('p', { class: 'etq' }, 'Qué tipos de gasto cuentan aquí'), cajas) : null),
     msg, zona,
     h('div', { class: 'acciones modal-acciones' }, btn, h('button', { type: 'button', class: 'boton', onclick: cerrar }, 'Cancelar'), btnQuitar));
   dlg.append(form); document.body.append(dlg); dlg.showModal();
@@ -7448,7 +7491,7 @@ async function vistaPresupuesto() {
       h('ul', { class: 'filas-pres' }, ordenadas.map((f) => {
         const marcable = fijos.includes(f);
         const nota = h('small', { class: 'nota-pagado' }, f.pagadoNota || '');
-        const li = h('li', { class: [f.monto ? '' : 'cero', f.pagado && marcable ? 'pagado' : ''].join(' ').trim(), 'data-nombre': normalizar(nombreLinea(f.concepto)), 'data-marcable': marcable ? '1' : null, 'data-linea': clave === 'gastos' && !f.esTarjeta ? normalizar(nombreLinea(f.concepto)) : null, 'data-plan': String(Math.abs(f.monto || 0)), 'data-fila': String(f.fila || 0), 'data-conceptos': f.conceptos && f.conceptos.length ? JSON.stringify(f.conceptos) : null },
+        const li = h('li', { class: [f.monto ? '' : 'cero', f.pagado && marcable ? 'pagado' : ''].join(' ').trim(), 'data-nombre': normalizar(nombreLinea(f.concepto)), 'data-clave': marcable ? normalizar(f.concepto) : null, 'data-marcable': marcable ? '1' : null, 'data-linea': clave === 'gastos' && !f.esTarjeta ? normalizar(nombreLinea(f.concepto)) : null, 'data-plan': String(Math.abs(f.monto || 0)), 'data-fila': String(f.fila || 0), 'data-conceptos': f.conceptos && f.conceptos.length ? JSON.stringify(f.conceptos) : null },
           h('div', { class: 'fila-pres-top' },
             h('span', { class: 'fila-pres-nombre' },
               marcable ? botonFijo(f, d.mes, (x) => { li.classList.toggle('pagado', !!x.pagado); nota.textContent = x.pagado ? (x.pagadoNota || '') : ''; pintarResumenFijos(); }) : null,
@@ -7656,6 +7699,21 @@ async function vistaPresupuesto() {
   secciones.forEach((el, i) => { if (el) { el.classList.add('revelar'); el.style.setProperty('--i', String(i)); } });
 
   if (secciones[2]) { pintarLlevas(secciones[2]); controlesGastos(secciones[2]); }
+  // v179: lo pagado por correo en las líneas fijas que todavía no llegan a lo planeado ("Van S/ 37.94 de S/ 67.35 · Entel").
+  if (secciones[2] && motorV123() && emailSesion()) {
+    const ponerPagos = () => secciones[2].querySelectorAll('li[data-clave]').forEach((li) => {
+      if (li.classList.contains('pagado') || li.querySelector('.pago-correo')) return;
+      const x = pagosFijo(d.mes, li.dataset.clave);
+      if (!x || !(x.total > 0)) return;
+      const plan = Number(li.dataset.plan) || 0;
+      li.title = `Pagado por correo: van ${soles(x.total)} de ${soles(plan)}${x.de.length ? ' (' + x.de.join(', ') + ')' : ''}`;
+      li.querySelector('.check-fijo')?.classList.add('parcial');
+      li.querySelector('.fila-pres-nombre > span:last-child')?.append(h('small', { class: 'pago-correo', title: `Pagado por correo: ${x.de.join(', ')}` },
+        `Van ${soles(x.total)} de ${soles(plan)}${x.de.length ? ' · ' + x.de.join(', ') : ''}`));
+    });
+    ponerPagos();
+    cargarRapido('fijosAuto', {}, 'fijos-auto').then(ponerPagos).catch(() => {});
+  }
   // Ahorros: una sola lista por meta. De cada una se ve cuánto lleva guardado en total, cuánto se puso este mes
   // (se cambia con un clic) y en cuántos meses se aportó. Arriba, lo ahorrado este mes y el total guardado.
   if (secciones[1] && motorNuevo()) {
