@@ -2381,6 +2381,82 @@ function abrirConectarWhatsapp(alTerminar) {
   v.abrir();
 }
 
+// WhatsApp oficial de Meta (v130, motor 1.18): número de prueba de la Cloud API, gratis hasta 5 destinatarios.
+function motorWhatsappMeta() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 18); }
+const PAGINA_META_APPS = 'https://developers.facebook.com/apps/';
+
+function abrirWhatsappMeta(estadoActual, alTerminar) {
+  let est = estadoActual || {};
+  let cambiarDatos = !est.meta?.configurado;
+  const v = ventanita('conectar-avisos wsp-dlg', 'WhatsApp oficial');
+  v.caja.classList.add('conectar-caja');
+  const inToken = h('input', { type: 'password', autocomplete: 'off', placeholder: 'Token (empieza con EAA…)', 'aria-label': 'Token de Meta' });
+  const inId = h('input', { type: 'text', inputmode: 'numeric', autocomplete: 'off', placeholder: 'Phone number ID', 'aria-label': 'Identificador del número' });
+  const inTel = h('input', { type: 'tel', autocomplete: 'tel', placeholder: '+51 987 654 321', value: '+51 ', 'aria-label': 'Tu número de WhatsApp' });
+  const msg = h('p', { class: 'mensaje error', hidden: true });
+  const pasos = h('ol', { class: 'conectar-pasos' });
+  const error = (texto) => { msg.textContent = texto; msg.hidden = false; };
+  const paso = (n, hecho, titulo, ayuda, ...controles) => h('li', { class: 'conectar-paso' + (hecho ? ' hecho' : ' activo'), style: `--i: ${n}` },
+    h('span', { class: 'conectar-num' }, hecho ? icono('check') : String(n)),
+    h('div', { class: 'conectar-txt' }, h('strong', {}, titulo), h('small', { class: 'suave' }, ayuda),
+      controles.filter(Boolean).length ? h('div', { class: 'conectar-ctrl' }, controles.filter(Boolean)) : null));
+  const btnDatos = h('button', { type: 'button', class: 'boton chico primario' }, 'Guardar datos');
+  btnDatos.onclick = async () => {
+    msg.hidden = true;
+    if (inToken.value.trim().length < 30) { error('Pega el token completo.'); inToken.focus(); return; }
+    if (inId.value.replace(/\D/g, '').length < 8) { error('Pega el «Phone number ID».'); inId.focus(); return; }
+    ocuparBoton(btnDatos, 'Comprobando…');
+    try {
+      est = await llamarApi('guardarWhatsappMeta', { token: inToken.value.trim(), phoneId: inId.value.trim() }, { email: emailSesion() });
+      guardarCache('whatsapp', est);
+      inToken.value = ''; cambiarDatos = false;
+      avisar(`Meta conectado${est.meta?.numero ? ` · número ${est.meta.numero}` : ''}`, 'ok');
+      pintar();
+    } catch (e) { liberarBoton(btnDatos, 'Guardar datos'); error(mensajeError(e, 'Meta no aceptó los datos.')); }
+  };
+  const btnTel = h('button', { type: 'button', class: 'boton chico primario' }, 'Conectar mi número');
+  btnTel.onclick = async () => {
+    msg.hidden = true;
+    if (inTel.value.replace(/\D/g, '').length < 9) { error('Escribe tu número con el código del país.'); inTel.focus(); return; }
+    ocuparBoton(btnTel, 'Enviando…');
+    try {
+      est = await llamarApi('guardarWhatsapp', { via: 'meta', telefono: inTel.value }, { email: emailSesion() });
+      guardarCache('whatsapp', est);
+      avisar('¡Conectado! Te llegó un «Hello World» de Meta.', 'ok');
+      pintar(); alTerminar?.(est);
+    } catch (e) { liberarBoton(btnTel, 'Conectar mi número'); error(mensajeError(e, 'No se pudo conectar tu número.')); }
+  };
+  const btnProbar = h('button', { type: 'button', class: 'boton chico' }, 'Probar aviso');
+  btnProbar.onclick = async () => {
+    ocuparBoton(btnProbar, 'Enviando…');
+    try { const r = await llamarApi('probarWhatsapp', {}, { email: emailSesion() }); if (r?.enviado) avisar('Aviso de prueba enviado', 'ok'); else error(r?.motivo || 'No salió.'); }
+    catch (e) { error(mensajeError(e, 'No se pudo enviar.')); }
+    liberarBoton(btnProbar, 'Probar aviso');
+  };
+  function pintar() {
+    const datosListos = !!est.meta?.configurado && !cambiarDatos;
+    const miNumero = est.conectado && est.via === 'meta';
+    pasos.replaceChildren(
+      paso(1, datosListos, 'Datos de tu app de Meta', datosListos ? `Listo · plantilla «${est.meta.plantilla}». Se hace una sola vez para los dos.`
+        : 'En developers.facebook.com › tu app › WhatsApp › API Setup: copia el token permanente y el «Phone number ID».',
+      ...(datosListos ? [h('button', { type: 'button', class: 'boton chico enlace', onclick: () => { cambiarDatos = true; pintar(); } }, 'Cambiar')]
+        : [h('div', { class: 'wsp-campos' }, inToken, inId), btnDatos, h('a', { class: 'boton chico', href: PAGINA_META_APPS, target: '_blank', rel: 'noopener' }, 'Abrir Meta', icono('adelante'))])),
+      paso(2, miNumero, 'Tu número de WhatsApp', miNumero ? `Conectado: ${est.telefono}.` : 'Tiene que estar en la lista de destinatarios de la app (hasta 5 números). Te llega un «Hello World».',
+        ...(miNumero ? [] : [h('div', { class: 'wsp-campos' }, inTel), datosListos ? btnTel : null])),
+      paso(3, false, 'Plantilla «aviso_finfamily» aprobada', 'Meta revisa el texto de los avisos (suele tardar minutos). Mientras tanto siguen llegando por correo.',
+        miNumero ? btnProbar : null));
+  }
+  v.caja.append(
+    h('span', { class: 'conectar-ico' }, icono('novedad')),
+    h('p', { class: 'cierre-etq' }, 'WhatsApp oficial (Meta)'),
+    h('p', { class: 'suave' }, 'Gratis con el número de prueba de Meta. Los avisos llegan desde ese número a tu WhatsApp.'),
+    pasos, msg,
+    h('div', { class: 'acciones modal-acciones' }, h('button', { type: 'button', class: 'boton primario', onclick: v.cerrar }, 'Listo'),
+      h('button', { type: 'button', class: 'boton enlace', onclick: () => { v.cerrar(); abrirConectarWhatsapp(alTerminar); } }, 'Usar CallMeBot')));
+  pintar();
+  v.abrir();
+}
+
 // Fila de Ajustes › Avisos.
 function filaWhatsapp() {
   const control = h('span', { class: 'wsp-control' });
@@ -2388,7 +2464,7 @@ function filaWhatsapp() {
   const pintarCon = (d) => {
     if (!d) { control.replaceChildren(h('span', { class: 'suave' }, '…')); return; }
     if (!d.conectado) {
-      control.replaceChildren(h('button', { type: 'button', class: 'boton chico primario', onclick: () => abrirConectarWhatsapp(pintarCon) }, 'Conectar'));
+      control.replaceChildren(h('button', { type: 'button', class: 'boton chico primario', onclick: () => (motorWhatsappMeta() ? abrirWhatsappMeta(d, pintarCon) : abrirConectarWhatsapp(pintarCon)) }, 'Conectar'));
       return;
     }
     const probar = h('button', { type: 'button', class: 'boton chico', onclick: async () => {
@@ -2401,7 +2477,8 @@ function filaWhatsapp() {
       try { const r = await llamarApi('guardarWhatsapp', { quitar: true }, { email: emailSesion() }); guardarCache('whatsapp', r); pintarCon(r); avisar('WhatsApp desconectado', 'ok'); }
       catch (e) { avisar(mensajeError(e, 'No se pudo quitar.'), 'error'); }
     } }, 'Quitar');
-    control.replaceChildren(h('span', { class: 'pill ok', title: 'Conectado' }, d.telefono || 'Conectado'), probar, quitar);
+    const ver = d.via === 'meta' && motorWhatsappMeta() ? h('button', { type: 'button', class: 'boton chico enlace', onclick: () => abrirWhatsappMeta(d, pintarCon) }, 'Ver') : null;
+    control.replaceChildren(...[h('span', { class: 'pill ok', title: d.via === 'meta' ? 'WhatsApp oficial (Meta)' : 'CallMeBot' }, d.telefono || 'Conectado'), probar, ver, quitar].filter(Boolean));
   };
   pintarCon(leerCache('whatsapp')?.datos || null);
   cargarRapido('whatsapp', {}, 'whatsapp').then((r) => pintarCon(r?.datos)).catch(() => fila.remove());
