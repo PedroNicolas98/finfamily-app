@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v175';
+const VERSION_APP = 'finfamily-v176';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -2166,24 +2166,25 @@ function comoVas(tarjetas) {
   return { desde, hasta, total, pasados, llevas, proyectado: pasados >= 5 ? Math.round((llevas / pasados) * total) : null,
     antMismo: suma(antMismo), antTotal: suma(antTotal), hayAnterior, conceptos };
 }
-// ▲ 18 % (gastar más es malo: rojo) / ▼ 12 % (verde). null si no hay con qué comparar.
+// Diferencia en soles: ▲ S/ 505 (gastar más es malo: rojo) / ▼ S/ 20 (verde) / igual.
 function deltaGasto(ahora, antes) {
-  if (!(antes > 0)) return null;
-  const pct = Math.round(((ahora - antes) / antes) * 100);
-  if (Math.abs(pct) < 3) return h('span', { class: 'cv-delta igual' }, 'igual');
-  return h('span', { class: `cv-delta ${pct > 0 ? 'sube' : 'baja'}` }, `${pct > 0 ? '▲' : '▼'} ${Math.abs(pct)}%`);
+  const dif = Math.round((ahora - antes) * 100) / 100;
+  if (Math.abs(dif) < 1) return h('span', { class: 'cv-delta igual' }, 'igual');
+  return h('span', { class: `cv-delta ${dif > 0 ? 'sube' : 'baja'}` }, `${dif > 0 ? '▲' : '▼'} ${soles(Math.abs(dif))}`);
 }
 function nodoComoVas(cv) {
   const sub = `Llevas ${soles(cv.llevas)} en ${cv.pasados} de ${cv.total} días desde el cobro`;
+  const dif = Math.round((cv.llevas - cv.antMismo) * 100) / 100;
   return h('div', { class: 'cv' },
     h('div', { class: 'cv-cab' },
       h('p', { class: 'cv-titular' }, cv.proyectado !== null
         ? ['A este ritmo, este mes gastas ', h('strong', {}, soles(cv.proyectado))]
-        : ['Llevas ', h('strong', {}, soles(cv.llevas)), ' este mes']),
-      cv.hayAnterior && cv.proyectado !== null ? deltaGasto(cv.proyectado, cv.antTotal) : null),
+        : ['Llevas ', h('strong', {}, soles(cv.llevas)), ' este mes'])),
     h('p', { class: 'cv-sub' }, cv.proyectado !== null ? sub : `${sub} · aún es pronto para calcular el ritmo`,
-      cv.hayAnterior ? h('span', {}, ` · el mes pasado: ${soles(cv.antTotal)}`) : null),
-    cv.hayAnterior ? h('p', { class: 'cv-sub' }, `A esta altura del mes pasado llevabas ${soles(cv.antMismo)} `, deltaGasto(cv.llevas, cv.antMismo)) : null,
+      cv.hayAnterior ? h('span', {}, ` · el mes pasado fueron ${soles(cv.antTotal)}`) : null),
+    cv.hayAnterior ? h('p', { class: 'cv-comparo' + (dif > 0 ? ' sube' : ' baja') },
+      `A esta altura del mes pasado llevabas ${soles(cv.antMismo)}: `,
+      h('strong', {}, Math.abs(dif) < 1 ? 'vas igual' : `hoy vas ${soles(Math.abs(dif))} ${dif > 0 ? 'arriba' : 'abajo'}`)) : null,
     cv.conceptos.length ? h('ul', { class: 'cv-lista' }, cv.conceptos.map((x) => h('li', { title: cv.hayAnterior ? `${x.concepto}: ${soles(x.llevas)} ahora · ${soles(x.antes)} a esta altura del mes pasado` : null },
       h('span', { class: 'cv-ico' }, catIco(x.concepto)),
       h('span', { class: 'cv-nombre' }, x.concepto),
