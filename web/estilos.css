@@ -3938,3 +3938,13 @@ body .formulario.registro-uno .f-cierre .r-guardar .boton.grande { flex: 1; min-
   body .pres-admin { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 32px; align-items: start; }
   body .pres-admin > .pres-grupo.gastos { grid-column: 1 / -1; grid-row: 2; }
 }
+/* Menú lateral achicado (computadora): con foto, el botón de la cuenta es solo la foto, sin cuadro ni borde detrás (v136).
+   Se quedan las mismas medidas para que la foto no salte al abrir o cerrar el menú. */
+body.menu-chico .cuenta-menu.nav .cuenta-boton:has(.avatar.con-foto),
+body.menu-chico .cuenta-menu.nav.abierto .cuenta-boton:has(.avatar.con-foto),
+body.menu-chico .cuenta-menu.nav .cuenta-boton:has(.avatar.con-foto):hover {
+  background: none; border-color: transparent; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; transform: none;
+}
+body.menu-chico .cuenta-menu.nav .cuenta-boton:has(.avatar.con-foto) .avatar { box-shadow: 0 6px 14px -8px rgba(8, 14, 30, 0.6); transition: transform 200ms var(--suave); }
+body.menu-chico .cuenta-menu.nav .cuenta-boton:has(.avatar.con-foto):hover .avatar { transform: scale(1.08); }
+body.menu-chico .cuenta-menu.nav .cuenta-boton:has(.avatar.con-foto):focus-visible .avatar { outline: 2px solid var(--accion); outline-offset: 2px; }
