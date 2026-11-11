@@ -446,7 +446,8 @@ function idTarjeta(hoja, responsable, catalogo) {
  * m = mes de la compra; si el día pasa el cierre, m = m + 1.
  * Pago = último día del mes m. Vence = día 'vence' del mes m + 1.
  */
-function calcularCiclo(idCiclo, fechaCompra, catalogo) {
+// mesesDespues (motor 1.11.0): para la cuota N de una compra en cuotas, el pago cae N-1 meses después.
+function calcularCiclo(idCiclo, fechaCompra, catalogo, mesesDespues) {
   var vacio = { pago: '', vence: '' };
   var t = buscarTarjetaCatalogo(catalogo || CATALOGO_DEFECTO, idCiclo);
   var c = t ? { cierre: t.cierre, vence: t.vence } : CICLOS[idCiclo];
@@ -456,10 +457,57 @@ function calcularCiclo(idCiclo, fechaCompra, catalogo) {
   var y = d.getFullYear();
   var m = d.getMonth(); // 0-based
   if (d.getDate() > c.cierre) m += 1;
+  m += Math.max(0, Math.floor(Number(mesesDespues) || 0));
   var pago = new Date(y, m + 1, 0); // último día del mes m (Date maneja el cambio de año)
   var diasMesSig = new Date(y, m + 2, 0).getDate();
   var vence = new Date(y, m + 1, Math.min(c.vence, diasMesSig));
   return { pago: fechaISO(pago), vence: fechaISO(vence) };
+}
+
+// ---------------------------------------------------------------------------
+// Compras en cuotas (motor 1.11.0)
+// ---------------------------------------------------------------------------
+
+var MAXIMO_CUOTAS = 36;
+
+/**
+ * Montos de cada cuota. Sin montoCuota se reparte el total en partes iguales (los centavos que sobran van en
+ * la primera). Con montoCuota (cuando el banco cobra intereses) todas las cuotas son ese monto; debe cubrir el
+ * total y no pasar del doble. Devuelve null si no es válido.
+ */
+function montosDeCuotas(total, n, montoCuota) {
+  var cent = Math.round(Number(total) * 100);
+  if (!(cent > 0) || !(Number(n) === Math.floor(Number(n))) || n < 1 || n > MAXIMO_CUOTAS) return null;
+  var lista = [];
+  if (n === 1) return [cent / 100];
+  var hayFija = !(montoCuota === undefined || montoCuota === null || montoCuota === '');
+  if (hayFija) {
+    var fija = typeof montoCuota === 'number' ? montoCuota : parsearMonto(String(montoCuota));
+    var cf = Math.round(Number(fija) * 100);
+    if (!(cf > 0) || cf * n < cent - n || cf * n > cent * 2) return null;
+    for (var i = 0; i < n; i++) lista.push(cf / 100);
+    return lista;
+  }
+  var parte = Math.floor(cent / n);
+  var resto = cent - parte * n;
+  for (var j = 0; j < n; j++) lista.push((parte + (j === 0 ? resto : 0)) / 100);
+  return lista;
+}
+
+/** "Televisor" -> "Televisor · cuota 2/6" (sin pasar de 120 caracteres). */
+function descripcionDeCuota(descripcion, k, n) {
+  var d = String(descripcion || '').trim();
+  if (!(n > 1)) return d;
+  var sufijo = ' · cuota ' + k + '/' + n;
+  return d.slice(0, 120 - sufijo.length).trim() + sufijo;
+}
+
+/** {k, n} si la descripción es de una cuota ("… · cuota 2/6"), o null. */
+function numeroDeCuota(descripcion) {
+  var m = String(descripcion || '').match(/·\s*cuota\s+(\d{1,2})\/(\d{1,2})\s*$/i);
+  if (!m) return null;
+  var k = Number(m[1]), n = Number(m[2]);
+  return k >= 1 && n >= 2 && k <= n ? { k: k, n: n } : null;
 }
 
 function texto_(v) {

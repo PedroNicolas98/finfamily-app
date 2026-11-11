@@ -347,13 +347,13 @@ test('version: informa 1.7.1 y la lista de acciones; inicio y config traen el ca
     new HojaFalsa('Configuración', [['Conceptos de Gasto', 'Responsable'], ['Limpieza', 'PersonaB']])]) });
   const r = m.llamar('version', {});
   assert.equal(r.ok, true);
-  assert.equal(r.datos.version, '1.10.0');
+  assert.equal(r.datos.version, '1.11.0');
   for (const a of ['desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'marcarPagado', 'inicio',
     'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos', 'datosTarjetas', 'guardarDatosTarjeta']) {
     assert.ok(r.datos.acciones.includes(a), 'falta la acción ' + a);
   }
-  assert.equal(m.llamar('inicio', {}).datos.version, '1.10.0');
-  assert.equal(m.llamar('config', {}).datos.version, '1.10.0');
+  assert.equal(m.llamar('inicio', {}).datos.version, '1.11.0');
+  assert.equal(m.llamar('config', {}).datos.version, '1.11.0');
 });
 
 test('la lista ACCIONES coincide con las acciones que atiende doPost', () => {
@@ -1986,7 +1986,7 @@ test('config: un ícono guardado para un concepto que ya no existe en Configurac
   assert.deepEqual(m.llamar('config', {}).datos.iconos, { Supermercado: 'carrito' });
   const danado = motorCompleto({ propiedades: { FINFAMILY_ICONOS: '{roto' } });
   assert.deepEqual(danado.llamar('config', {}).datos.iconos, {});
-  assert.equal(danado.llamar('version', {}).datos.version, '1.10.0');
+  assert.equal(danado.llamar('version', {}).datos.version, '1.11.0');
   assert.ok(danado.llamar('version', {}).datos.acciones.includes('guardarIconoConcepto'));
 });
 
@@ -2224,7 +2224,7 @@ test('gasto grande con tarjeta prestada: el correo dice quién gastó; versión 
   const m = motorCompleto();
   m.llamar('registrar', Object.assign({}, GASTO_PRESTADO, { monto: 450, descripcion: 'Saga Falabella' }));
   assert.equal(m.correos[0].subject, 'FinFamily: PersonaA registró S/ 450 en Saga Falabella (TC Interbank)');
-  assert.equal(m.llamar('version', {}).datos.version, '1.10.0');
+  assert.equal(m.llamar('version', {}).datos.version, '1.11.0');
 });
 
 // ===========================================================================
@@ -2504,7 +2504,7 @@ test('bolsas con un solo usuario (N = 1): todo el saldo de los meses anteriores 
 test('versión 1.7.0: la acción bolsas está en la lista y presupuesto no cambió', () => {
   const m = motorBolsas();
   const v = m.llamar('version', {}).datos;
-  assert.equal(v.version, '1.10.0');
+  assert.equal(v.version, '1.11.0');
   assert.ok(v.acciones.includes('bolsas'));
   const p = m.llamar('presupuesto', { mes: '2026-11' }).datos;
   assert.equal(p.totales.saldo, 985.57);
@@ -2982,4 +2982,87 @@ test('1.10.0: un aviso reenviado sin saludo con nombre queda a nombre de quien l
   const p = (r.datos.pendientes || r.datos).find((x) => x.id === 'msg-fwd-tc');
   assert.ok(p, JSON.stringify(r));
   assert.equal(p.responsable, 'PersonaB');
+});
+
+
+// ---------- 1.11.0: compras en cuotas ----------
+
+const fechaDe = (v) => (v instanceof Date ? `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}` : String(v));
+
+test('1.11.0: una compra en 6 cuotas deja 6 filas, una por mes de pago, con la fecha real de la compra', () => {
+  const m = motorCompleto({ hoy: '2026-11-10' });
+  const ibk = hojaDe(m, 'TC IBK');
+  const r = m.llamar('registrar', { idCliente: 'cuotas-0001', monto: 1200, medio: 'TC_IBK', concepto: 'Ropa y Calzado',
+    descripcion: 'Televisor', fecha: '2026-11-05', cuotas: 6 });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.datos.guardado, true);
+  assert.equal(r.datos.cuotas, 6);
+  assert.equal(r.datos.montoCuota, 200);
+  const filas = ibk.valores.slice(2).filter((f) => f[4]);
+  assert.equal(filas.length, 6);
+  filas.forEach((f, i) => {
+    assert.equal(f[5], 200);
+    assert.equal(f[4], `Televisor · cuota ${i + 1}/6`);
+    assert.equal(fechaDe(f[2]), '2026-11-05', 'la fecha de compra es la real');
+    assert.equal(f[9], 'Compra de S/ 1,200 en 6 cuotas');
+    assert.equal(String(f[10]).split('|')[0], i === 0 ? 'APP:cuotas-0001' : `APP:cuotas-0001-c${i + 1}`);
+  });
+  // Cada cuota se paga un mes después de la anterior (y cruza el año).
+  const pagos = filas.map((f) => fechaDe(f[6]).slice(0, 7));
+  assert.deepEqual(pagos, ['2026-11', '2026-12', '2027-01', '2027-02', '2027-03', '2027-04']);
+  // Reintento de la cola: no duplica.
+  const otra = m.llamar('registrar', { idCliente: 'cuotas-0001', monto: 1200, medio: 'TC_IBK', concepto: 'Ropa y Calzado',
+    descripcion: 'Televisor', fecha: '2026-11-05', cuotas: 6 });
+  assert.equal(otra.datos.duplicadoId, true);
+  assert.equal(ibk.valores.slice(2).filter((f) => f[4]).length, 6);
+});
+
+test('1.11.0: los centavos que sobran van en la primera cuota; con cuota fija (intereses) todas iguales', () => {
+  const m = motorCompleto({ hoy: '2026-11-10' });
+  const ibk = hojaDe(m, 'TC IBK');
+  m.llamar('registrar', { idCliente: 'cuotas-0002', monto: 100, medio: 'TC_IBK', concepto: 'Ropa y Calzado', descripcion: 'Zapatos', fecha: '2026-11-05', cuotas: 3 });
+  assert.deepEqual(ibk.valores.slice(2).filter((f) => f[4]).map((f) => f[5]), [33.34, 33.33, 33.33]);
+  const r = m.llamar('registrar', { idCliente: 'cuotas-0003', monto: 1200, medio: 'TC_IBK', concepto: 'Ropa y Calzado', descripcion: 'Laptop', fecha: '2026-11-05', cuotas: 6, montoCuota: 215.5 });
+  assert.equal(r.datos.montoCuota, 215.5);
+  assert.deepEqual(ibk.valores.slice(2).filter((f) => /Laptop/.test(f[4])).map((f) => f[5]), [215.5, 215.5, 215.5, 215.5, 215.5, 215.5]);
+  // Una cuota que no cubre el total no se acepta.
+  const mal = m.llamar('registrar', { idCliente: 'cuotas-0004', monto: 1200, medio: 'TC_IBK', concepto: 'Ropa y Calzado', descripcion: 'X', fecha: '2026-11-05', cuotas: 6, montoCuota: 10 });
+  assert.equal(mal.ok, false);
+});
+
+test('1.11.0: las cuotas son solo para tarjetas de crédito y de 2 a 36', () => {
+  const m = motorCompleto({ hoy: '2026-11-10' });
+  const yape = m.llamar('registrar', { idCliente: 'cuotas-0005', monto: 90, medio: 'YAPE', concepto: 'Ropa y Calzado', descripcion: 'X', fecha: '2026-11-05', cuotas: 3 });
+  assert.equal(yape.ok, false);
+  assert.match(yape.mensaje || JSON.stringify(yape), /tarjetas de crédito/);
+  const muchas = m.llamar('registrar', { idCliente: 'cuotas-0006', monto: 90, medio: 'TC_IBK', concepto: 'Ropa y Calzado', descripcion: 'X', fecha: '2026-11-05', cuotas: 48 });
+  assert.equal(muchas.ok, false);
+  // Sin cuotas responde igual que siempre (sin campos nuevos).
+  const una = m.llamar('registrar', { idCliente: 'cuotas-0007', monto: 90, medio: 'TC_IBK', concepto: 'Ropa y Calzado', descripcion: 'X', fecha: '2026-11-05', cuotas: 1 });
+  assert.deepEqual(Object.keys(una.datos).sort(), ['duplicadoId', 'fila', 'guardado', 'hoja']);
+});
+
+test('1.11.0: confirmar un consumo del correo en cuotas', () => {
+  const correo = { id: 'msg-cuotas', de: 'BCP <notificaciones@notificacionesbcp.com.pe>', asunto: 'Realizaste un consumo con tu Tarjeta de Crédito BCP',
+    cuerpo: 'Hola PersonaA, Realizaste un consumo de S/ 600.00 con tu Tarjeta de Crédito BCP en SAGA FALABELLA. Fecha y hora 10 de noviembre de 2026 - 13:43 Empresa SAGA FALABELLA',
+    fecha: new Date(2026, 10, 10, 13, 43) };
+  const m = motorCompleto({ hoy: '2026-11-10', hilos: [{ mensajes: [correo] }] });
+  m.contexto.leerCorreosDeBancos();
+  const r = m.llamar('confirmarPendiente', { idCliente: 'cuotas-0008', id: 'msg-cuotas', concepto: 'Ropa y Calzado', medio: 'TC_BCP', cuotas: 3 });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.datos.confirmado, true, JSON.stringify(r));
+  assert.equal(r.datos.cuotas, 3);
+  const filas = hojaDe(m, 'TC BCP').valores.slice(2).filter((f) => /cuota/.test(f[4]));
+  assert.equal(filas.length, 3);
+  assert.deepEqual(filas.map((f) => f[5]), [200, 200, 200]);
+});
+
+test('1.11.0: editar la fecha de una cuota deja su pago en el mes de esa cuota', () => {
+  const m = motorCompleto({ hoy: '2026-11-10' });
+  const ibk = hojaDe(m, 'TC IBK');
+  m.llamar('registrar', { idCliente: 'cuotas-0009', monto: 300, medio: 'TC_IBK', concepto: 'Ropa y Calzado', descripcion: 'Silla', fecha: '2026-11-05', cuotas: 3 });
+  const antes = ibk.valores.slice(2).filter((f) => f[4]).map((f) => fechaDe(f[6]).slice(0, 7));
+  const r = m.llamar('editarGasto', { idCliente: 'cuotas-0010', hoja: 'TC IBK', fila: 5, verificar: { descripcion: 'Silla · cuota 3/3', monto: 100 }, cambios: { fecha: '2026-11-06' } });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(fechaDe(ibk.valores[4][6]).slice(0, 7), antes[2]);
 });

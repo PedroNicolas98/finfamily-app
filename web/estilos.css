@@ -3725,3 +3725,32 @@ body .formulario.registro-uno .opcion.origen { padding: 2px 10px 2px 6px; }
 @keyframes conectar-gira { to { transform: rotate(360deg); } }
 .conectar-pie { font-size: 0.82rem; margin: 0; }
 @media (prefers-reduced-motion: reduce) { .conectar-ico, .conectar-paso, .conectar-espera i { animation: none !important; } }
+
+/* ---------- v123: compras en cuotas ---------- */
+body .formulario.registro-uno .f-cierre .r-guardar { display: flex; gap: 8px; align-items: stretch; }
+body .formulario.registro-uno .f-cierre .r-guardar .boton.grande { flex: 1; min-width: 0; }
+.r-cuotas { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; min-height: 46px; border-radius: 14px; cursor: pointer;
+  font: inherit; font-size: 0.85rem; font-weight: 600; color: var(--tinta); background: var(--sup-2); border: 1px dashed var(--borde-fuerte);
+  transition: background 200ms ease, border-color 200ms ease, transform 160ms ease; }
+.r-cuotas:hover { border-color: var(--accion); }
+.r-cuotas:active { transform: scale(0.97); }
+.r-cuotas.activo { border-style: solid; border-color: var(--accion); background: var(--marca-suave); color: var(--accion); }
+.r-cuotas[hidden] { display: none; }
+.r-cuotas .icono, .r-cuotas .icono svg { width: 17px; height: 17px; }
+.hoja-modal.cuotas-dlg { width: min(440px, calc(100vw - 24px)); }
+.cuotas-caja { gap: 12px; }
+.cuotas-opciones { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.cuotas-opciones .cuotas-op { justify-content: center; min-height: 40px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cuotas-opciones .cuotas-op:first-child { grid-column: span 5; }
+.cuotas-resumen { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px; border-radius: 14px; background: var(--sup-2); }
+.cuotas-resumen strong { font-size: 1.5rem; font-variant-numeric: tabular-nums; animation: cuotas-pop 260ms var(--suave); }
+.cuotas-resumen strong.mal { font-size: 1.05rem; color: var(--mal); }
+@keyframes cuotas-pop { from { transform: scale(0.92); opacity: 0.4; } }
+.cuotas-fija { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 4px 10px; text-align: left; font-size: 0.85rem; font-weight: 600; }
+.cuotas-fija[hidden] { display: none; }
+.cuotas-fija .campo-soles { display: flex; align-items: center; gap: 6px; padding: 0 10px; min-height: 40px; border-radius: 10px; background: var(--sup-2); }
+.cuotas-fija input { border: 0; background: none; font: inherit; font-size: 1rem; width: 100%; color: var(--tinta); outline: none; }
+.cuotas-fija small { grid-column: 1 / -1; font-weight: 400; font-size: 0.76rem; }
+@media (prefers-reduced-motion: reduce) { .cuotas-resumen strong { animation: none; } }
+.freno-acciones .freno-cuotas { display: inline-flex; align-items: center; gap: 6px; }
+.freno-acciones .freno-cuotas .icono, .freno-acciones .freno-cuotas .icono svg { width: 16px; height: 16px; }

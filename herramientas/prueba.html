@@ -62,7 +62,7 @@
         var d = cuerpo.datos || {};
         window.__llamadas.push({ accion: cuerpo.accion, datos: d });
         var datos = null;
-        var vMotor = P.get('motor') === '12' ? '1.2.0' : P.get('motor') === '13' ? '1.3.1' : P.get('motor') === '14' ? '1.4.0' : P.get('motor') === '15' ? '1.5.0' : P.get('motor') === '151' ? '1.5.1' : P.get('motor') === '16' ? '1.6.0' : P.get('motor') === '18' ? '1.8.0' : P.get('motor') === '19' ? '1.9.0' : P.get('motor') === '110' ? '1.10.0' : '1.7.0';
+        var vMotor = P.get('motor') === '12' ? '1.2.0' : P.get('motor') === '13' ? '1.3.1' : P.get('motor') === '14' ? '1.4.0' : P.get('motor') === '15' ? '1.5.0' : P.get('motor') === '151' ? '1.5.1' : P.get('motor') === '16' ? '1.6.0' : P.get('motor') === '18' ? '1.8.0' : P.get('motor') === '19' ? '1.9.0' : P.get('motor') === '110' ? '1.10.0' : P.get('motor') === '111' ? '1.11.0' : '1.7.0';
         var vMin = function (x) { var p = vMotor.split('.').map(Number), q = x.split('.').map(Number); for (var i = 0; i < 3; i++) { if ((p[i] || 0) !== (q[i] || 0)) return (p[i] || 0) > (q[i] || 0); } return true; };
         window.__bolsas = window.__bolsas || { mes: '2026-11', comun: { saldoHoja: 985.57, fuera: 119, saldo: 1104.57 },
           personas: [{ nombre: 'PersonaA', acumulado: 279.41, gastado: 0, gastadoMes: 0, disponible: 279.41, comprometido: 119 }, { nombre: 'PersonaB', acumulado: 279.41, gastado: 0, gastadoMes: 0, disponible: 279.41, comprometido: 0 }],

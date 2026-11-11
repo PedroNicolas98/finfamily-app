@@ -26,7 +26,7 @@
  *   FINFAMILY_ICONOS               ícono elegido para cada tipo de gasto (motor 1.5.1).
  */
 
-var VERSION = '1.10.0';
+var VERSION = '1.11.0';
 var ZONA_HORARIA = 'America/Lima';
 var DIAS_AVISO = 3;
 var SEGUNDOS_CACHE_TOKEN = 300;
@@ -808,7 +808,17 @@ function registrarGasto_(datos, responsable) {
   if (!fecha) throw errorApp_('datos_invalidos', 'La fecha no es válida.');
   if (diasEntre_(hoyServidor_(), fecha) > 1) throw errorApp_('datos_invalidos', 'La fecha no puede ser futura.');
 
+  // Compra en cuotas (motor 1.11.0): una fila por cuota, cada una con el pago en su mes.
+  var nCuotas = datos.cuotas === undefined || datos.cuotas === null || datos.cuotas === '' ? 1 : Number(datos.cuotas);
+  if (nCuotas !== Math.floor(nCuotas) || nCuotas < 1 || nCuotas > MAXIMO_CUOTAS) {
+    throw errorApp_('datos_invalidos', 'Las cuotas deben ser de 2 a ' + MAXIMO_CUOTAS + '.');
+  }
+  var montos = montosDeCuotas(monto, nCuotas, nCuotas > 1 ? datos.montoCuota : null);
+  if (!montos) throw errorApp_('datos_invalidos', 'La cuota no cuadra con el total de la compra.');
+  if (nCuotas > 1 && idCliente.length > 60) throw errorApp_('datos_invalidos', 'Falta el identificador del registro.');
+
   var nombreHoja = medio.hoja;
+  if (nCuotas > 1 && nombreHoja === HOJA_HORMIGA) throw errorApp_('datos_invalidos', 'Las cuotas son solo para tarjetas de crédito.');
   var catalogo = leerCatalogo_();
   var idCiclo = idTarjeta(nombreHoja, responsable, catalogo);
   // Tarjeta explícita (motor 1.6): quien gastó puede no ser el titular (tarjeta prestada).
@@ -844,6 +854,10 @@ function registrarGasto_(datos, responsable) {
     var ultimaConDatos = idxEnc; // 0-based
     var coincidencia = null;
     var parecidos = [];
+    // Identificador de cada cuota: la primera es 'APP:<id>' y las demás 'APP:<id>-c2', 'APP:<id>-c3'…
+    var idsCuota = [];
+    var yaEstan = {};
+    for (var q = 0; q < nCuotas; q++) { idsCuota.push(q === 0 ? idCliente : idCliente + '-c' + (q + 1)); yaEstan['APP:' + idsCuota[q]] = 0; }
     for (var r = idxEnc + 1; r < valores.length; r++) {
       var f = valores[r];
       var montoFila = parsearMonto(f[cols.monto]);
@@ -851,10 +865,11 @@ function registrarGasto_(datos, responsable) {
       var tieneDesc = descFila !== '' && descFila !== null && descFila !== undefined;
       if (montoFila !== null || tieneDesc) ultimaConDatos = r;
 
-      if (cols.idForm !== -1 && partesIdForm(f[cols.idForm]).base === idForm) {
+      if (cols.idForm !== -1) {
         // Ya se guardó antes (reintento de la cola): no se escribe de nuevo.
         // Se compara solo 'APP:<idCliente>' (lo que va antes del '|'), tenga o no sufijo de tarjeta.
-        return { guardado: false, duplicadoId: true, hoja: nombreHoja, fila: r + 1 };
+        var baseFila = partesIdForm(f[cols.idForm]).base;
+        if (yaEstan[baseFila] === 0) { yaEstan[baseFila] = r + 1; continue; }
       }
       if (!coincidencia && montoFila !== null &&
           firmaGasto({ fecha: f[cols.fecha], monto: montoFila, descripcion: descFila }) === firma) {
@@ -870,36 +885,50 @@ function registrarGasto_(datos, responsable) {
       }
     }
 
+    var faltan = idsCuota.filter(function (id) { return !yaEstan['APP:' + id]; });
+    if (!faltan.length) return { guardado: false, duplicadoId: true, hoja: nombreHoja, fila: yaEstan[idForm] };
+    var reintento = faltan.length < idsCuota.length; // se cortó a medias: solo faltan algunas cuotas
+
     // Solo avisa si hay MÁS parecidos que los que ya vinieron de otros correos confirmados: así dos consumos
     // reales del mismo monto el mismo día no molestan, pero uno anotado a mano sí se detecta.
     if (!coincidencia && parecidos.length > (Number(datos.parecidosDelCorreo) || 0)) coincidencia = parecidos[parecidos.length - 1];
-    if (coincidencia && datos.confirmarDuplicado !== true) {
+    if (coincidencia && datos.confirmarDuplicado !== true && !reintento) {
       return { guardado: false, posibleDuplicado: true, coincidencia: coincidencia };
     }
 
     var anchoFila = 0;
     Object.keys(cols).forEach(function (k) { if (cols[k] + 1 > anchoFila) anchoFila = cols[k] + 1; });
-    var nueva = construirFila(cols, anchoFila, {
-      idCliente: idCliente, monto: monto, medio: medio.id, concepto: concepto,
-      descripcion: descripcion, nota: nota, fecha: fecha, tarjetaExplicita: sufijoTarjeta, origen: origen
-    }, responsable, nombreHoja, ciclo, catalogo);
-    // El formulario B&P exige que _HUELLA_FORM sea un SHA-256 en hexadecimal (64 caracteres):
-    // si no, su revisión rechaza la hoja entera. Se cifra la firma del gasto.
-    if (cols.huella !== -1 && nueva[cols.huella]) nueva[cols.huella] = hashHex_(String(nueva[cols.huella]));
+    var notaCuotas = nCuotas > 1 && !nota ? 'Compra de ' + formatoSoles_(monto) + ' en ' + nCuotas + ' cuotas' : nota;
+    var primeraFila = 0;
+    for (var k = 0; k < nCuotas; k++) {
+      if (yaEstan['APP:' + idsCuota[k]]) continue;
+      var cicloK = k === 0 ? ciclo : calcularCiclo(idCiclo, fecha, catalogo, k);
+      var nueva = construirFila(cols, anchoFila, {
+        idCliente: idsCuota[k], monto: montos[k], medio: medio.id, concepto: concepto,
+        descripcion: descripcionDeCuota(descripcion, k + 1, nCuotas), nota: notaCuotas, fecha: fecha,
+        tarjetaExplicita: sufijoTarjeta, origen: origen
+      }, responsable, nombreHoja, cicloK, catalogo);
+      // El formulario B&P exige que _HUELLA_FORM sea un SHA-256 en hexadecimal (64 caracteres):
+      // si no, su revisión rechaza la hoja entera. Se cifra la firma del gasto.
+      if (cols.huella !== -1 && nueva[cols.huella]) nueva[cols.huella] = hashHex_(String(nueva[cols.huella]));
 
-    // Fechas a la medianoche en la zona del libro (si no, la hoja muestra un día menos).
-    [cols.fecha, cols.fechaPago, cols.fechaVencimiento].forEach(function (col) {
-      if (col !== -1 && nueva[col] instanceof Object && nueva[col].getTime) nueva[col] = fechaParaHoja_(nueva[col]);
-    });
+      // Fechas a la medianoche en la zona del libro (si no, la hoja muestra un día menos).
+      [cols.fecha, cols.fechaPago, cols.fechaVencimiento].forEach(function (col) {
+        if (col !== -1 && nueva[col] instanceof Object && nueva[col].getTime) nueva[col] = fechaParaHoja_(nueva[col]);
+      });
 
-    var filaDestino = ultimaConDatos + 2; // 1-based, la siguiente a la última con datos
-    escribirFila_(hoja, filaDestino, nueva, cols, ultimaConDatos > idxEnc ? ultimaConDatos + 1 : 0);
+      var filaDestino = ultimaConDatos + 2; // 1-based, la siguiente a la última con datos
+      escribirFila_(hoja, filaDestino, nueva, cols, ultimaConDatos > idxEnc ? ultimaConDatos + 1 : 0);
+      ultimaConDatos = filaDestino - 1;
+      if (!primeraFila) primeraFila = filaDestino;
+    }
     SpreadsheetApp.flush();
     var resultado = {
-      guardado: true, hoja: nombreHoja, fila: filaDestino, duplicadoId: false,
-      gasto: { responsable: responsable, monto: monto, descripcion: descripcion, concepto: concepto, medio: medio.etiqueta, fecha: fecha,
+      guardado: true, hoja: nombreHoja, fila: primeraFila, duplicadoId: false,
+      gasto: { responsable: responsable, monto: montos[0], descripcion: descripcion, concepto: concepto, medio: medio.etiqueta, fecha: fecha,
         origen: origen, tarjeta: nombreHoja !== HOJA_HORMIGA, pago: ciclo && ciclo.pago ? ciclo.pago : '' }
     };
+    if (nCuotas > 1) { resultado.cuotas = nCuotas; resultado.montoCuota = montos[0]; resultado.total = monto; }
     if (tarjetaPedida) { resultado.tarjeta = idCiclo; resultado.prestada = esPrestada(idCiclo, responsable, catalogo); }
     if (origen) resultado.origen = origen;
     return resultado;
@@ -1228,7 +1257,8 @@ function accionEditarGasto_(usuario, datos) {
     }
     if (nuevo.fecha !== undefined || tarjetaNueva) {
       var fechaCiclo = nuevo.fecha !== undefined ? nuevo.fecha : fechaISO(parsearFecha(f[cols.fecha]));
-      var ciclo = idCiclo === 'HORMIGA' ? { pago: '', vence: '' } : calcularCiclo(idCiclo, fechaCiclo, catalogo);
+      var cuotaFila = numeroDeCuota(nuevo.descripcion !== undefined ? nuevo.descripcion : f[cols.descripcion]);
+      var ciclo = idCiclo === 'HORMIGA' ? { pago: '', vence: '' } : calcularCiclo(idCiclo, fechaCiclo, catalogo, cuotaFila ? cuotaFila.k - 1 : 0);
       if (ciclo.pago && ciclo.vence) {
         escribir(cols.fechaPago, fechaParaHoja_(ciclo.pago));
         escribir(cols.fechaVencimiento, fechaParaHoja_(ciclo.vence));
@@ -2138,7 +2168,8 @@ function accionConfirmarPendiente_(usuario, datos) {
   var r = registrarGasto_({
     idCliente: datos.idCliente, monto: p.monto, medio: medio, concepto: datos.concepto,
     descripcion: descripcion, nota: datos.nota, fecha: fecha, confirmarDuplicado: datos.confirmarDuplicado,
-    tarjeta: tarjeta, origen: datos.origen, buscarParecidos: true, parecidosDelCorreo: delCorreo
+    tarjeta: tarjeta, origen: datos.origen, buscarParecidos: true, parecidosDelCorreo: delCorreo,
+    cuotas: datos.cuotas, montoCuota: datos.montoCuota
   }, responsable);
   if (!r.guardado && !r.duplicadoId) {
     // Parece repetido: la app pregunta y vuelve a llamar con confirmarDuplicado = true.
@@ -2151,6 +2182,7 @@ function accionConfirmarPendiente_(usuario, datos) {
   var pedida = !(datos.tarjeta === undefined || datos.tarjeta === null || datos.tarjeta === '');
   if (r.tarjeta && (pedida || r.prestada)) { salida.tarjeta = r.tarjeta; salida.prestada = r.prestada === true; }
   if (r.origen) salida.origen = r.origen;
+  if (r.cuotas) { salida.cuotas = r.cuotas; salida.montoCuota = r.montoCuota; }
   return salida;
 }
 
