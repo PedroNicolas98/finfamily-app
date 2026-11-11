@@ -1512,10 +1512,39 @@ async function llamarApi(...args) {
   }
 }
 
-// Mientras llega cada pantalla se ve la casa del logo armándose (la misma del arranque).
-function cargando() {
+// Mientras llega cada pantalla se ve la casa del logo armándose (la misma del arranque),
+// con un texto que va cambiando para que se sepa que hay que esperar.
+const PRIMER_TEXTO_CARGA = {
+  inicio: 'Trayendo tu resumen del mes…', tarjetas: 'Trayendo tus tarjetas…', presupuesto: 'Sumando tu presupuesto…',
+  movimientos: 'Trayendo tus movimientos…', configuracion: 'Abriendo configuración…', registrar: 'Preparando el nuevo gasto…',
+};
+function textosCarga(ruta = '') {
+  const clave = ruta.startsWith('tarjeta-') ? 'tarjetas' : ruta.startsWith('configuracion') ? 'configuracion' : ruta;
+  return [PRIMER_TEXTO_CARGA[clave] || 'Cargando…', 'Leyendo tu hoja de Google…', 'Ordenando los números…', 'Casi listo…'];
+}
+function animarTextoCarga(p, textos) {
+  if (!p) return;
+  const inicio = Date.now();
+  let i = 0;
+  const poner = (t) => {
+    if (p.textContent === t) return;
+    p.classList.remove('cambia'); void p.offsetWidth; p.classList.add('cambia');
+    p.textContent = t;
+  };
+  const reloj = setInterval(() => {
+    if (!p.isConnected) { clearInterval(reloj); return; }
+    const pasado = Date.now() - inicio;
+    if (pasado > 25000) poner('Sigue cargando. Si no abre, revisa tu internet.');
+    else if (pasado > 11000) poner('Tu hoja está tardando un poco. Ya casi…');
+    else { i = Math.min(i + 1, textos.length - 1); poner(textos[i]); }
+  }, 2200);
+}
+function cargando(ruta) {
+  const textos = textosCarga(ruta);
+  const p = h('p', { class: 'arranque-texto', 'aria-live': 'polite' }, textos[0]);
+  animarTextoCarga(p, textos);
   return h('div', { class: 'pantalla cargando arranque', 'aria-busy': 'true', 'aria-label': 'Cargando' },
-    logoMarca('vivo'), h('i', { class: 'arranque-barra', 'aria-hidden': 'true' }, h('b')));
+    logoMarca('vivo'), h('i', { class: 'arranque-barra', 'aria-hidden': 'true' }, h('b')), p);
 }
 
 // Botón que está trabajando: se bloquea y muestra un círculo que gira.
@@ -6775,7 +6804,7 @@ async function navegar(opciones) {
       await Promise.race([armado, esperar(120)]);
     }
     if (id !== estado.navId) return;
-    if (!nodo && !vista.querySelector('.arranque')) mostrar(cargando());
+    if (!nodo && !vista.querySelector('.arranque')) mostrar(cargando(ruta));
   }
   await armado;
   if (id !== estado.navId) return;
@@ -6894,6 +6923,7 @@ function hayEdicionAbierta() {
 }
 
 async function arrancar() {
+  animarTextoCarga(vista.querySelector('.arranque-texto'), ['Abriendo FinFamily…', ...textosCarga(location.hash.slice(1) || 'inicio')]);
   aplicarApariencia();
   try { aplicarCatalogo(); } catch { /* sin catálogo todavía */ }
   aplicarMenu();

@@ -214,7 +214,7 @@
         else if (cuerpo.accion === 'borrarGasto') datos = { borrado: true, hoja: d.hoja };
         else if (cuerpo.accion === 'registrar') datos = { guardado: true, hoja: 'Gastos Hormiga (prueba)', fila: 99, duplicadoId: false };
         else if (cuerpo.accion === 'marcarPagado') datos = { actualizadas: (d.filas || []).length, omitidas: [] };
-        await new Promise(function (r) { setTimeout(r, 250); });
+        await new Promise(function (r) { setTimeout(r, Number(P.get('lento')) || 250); });
         return new Response(JSON.stringify(datos ? { ok: true, datos: datos } : { ok: false, codigo: 'datos_invalidos', error: 'Sin datos de prueba.' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       };
     })();
@@ -229,6 +229,7 @@
     <div class="pantalla arranque" aria-busy="true" aria-label="Abriendo FinFamily">
       <svg class="logo-marca vivo" viewBox="11 13 98 98" aria-hidden="true"><defs><linearGradient id="lm-degradado" gradientUnits="userSpaceOnUse" x1="14" y1="16" x2="106" y2="108"><stop offset="0" class="lm-g1"/><stop offset="1" class="lm-g2"/></linearGradient></defs><path class="lm-t lm-casa" pathLength="100" d="M98 74v26H22V58l38-34 26 23"/><path class="lm-t lm-flecha" pathLength="100" d="M42 82l14-14 12 10 30-32"/><path class="lm-t lm-punta" pathLength="100" d="M84 46h14v14"/><path class="lm-t lm-pulso" pathLength="100" d="M42 82l14-14 12 10 30-32"/></svg>
       <i class="arranque-barra" aria-hidden="true"><b></b></i>
+      <p class="arranque-texto" aria-live="polite">Abriendo FinFamily…</p>
     </div>
   </main>
   <nav id="nav" class="barra-nav" aria-label="Secciones"></nav>
