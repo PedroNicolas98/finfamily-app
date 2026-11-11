@@ -4284,7 +4284,7 @@ function dialogoTarjeta(t) {
   const nueva = !t;
   const d = nueva ? {} : datosTC(t.id);
   const personas = responsables();
-  const dlg = h('dialog', { class: 'hoja-modal', 'aria-label': nueva ? 'Nueva tarjeta' : 'Editar tarjeta' });
+  const dlg = h('dialog', { class: 'hoja-modal tarjeta-dlg', 'aria-label': nueva ? 'Nueva tarjeta' : 'Editar tarjeta' });
   const cerrar = () => { if (dlg.classList.contains('cerrando')) return; dlg.classList.add('cerrando'); setTimeout(() => { if (dlg.open) dlg.close(); dlg.remove(); }, sinMovimiento() ? 0 : 190); };
   dlg.addEventListener('cancel', (ev) => { ev.preventDefault(); cerrar(); });
   dlg.addEventListener('click', (ev) => { if (ev.target === dlg) cerrar(); });
@@ -4366,8 +4366,12 @@ function dialogoTarjeta(t) {
     }
   } },
     h('p', { class: 'cierre-etq' }, nueva ? 'Nueva tarjeta' : `Editar ${nombreCortoTC(t)}`),
-    nueva ? h('p', { class: 'suave' }, 'Se crea una hoja nueva "TC <nombre>" en tu Sheets, con las mismas columnas que las demás.') : null,
-    cajaPrevia,
+    // En computadora: la tarjeta y la nota a la izquierda, los datos a la derecha (sin scroll).
+    h('div', { class: 'tj-lado' },
+      nueva ? h('p', { class: 'suave' }, 'Se crea una hoja nueva "TC <nombre>" en tu Sheets, con las mismas columnas que las demás.') : null,
+      cajaPrevia,
+      h('p', { class: 'suave tj-nota' }, 'Cierre: hasta qué día del mes entran las compras. Vencimiento: qué día del mes siguiente se paga. Si la tarjeta no tiene fechas (como Ripley), déjalos vacíos.')),
+    h('div', { class: 'tj-campos' },
     h('div', { class: 'modal-cuerpo' },
       h('div', { class: 'campo' }, h('label', { for: 'tj-nombre' }, 'Banco o nombre'), inNombre),
       h('div', { class: 'campo campo-chico' }, h('label', { for: 'tj-titular' }, 'Titular'), selTitular),
@@ -4376,9 +4380,8 @@ function dialogoTarjeta(t) {
       h('div', { class: 'campo campo-chico' }, h('label', { for: 'tj-vence' }, 'Día de vencimiento'), inVence),
       h('div', { class: 'campo campo-chico' }, h('label', { for: 'tj-dig' }, 'Últimos 4 dígitos'), inDig),
       h('div', { class: 'campo campo-chico' }, h('label', { for: 'tj-red' }, 'Marca'), selRed)),
-    h('p', { class: 'suave tj-nota' }, 'Cierre: hasta qué día del mes entran las compras. Vencimiento: qué día del mes siguiente se paga. Si la tarjeta no tiene fechas (como Ripley), déjalos vacíos.'),
     msg, zona,
-    h('div', { class: 'acciones modal-acciones' }, btn, h('button', { type: 'button', class: 'boton', onclick: cerrar }, 'Cancelar'), btnQuitar));
+    h('div', { class: 'acciones modal-acciones' }, btn, h('button', { type: 'button', class: 'boton', onclick: cerrar }, 'Cancelar'), btnQuitar)));
   dlg.append(form);
   document.body.append(dlg);
   previa();

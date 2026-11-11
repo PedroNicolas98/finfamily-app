@@ -3953,3 +3953,34 @@ body.menu-chico .cuenta-menu.nav .cuenta-boton:has(.avatar.con-foto):focus-visib
 .arranque-texto.cambia { animation: texto-carga 420ms var(--suave, ease) both; }
 @keyframes texto-carga { from { opacity: 0; translate: 0 6px; } to { opacity: 1; translate: 0 0; } }
 @media (prefers-reduced-motion: reduce) { .arranque-texto.cambia { animation: none; } }
+/* Ventana de tarjeta (v138): en el celular todo va en una columna como antes; en computadora, dos columnas sin scroll */
+.tarjeta-dlg .tj-lado, .tarjeta-dlg .tj-campos { display: contents; }
+.tarjeta-dlg .tj-nota { order: 1; }
+.tarjeta-dlg .tj-campos > .mensaje, .tarjeta-dlg .tj-campos > .zona-confirmar, .tarjeta-dlg .tj-campos > .modal-acciones { order: 2; }
+@media (min-width: 900px) {
+  body .hoja-modal.tarjeta-dlg { width: min(880px, calc(100vw - 48px)); }
+  body .tarjeta-dlg form.cierre-caja { display: grid; grid-template-columns: minmax(0, 330px) minmax(0, 1fr); column-gap: 30px; row-gap: 10px; align-items: start; }
+  body .tarjeta-dlg form.cierre-caja > .cierre-etq { grid-column: 1 / -1; }
+  body .tarjeta-dlg .tj-lado { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 0; }
+  body .tarjeta-dlg .tj-campos { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  body .tarjeta-dlg .tj-previa { margin: 0; }
+  body .tarjeta-dlg .tj-previa .plastico { width: 100%; }
+  body .tarjeta-dlg .tj-nota { margin: 0; }
+  body .tarjeta-dlg .tj-campos .modal-acciones { margin-top: 4px; }
+}
+/* Tarjetas en computadoras de 1024 a 1399 px (v138): plásticos a la izquierda y resumen + calendario compacto a la derecha, sin scroll */
+@media (min-width: 1024px) and (max-width: 1399px) {
+  body .pantalla.tarjetas .rejilla-billetera { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 22px; align-items: start; }
+  body .pantalla.tarjetas .rejilla-billetera > .billetera-caja { grid-column: 1; grid-row: 1; width: auto; }
+  body .pantalla.tarjetas .rejilla-billetera > .col-pila { grid-column: 2; grid-row: 1; width: auto; }
+  body .pantalla.tarjetas .billetera { max-width: 340px; align-self: start; order: 0; }
+  body .pantalla.tarjetas .billetera .plastico + .plastico { margin-top: calc(-63.05% + 50px); }
+  body .pantalla.tarjetas .hero.simple { padding: 18px 22px; gap: 12px; }
+  body .pantalla.tarjetas .hero.simple .hero-datos { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  body .ruta-paso { grid-template-columns: auto minmax(0, 1fr) auto; justify-items: stretch; text-align: left; gap: 12px; padding: 4px 8px 4px 0; }
+  body .ruta-paso .ruta-fecha { width: 44px; height: 44px; }
+  body .ruta::before { left: 21px; top: 22px; bottom: 22px; }
+  body a.ruta-paso:hover { transform: translateX(4px); }
+  body .ruta-paso .ruta-texto { align-items: flex-start; text-align: left; }
+  body .ruta-paso .ruta-monto { justify-self: end; }
+}
