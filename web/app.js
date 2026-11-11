@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v164';
+const VERSION_APP = 'finfamily-v165';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -3036,8 +3036,26 @@ function panelPersonas(datos) {
             h('span', { class: 'gp-pct' }, `${pct}%`),
             h('strong', { class: 'gp-total' }, soles(p.total))),
           h('div', { class: 'gp-barra', 'aria-hidden': 'true' }, h('i', { class: `d${i}`, 'data-w': `${pct}%` })),
-          h('span', { class: 'suave' }, `${p.consumos} consumo${p.consumos === 1 ? '' : 's'}${mas ? ` · más en ${mas}` : ''}`)));
+          h('span', { class: 'suave' }, `${p.consumos} consumo${p.consumos === 1 ? '' : 's'}${mas ? ` · más en ${mas}` : ''}`),
+          (p.conceptos || []).length ? h('ul', { class: 'gp-top' }, p.conceptos.slice(0, personas.length > 1 ? 3 : 5).map((x) => h('li', {},
+            h('span', {}, x.concepto), h('b', {}, soles(x.monto))))) : null));
     })));
+}
+
+// v164: en Inicio de computadora cada panel mide lo que sobra de la ventana; aquí se muestran solo las filas
+// que entran completas (las demás se ocultan, nunca quedan cortadas a la mitad).
+function encajarEn(caja, filas) {
+  if (!esComputadoraInicio() || typeof ResizeObserver === 'undefined') return;
+  const ajustar = () => {
+    if (!caja.isConnected) return;
+    const lista = filas();
+    lista.forEach((li) => { li.hidden = false; });
+    const tope = caja.getBoundingClientRect().bottom - 4;
+    let pasar = false;
+    for (const li of lista) { if (pasar || li.getBoundingClientRect().bottom > tope) { li.hidden = true; pasar = true; } }
+  };
+  new ResizeObserver(() => requestAnimationFrame(ajustar)).observe(caja);
+  setTimeout(ajustar, 1300);
 }
 
 // ---------- Editar o borrar un gasto ----------
@@ -3529,7 +3547,7 @@ async function vistaInicio() {
     ];
 
     const recientes = consumosDe(completo ? rtodo.datos.tarjetas : todas, (t) => t.id !== 'HORMIGA').filter((c) => completo || c.estado !== 'Pagado')
-      .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, esComputadoraInicio() ? Math.max(2, Math.min(6, Math.floor((innerHeight - (innerWidth < 1400 ? 640 : 520)) / 58))) : 6);
+      .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, esComputadoraInicio() ? 8 : 6);
     const listaRecientes = recientes.length ? h('ul', { class: 'lista-mov' }, recientes.map((c) => {
       const fila = filaMov(c, nombreCortoTC(c.tarjeta));
       if (c.estado === 'Pagado' && c.tarjeta?.id !== 'HORMIGA') fila.querySelector('.mov-der .suave')?.prepend(h('i', { class: 'mov-pagado', title: 'Pagado', 'aria-label': 'Pagado' }, icono('check')));
@@ -3543,7 +3561,9 @@ async function vistaInicio() {
           nodo: h('div', { class: 'pest-lista' }, hormigas.length ? h('ul', { class: 'lista-mov' }, hormigas.map((c) => filaMov(c, c.medio))) : vacio('Sin gastos hormiga este mes.')) });
     }
     pestanasGasto.unshift({ etiqueta: 'Últimos gastos', lado: h('a', { href: '#movimientos' }, 'Ver todos'), nodo: h('div', { class: 'pest-lista' }, listaRecientes) });
-    agregar(panelPestanas('panel-gasto', pestanasGasto));
+    const panelGasto = panelPestanas('panel-gasto', pestanasGasto);
+    agregar(panelGasto);
+    setTimeout(() => { const pc = panelGasto.querySelector('.pest-cuerpo'); if (pc) encajarEn(pc, () => [...pc.querySelectorAll('.lista-mov > li')]); }, 0);
 
     raiz.append(rejilla);
   }
@@ -3560,6 +3580,8 @@ async function vistaInicio() {
     const gasto = raiz.querySelector(':scope > .rejilla-3');
     const abajo = h('div', { class: 'inicio-abajo' });
     if (quien) abajo.append(...quien.querySelectorAll('.panel'));
+    const pp = abajo.querySelector('.panel-personas');
+    if (pp) setTimeout(() => encajarEn(pp, () => [...pp.querySelectorAll('.gp-top > li')]), 0);
     if (gasto) abajo.append(...gasto.children);
     if (tiras) abajo.append(tiras);
     quien?.remove(); gasto?.remove();
