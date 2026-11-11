@@ -1270,3 +1270,27 @@ test('validarDatosTarjeta y datosTarjetasDesde guardan el diseño del plástico 
   assert.equal(d.IBK_P.diseno, 'ibk-oro');
   assert.equal('diseno' in d.BCP, false);
 });
+
+test('tarjetas de débito (1.21): medios, lector BCP y líneas solo con fondo común', () => {
+  const deb = L.debitosDesde(JSON.stringify([{ id: 'BCP_P', banco: 'BCP', titular: 'Pedro Nicolás' }, { id: 'SIP_B', banco: 'Sip', titular: 'Britney', activa: false }, { id: 'malo id', banco: 'X' }]));
+  assert.equal(deb.length, 2);
+  const medios = L.mediosDesde(null, deb);
+  const td = medios.find((m) => m.id === 'TD_BCP_P');
+  assert.equal(td.etiqueta, 'Débito BCP · Pedro');
+  assert.equal(td.hoja, 'Gastos Hormiga');
+  assert.equal(td.tipo, 'debito');
+  assert.equal(medios.some((m) => m.id === 'TD_SIP_B'), false);
+  const cat = []; cat.debitos = deb;
+  assert.equal(L.medioSugerido('DEBITO_BCP', 'PLAZA VEA', cat, 'Pedro'), 'TD_BCP_P');
+  assert.equal(L.medioSugerido('DEBITO_BCP', 'PLAZA VEA', cat, 'Britney'), 'EFECTIVO');
+  assert.equal(L.idDebito('Interbank', 'Britney', deb), 'INTERBANK_B');
+  assert.equal(L.idDebito('BCP', 'Pedro', deb), 'BCP_P2');
+  assert.equal(L.validarDebito({ banco: 'B' }).error, 'Escribe el banco (2 a 20 letras).');
+  const linea = { concepto: 'Alimentación (BCP-DEB-PE)' };
+  const consumos = [
+    { fecha: '2026-11-05', concepto: 'Alimentación', monto: 100, origen: '' },
+    { fecha: '2026-11-06', concepto: 'Alimentación', monto: 40, origen: 'P:Pedro' },
+    { fecha: '2026-11-07', concepto: 'Alimentación', monto: 7, origen: 'A:Ahorro Casa' },
+  ];
+  assert.equal(L.gastoRealDeLinea(linea, consumos, '2026-11', {}, ['Alimentación']), 100);
+});

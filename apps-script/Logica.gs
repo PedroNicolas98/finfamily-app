@@ -145,8 +145,12 @@ function buscarTarjetaCatalogo(catalogo, id) {
   return null;
 }
 
-/** Medios de pago para la app: una entrada por medio de tarjeta activa (en orden) y luego los directos. */
-function mediosDesde(catalogo) {
+/**
+ * Medios de pago para la app: una entrada por medio de tarjeta de crédito activa (en orden), luego las tarjetas
+ * de débito (motor 1.21: van a Gastos Hormiga como el efectivo, con su dueño) y al final los directos.
+ * Las de débito vienen en `debitos` o, si no se pasan, en catalogo.debitos (el motor las cuelga ahí).
+ */
+function mediosDesde(catalogo, debitos) {
   var salida = [];
   var vistos = {};
   tarjetasActivas(catalogo).forEach(function (t) {
@@ -154,7 +158,71 @@ function mediosDesde(catalogo) {
     vistos[t.medio] = true;
     salida.push({ id: t.medio, etiqueta: 'TC ' + nombreCorto_(t.nombre), hoja: t.hoja, tipo: 'tarjeta' });
   });
+  var lista = debitos || (catalogo && catalogo.debitos) || [];
+  lista.filter(function (d) { return d && d.activa !== false; }).forEach(function (d) {
+    salida.push({ id: 'TD_' + d.id, etiqueta: etiquetaDebito(d), hoja: 'Gastos Hormiga', tipo: 'debito', titular: d.titular || '', banco: d.banco });
+  });
   return salida.concat(MEDIOS_DIRECTOS.map(function (m) { return { id: m.id, etiqueta: m.etiqueta, hoja: m.hoja, tipo: m.tipo }; }));
+}
+
+// ---------------------------------------------------------------------------
+// Tarjetas de débito (motor 1.21): plata de la cuenta de cada uno. Se anotan en Gastos Hormiga.
+// ---------------------------------------------------------------------------
+
+var MAXIMO_DEBITOS = 20;
+
+/** 'Débito BCP · Pedro' (lo que se escribe en la columna Medio de Pago). */
+function etiquetaDebito(d) {
+  var titular = String((d && d.titular) || '').trim().split(' ')[0];
+  return 'Débito ' + String((d && d.banco) || '').trim() + (titular ? ' · ' + titular : '');
+}
+
+/** Lista guardada de tarjetas de débito, limpia: [{id, banco, titular, activa, orden}]. */
+function debitosDesde(crudo) {
+  var lista = [];
+  if (crudo) { try { lista = JSON.parse(crudo); } catch (err) { lista = []; } }
+  if (!Array.isArray(lista)) return [];
+  var vistos = {};
+  return lista.filter(function (d) {
+    if (!d || typeof d !== 'object' || !/^[A-Z0-9_]{2,24}$/.test(String(d.id || '')) || vistos[d.id]) return false;
+    vistos[d.id] = true;
+    return String(d.banco || '').trim().length >= 2;
+  }).slice(0, MAXIMO_DEBITOS).map(function (d, i) {
+    return { id: String(d.id), banco: String(d.banco).replace(/\s+/g, ' ').trim().slice(0, 20), titular: String(d.titular || '').trim().slice(0, 40),
+      activa: d.activa !== false, orden: typeof d.orden === 'number' ? d.orden : i + 1 };
+  });
+}
+
+/** Revisa {banco, titular} de una tarjeta de débito nueva o editada. Devuelve {banco, titular} o {error}. */
+function validarDebito(datos) {
+  var d = datos || {};
+  var banco = String(d.banco || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (banco.length < 2 || banco.length > 20) return { error: 'Escribe el banco (2 a 20 letras).' };
+  var titular = String(d.titular || '').trim();
+  if (titular.length > 40) return { error: 'El titular es muy largo.' };
+  return { banco: banco, titular: titular };
+}
+
+/** Id para una tarjeta de débito: 'BCP_P' (banco + inicial del titular), sin repetir. */
+function idDebito(banco, titular, existentes) {
+  var raiz = normalizar(banco).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) || 'DEB';
+  var ini = normalizar(titular).toUpperCase().replace(/[^A-Z]/g, '').slice(0, 1);
+  var id = raiz + (ini ? '_' + ini : '');
+  var usados = {};
+  (existentes || []).forEach(function (x) { usados[x.id] = true; });
+  var n = 2;
+  var final = id;
+  while (usados[final]) final = id + n++;
+  return final;
+}
+
+/** Tarjeta de débito de un banco para una persona (por su primer nombre), o null. */
+function debitoDe(debitos, banco, persona) {
+  var b = normalizar(banco);
+  var p = normalizar(persona).split(' ')[0];
+  var delBanco = (debitos || []).filter(function (d) { return d.activa !== false && normalizar(d.banco) === b; });
+  for (var i = 0; i < delBanco.length; i++) if (p && normalizar(delBanco[i].titular).split(' ')[0] === p) return delBanco[i];
+  return null;
 }
 
 /** {id: {cierre, vence}} de todas las tarjetas del catálogo (también las inactivas, por los gastos viejos). */
@@ -1212,7 +1280,7 @@ function cuadresDesde(texto) {
       if (!claveCuadreValida(k) || !isFinite(Number(v.saldo)) || !/^\d{4}-\d{2}-\d{2}$/.test(String(v.fecha || ''))) return;
       salida[k] = {
         saldo: Math.round(Number(v.saldo) * 100) / 100, base: Math.round((Number(v.base) || 0) * 100) / 100, fecha: v.fecha,
-        medios: (Array.isArray(v.medios) ? v.medios : []).map(function (m) { return String(m).toUpperCase(); }).filter(function (m) { return MEDIOS_CUADRE.indexOf(m) !== -1; }),
+        medios: (Array.isArray(v.medios) ? v.medios : []).map(function (m) { return String(m).toUpperCase(); }).filter(function (m) { return MEDIOS_CUADRE.indexOf(m) !== -1 || /^TD_[A-Z0-9_]{2,24}$/.test(m); }),
         por: String(v.por || '').slice(0, 80)
       };
     });
@@ -1446,6 +1514,8 @@ function gastoRealDeLinea(linea, consumos, claveMes, mapa, conceptosConfig, rang
     if (!c.fecha) return;
     // Con rango (ciclo de cobro) cuenta por fechas; sin rango, por mes calendario como antes.
     if (rango ? (c.fecha < rango.desde || c.fecha > rango.hasta) : c.fecha.slice(0, 7) !== claveMes) return;
+    // Lo que sale del sobrante de alguien (P:) o de un ahorro (A:) no gasta la línea (regla del usuario, 1.21).
+    if (c.origen) return;
     if (claves[normalizar(c.concepto)]) total += c.monto;
   });
   return redondear_(total);
@@ -1963,13 +2033,16 @@ function tarjetaDeConsumo(banco, ultimos4, datosTarjetas, catalogo) {
  * (TC_BCP, TC_SIP, TC_IBK, TC_RIPLEY); pero las transferencias por Plin ("PLIN-PersonaB")
  * y Yape cargadas al débito BCP van a Gastos Hormiga: 'PLIN' o 'YAPE'.
  */
-function medioSugerido(tarjeta, comercio, catalogo) {
+function medioSugerido(tarjeta, comercio, catalogo, responsable) {
   var c = normalizar(comercio);
   if (tarjeta === 'LEMON' || /^lemon\b/.test(c)) return 'LEMON';
   if (tarjeta === 'YAPE') return 'YAPE';
   if (/^plin[\s\-:]/.test(c) || c === 'plin') return 'PLIN';
   if (c.indexOf('yape') !== -1) return 'YAPE';
-  if (tarjeta === 'DEBITO_BCP') return 'EFECTIVO'; // plata de la cuenta: va a Gastos Hormiga
+  if (tarjeta === 'DEBITO_BCP') { // plata de la cuenta: su tarjeta de débito BCP (1.21) o, si no hay, efectivo
+    var deb = debitoDe(catalogo && catalogo.debitos, 'BCP', responsable);
+    return deb ? 'TD_' + deb.id : 'EFECTIVO';
+  }
   return medioDeTarjeta_(tarjeta, catalogo) || 'TC_BCP';
 }
 
@@ -2156,7 +2229,7 @@ function pendientesActivos(lista, catalogo) {
     .map(function (p) {
       return { id: p.id, fecha: p.fecha, banco: p.banco, tarjeta: p.tarjeta, comercio: p.comercio, monto: p.monto,
         moneda: p.moneda, ultimos4: p.ultimos4, responsable: p.responsable, fechaCorreo: p.fechaCorreo,
-        medioSugerido: medioSugerido(p.tarjeta, p.comercio, catalogo) };
+        medioSugerido: medioSugerido(p.tarjeta, p.comercio, catalogo, p.responsable) };
     });
 }
 
@@ -2823,6 +2896,11 @@ if (typeof module !== 'undefined') {
     etiquetaTarjeta: etiquetaTarjeta,
     buscarTarjetaCatalogo: buscarTarjetaCatalogo,
     mediosDesde: mediosDesde,
+    etiquetaDebito: etiquetaDebito,
+    debitosDesde: debitosDesde,
+    validarDebito: validarDebito,
+    idDebito: idDebito,
+    debitoDe: debitoDe,
     ciclosDesde: ciclosDesde,
     hojasDesde: hojasDesde,
     validarTarjetaCatalogo: validarTarjetaCatalogo,

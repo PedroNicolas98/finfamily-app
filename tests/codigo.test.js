@@ -382,13 +382,13 @@ test('version: informa 1.7.1 y la lista de acciones; inicio y config traen el ca
     new HojaFalsa('Configuración', [['Conceptos de Gasto', 'Responsable'], ['Limpieza', 'PersonaB']])]) });
   const r = m.llamar('version', {});
   assert.equal(r.ok, true);
-  assert.equal(r.datos.version, '1.20.1');
+  assert.equal(r.datos.version, '1.21.0');
   for (const a of ['desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'marcarPagado', 'inicio',
     'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos', 'datosTarjetas', 'guardarDatosTarjeta']) {
     assert.ok(r.datos.acciones.includes(a), 'falta la acción ' + a);
   }
-  assert.equal(m.llamar('inicio', {}).datos.version, '1.20.1');
-  assert.equal(m.llamar('config', {}).datos.version, '1.20.1');
+  assert.equal(m.llamar('inicio', {}).datos.version, '1.21.0');
+  assert.equal(m.llamar('config', {}).datos.version, '1.21.0');
 });
 
 test('la lista ACCIONES coincide con las acciones que atiende doPost', () => {
@@ -2021,7 +2021,7 @@ test('config: un ícono guardado para un concepto que ya no existe en Configurac
   assert.deepEqual(m.llamar('config', {}).datos.iconos, { Supermercado: 'carrito' });
   const danado = motorCompleto({ propiedades: { FINFAMILY_ICONOS: '{roto' } });
   assert.deepEqual(danado.llamar('config', {}).datos.iconos, {});
-  assert.equal(danado.llamar('version', {}).datos.version, '1.20.1');
+  assert.equal(danado.llamar('version', {}).datos.version, '1.21.0');
   assert.ok(danado.llamar('version', {}).datos.acciones.includes('guardarIconoConcepto'));
 });
 
@@ -2259,7 +2259,7 @@ test('gasto grande con tarjeta prestada: el correo dice quién gastó; versión 
   const m = motorCompleto();
   m.llamar('registrar', Object.assign({}, GASTO_PRESTADO, { monto: 450, descripcion: 'Saga Falabella' }));
   assert.equal(m.correos[0].subject, 'FinFamily: PersonaA registró S/ 450 en Saga Falabella (TC Interbank)');
-  assert.equal(m.llamar('version', {}).datos.version, '1.20.1');
+  assert.equal(m.llamar('version', {}).datos.version, '1.21.0');
 });
 
 // ===========================================================================
@@ -2539,7 +2539,7 @@ test('bolsas con un solo usuario (N = 1): todo el saldo de los meses anteriores 
 test('versión 1.7.0: la acción bolsas está en la lista y presupuesto no cambió', () => {
   const m = motorBolsas();
   const v = m.llamar('version', {}).datos;
-  assert.equal(v.version, '1.20.1');
+  assert.equal(v.version, '1.21.0');
   assert.ok(v.acciones.includes('bolsas'));
   const p = m.llamar('presupuesto', { mes: '2026-11' }).datos;
   assert.equal(p.totales.saldo, 985.57);

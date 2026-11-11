@@ -4089,3 +4089,19 @@ body.menu-chico .cuenta-menu.nav .cuenta-boton:has(.avatar.con-foto):focus-visib
 .plastico-franja { position: absolute; z-index: -1; right: 4%; top: 22%; bottom: 14%; width: 1.4%; border-radius: 2px; background: linear-gradient(#E4002B 0 46%, #F5B400 46% 72%, #7B2D8E 72%); }
 .plastico[data-diseno="ripley"] > .plastico-top, .plastico[data-diseno="ripley"] > .plastico-medio, .plastico[data-diseno="ripley"] > .plastico-numero, .plastico[data-diseno="ripley"] > .plastico-pie { padding-right: 9cqw; }
 .tj-campo-color[hidden] { display: none; }
+/* ---------- Tarjetas de débito (v145) ---------- */
+.tc-TD { --c1: #3E6F94; --c2: #1D3C57; --acento: #BFE3FF; --op: #3E6F94; }
+.f-origen.pide { border-radius: 16px; outline: 2px dashed color-mix(in srgb, var(--aviso) 70%, transparent); outline-offset: 6px; animation: pulso-pide 1.6s ease-in-out 2; }
+.f-origen.pide .nota-origen { color: var(--aviso); font-weight: 650; }
+@keyframes pulso-pide { 50% { outline-color: transparent; } }
+.pend-elige-origen { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 14px; background: color-mix(in srgb, var(--aviso) 14%, var(--sup-2)); border: 1px solid color-mix(in srgb, var(--aviso) 40%, transparent); }
+.pend-elige-origen > span { font-weight: 650; font-size: 0.9rem; }
+.pend-elige-origen .boton { display: inline-flex; align-items: center; gap: 6px; }
+.pend-elige-origen .icono, .pend-elige-origen .icono svg { width: 16px; height: 16px; }
+.pend-elige-origen.tiembla { animation: temblar 420ms cubic-bezier(.36, .07, .19, .97) both; }
+.debito-dlg .antojos-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.debito-dlg .opciones { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (min-width: 1100px) {
+  body .rejilla-config.una[data-seccion="tarjetas"] { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 1240px; }
+  body .rejilla-config.una[data-seccion="tarjetas"] > .panel { max-width: none; }
+}

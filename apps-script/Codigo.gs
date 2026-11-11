@@ -26,7 +26,7 @@
  *   FINFAMILY_ICONOS               ícono elegido para cada tipo de gasto (motor 1.5.1).
  */
 
-var VERSION = '1.20.1';
+var VERSION = '1.21.0';
 var ZONA_HORARIA = 'America/Lima';
 var DIAS_AVISO = 3;
 var SEGUNDOS_CACHE_TOKEN = 300;
@@ -72,7 +72,10 @@ var ACCIONES = ['inicio', 'tarjetas', 'presupuesto', 'config', 'registrar', 'mar
   'agregarConcepto', 'renombrarConcepto', 'quitarConcepto',
   'usuarios', 'agregarUsuario', 'quitarUsuario',
   'lineasPresupuesto', 'agregarLinea', 'renombrarLinea', 'quitarLinea', 'asignarConceptos', 'editarLineaMeses',
-  'guardarIconoConcepto', 'bolsas'];
+  'guardarIconoConcepto', 'bolsas', 'debitos', 'guardarDebito', 'pasarEfectivoADebito'];
+
+/** Tarjetas de débito de la casa (motor 1.21). */
+var PROPIEDAD_TARJETAS_DEBITO = 'FINFAMILY_TARJETAS_DEBITO';
 
 var HOJAS_TC = ['TC IBK', 'TC BCP', 'TC Ripley', 'TC SIP']; // valor inicial: las hojas reales salen del catálogo
 var HOJA_MODELO_TC = 'TC BCP'; // de aquí se copia la fila de encabezados al crear una tarjeta nueva
@@ -158,6 +161,9 @@ function doPost(e) {
       case 'guardarMeta': resultado = accionGuardarMeta_(usuario, datos); break;
       case 'cuadres': resultado = { cuadres: cuadresDesde(propiedad_(PROPIEDAD_CUADRES)) }; break;
       case 'guardarCuadre': resultado = accionGuardarCuadre_(usuario, datos); break;
+      case 'debitos': resultado = { debitos: leerDebitos_() }; break;
+      case 'guardarDebito': resultado = accionGuardarDebito_(usuario, datos); break;
+      case 'pasarEfectivoADebito': resultado = pasarEfectivoADebito(); break;
       case 'whatsapp': resultado = estadoWhatsapp_(usuario); break;
       case 'guardarWhatsapp': resultado = accionGuardarWhatsapp_(usuario, datos); break;
       case 'probarWhatsapp': resultado = accionProbarWhatsapp_(usuario); break;
@@ -469,8 +475,93 @@ function leerCatalogo_() {
       });
       catalogo_ = catalogoDesde(JSON.stringify(inicial));
     }
+    catalogo_.debitos = leerDebitos_(); // así mediosDesde(leerCatalogo_()) ya trae las de débito
   }
   return catalogo_;
+}
+
+function leerDebitos_() {
+  return debitosDesde(propiedad_(PROPIEDAD_TARJETAS_DEBITO));
+}
+
+/** Agrega, edita o quita (quitar: true) una tarjeta de débito: {id?, banco, titular}. Devuelve {debitos, medios}. */
+function accionGuardarDebito_(usuario, datos) {
+  var d = datos || {};
+  var candado = tomarCandado_();
+  try {
+    var lista = leerDebitos_();
+    var i = -1;
+    for (var k = 0; k < lista.length; k++) if (lista[k].id === d.id) i = k;
+    if (d.quitar) {
+      if (i === -1) throw errorApp_('datos_invalidos', 'Esa tarjeta de débito no existe.');
+      lista[i].activa = false;
+    } else {
+      var v = validarDebito(d);
+      if (v.error) throw errorApp_('datos_invalidos', v.error);
+      var titular = validarTitular_(v.titular);
+      if (i === -1) {
+        if (lista.filter(function (x) { return x.activa !== false; }).length >= MAXIMO_DEBITOS) throw errorApp_('datos_invalidos', 'Ya hay demasiadas tarjetas de débito.');
+        var repetida = lista.filter(function (x) { return normalizar(x.banco) === normalizar(v.banco) && normalizar(x.titular) === normalizar(titular); })[0];
+        if (repetida) { repetida.activa = true; }
+        else lista.push({ id: idDebito(v.banco, titular, lista), banco: v.banco, titular: titular, activa: true, orden: lista.length + 1 });
+      } else {
+        lista[i].banco = v.banco;
+        lista[i].titular = titular;
+        lista[i].activa = true;
+      }
+    }
+    PropertiesService.getScriptProperties().setProperty(PROPIEDAD_TARJETAS_DEBITO, JSON.stringify(lista));
+    catalogo_ = null;
+  } finally {
+    candado.releaseLock();
+  }
+  return { debitos: leerDebitos_(), medios: mediosDesde(leerCatalogo_()) };
+}
+
+/**
+ * Motor 1.21: los débitos BCP que el lector anotó como "Efectivo" en Gastos Hormiga pasan a la tarjeta de débito
+ * BCP de quien gastó (solo cambia la columna Medio de Pago). Mismo criterio que pasarDebitosAEfectivo:
+ * filas de la app que coinciden con un débito BCP confirmado (monto, descripción parecida, fecha a ±3 días).
+ */
+function pasarEfectivoADebito() {
+  var catalogo = leerCatalogo_();
+  var debitos = leerTodosLosPendientes_().filter(function (p) {
+    return p.banco === 'BCP' && normalizar(p.estado) === 'confirmado' && /debito/.test(normalizar(p.asunto));
+  });
+  var hoja = abrirLibro_().getSheetByName(HOJA_HORMIGA);
+  if (!debitos.length || !hoja) return { movidos: 0, detalle: [] };
+  var soloLetras = function (t) { return normalizar(t).replace(/[^a-z0-9]/g, ''); };
+  var candado = tomarCandado_();
+  var detalle = [];
+  try {
+    var h = leerHojaConEncabezado_(hoja);
+    var cols = h.cols;
+    if (cols.medio === -1) return { movidos: 0, detalle: [] };
+    var usados = {};
+    debitos.forEach(function (p) {
+      var comercio = soloLetras(p.comercio);
+      for (var r = h.idxEnc + 1; r < h.valores.length; r++) {
+        var f = h.valores[r];
+        if (usados[r] || normalizar(f[cols.medio]) !== 'efectivo') continue;
+        if (parsearMonto(f[cols.monto]) !== p.monto) continue;
+        var desc = soloLetras(f[cols.descripcion]);
+        if (!desc || !comercio || (comercio.indexOf(desc) === -1 && desc.indexOf(comercio) === -1)) continue;
+        var dias = diasEntre_(p.fecha, fechaISO(parsearFecha(f[cols.fecha])));
+        if (dias === null || Math.abs(dias) > 3) continue;
+        var deb = debitoDe(catalogo.debitos, 'BCP', String(f[cols.responsable] || '') || p.responsable);
+        if (!deb) continue;
+        usados[r] = true;
+        hoja.getRange(r + 1, cols.medio + 1).setValue(etiquetaDebito(deb));
+        detalle.push(String(f[cols.descripcion] || '').trim() + ' ' + p.monto);
+        break;
+      }
+    });
+    SpreadsheetApp.flush();
+  } finally {
+    candado.releaseLock();
+  }
+  console.log('FinFamily: ' + detalle.length + ' gasto(s) en efectivo pasados a la débito BCP. ' + detalle.join(', '));
+  return { movidos: detalle.length, detalle: detalle };
 }
 
 function guardarCatalogo_(lista) {
@@ -680,6 +771,7 @@ function accionConfig_(usuario) {
     conceptos: conf.conceptos,
     responsables: responsables,
     medios: mediosDesde(leerCatalogo_()),
+    debitos: leerDebitos_(),
     ciclos: ciclosDesde(leerCatalogo_()),
     tarjetas: tarjetasActivas(leerCatalogo_()),
     iconos: iconosConNombres(leerIconos_(), conf.conceptos)
@@ -2981,7 +3073,7 @@ function accionConfirmarPendiente_(usuario, datos) {
   }
   var responsable = resolverResponsable_(usuario, datos.responsable);
   // Por defecto el medio sugerido (la tarjeta, o PLIN/YAPE si el consumo fue una transferencia).
-  var medio = datos.medio === undefined || datos.medio === null || datos.medio === '' ? medioSugerido(p.tarjeta, p.comercio, leerCatalogo_()) : datos.medio;
+  var medio = datos.medio === undefined || datos.medio === null || datos.medio === '' ? medioSugerido(p.tarjeta, p.comercio, leerCatalogo_(), p.responsable) : datos.medio;
   if (!buscarMedio_(medio)) throw errorApp_('datos_invalidos', 'El medio de pago no es válido.');
   var descripcion = (datos.descripcion === undefined || datos.descripcion === null || String(datos.descripcion).trim() === '')
     ? (p.comercio || ('Consumo ' + p.banco)) : datos.descripcion;
