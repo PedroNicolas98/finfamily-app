@@ -4208,3 +4208,27 @@ body.gasto-pc .pantalla { margin-inline: auto; max-width: 1180px; }
   body .pantalla.presupuesto .hero-meses .hero-monto { font-size: 2.6rem; }
   body .pantalla.presupuesto .filas-pres > li { padding-block: 3px; }
 }
+/* ---------- Días plegados (v148): se abre solo el día que quieras ver ---------- */
+.consumos li.dia.plegable { cursor: pointer; user-select: none; justify-content: flex-start; transition: background 200ms ease; }
+.consumos li.dia.plegable:hover { background: var(--sup-2); }
+.consumos li.dia.plegable:focus-visible { outline: 2px solid var(--accion); outline-offset: -2px; }
+.consumos li.dia.plegable > span:not(.dia-chev) { flex: 1; min-width: 0; }
+.dia-chev { display: inline-grid; place-items: center; width: 18px; height: 18px; flex-shrink: 0; color: var(--tinta-3); transition: transform 260ms var(--suave); }
+.dia-chev .icono, .dia-chev .icono svg { width: 14px; height: 14px; }
+.consumos li.dia.plegable:not(.plegado) .dia-chev { transform: rotate(90deg); color: var(--accion); }
+.dia-n { font-size: 0.72rem; color: var(--tinta-3); font-weight: 600; white-space: nowrap; }
+.consumos:not(.buscando) > li.dia-oculto { display: none; }
+.consumos.buscando li.dia.plegable .dia-chev { visibility: hidden; }
+.consumos > li.dia-entra { animation: dia-entra 300ms var(--suave) both; animation-delay: calc(var(--i, 0) * 35ms); }
+@keyframes dia-entra { from { opacity: 0; transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) { .consumos > li.dia-entra { animation: none; } .dia-chev { transition: none; } }
+/* Estado de cuenta: el botón "Marcar todo pagado" va bajo el monto, sin una fila vacía aparte */
+.grupo-cabecera .derecha .acciones { margin-top: 8px; justify-content: flex-end; }
+.grupo-cabecera .derecha .acciones:empty { display: none; }
+.grupo-cabecera .derecha .acciones .boton { min-height: 36px; padding-inline: 14px; font-size: 0.84rem; }
+@media (max-width: 600px) {
+  .grupo-cabecera > div:first-child { flex: 1; min-width: 0; }
+  .grupo-cabecera .derecha { flex-shrink: 0; max-width: 52%; }
+  .grupo-cabecera .derecha .acciones .boton { min-height: 32px; padding-inline: 10px; font-size: 0.76rem; white-space: nowrap; }
+  .grupo-cabecera .gp-chip span { white-space: nowrap; }
+}
