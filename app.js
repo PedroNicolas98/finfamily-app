@@ -2777,6 +2777,8 @@ function frenoGasto(o) {
     const cifra = (etq, monto, clase = '') => h('li', { class: clase }, h('span', {}, etq), h('strong', { 'data-contar': String(Math.abs(monto)) }, soles(0)));
     const botonNo = h('button', { type: 'button', class: 'boton ' + (alto ? 'primario' : 'enlace'), onclick: () => cerrar(false) }, o.textoNo || (alto ? 'Mejor no lo gasto' : 'Mejor no'));
     const botonSi = h('button', { type: 'button', class: 'boton ' + (alto ? 'enlace peligro' : 'primario'), onclick: () => cerrar(true) }, o.textoSi || (alto ? 'Guardar igual' : 'Guardar'));
+    // Con tarjeta de crédito (v123): pasarlo a cuotas pesa menos este mes. Resuelve 'cuotas'.
+    const botonCuotas = o.textoCuotas ? h('button', { type: 'button', class: 'boton freno-cuotas', onclick: () => cerrar('cuotas') }, icono('calendario'), o.textoCuotas) : null;
     dlg.append(h('div', { class: 'freno-caja' },
       h('div', { class: 'freno-ico', 'aria-hidden': 'true' }, h('span', {}, icono('alerta'))),
       h('h2', { class: 'freno-titulo' }, o.titulo),
@@ -2788,7 +2790,7 @@ function frenoGasto(o) {
         cifra(o.etqTiene, o.tiene),
         cifra('Este gasto', o.monto),
         queda < 0 ? cifra('Te faltan', queda, 'mal') : cifra('Te quedarían', queda, 'queda'))),
-      h('div', { class: 'acciones modal-acciones freno-acciones' }, alto ? [botonNo, botonSi] : [botonSi, botonNo]));
+      h('div', { class: 'acciones modal-acciones freno-acciones' }, alto ? [botonNo, botonCuotas, botonSi].filter(Boolean) : [botonSi, botonCuotas, botonNo].filter(Boolean)));
     document.body.append(dlg);
     dlg.showModal();
     animarVista(dlg);
@@ -2933,6 +2935,7 @@ async function abrirPendientes() {
     if (p._repetido) datos.confirmarDuplicado = true;
     const origenP = p._origen === undefined && directoDe(p) && !lineaDeBilletera(directoDe(p)) ? 'P' : p._origen;
     if (motorBolsas() && origenP) datos.origen = origenP.startsWith('P') ? `P:${quienDe(p)}` : origenP;
+    if (p._cuotas?.cuotas > 1) { datos.cuotas = p._cuotas.cuotas; if (p._cuotas.montoCuota > 0) datos.montoCuota = p._cuotas.montoCuota; }
     envios = envios.then(async () => {
       try {
         const res = await llamarApi('confirmarPendiente', datos, { email: emailSesion() });
@@ -2940,7 +2943,7 @@ async function abrirPendientes() {
           const c = res.coincidencia || {};
           p._repetido = true; p._concepto = concepto;
           devolver(p, `Ya hay un gasto igual en ${c.hoja || 'la hoja'} (${c.descripcion || ''}, ${soles(c.monto || p.monto)}, ${fechaCorta(c.fecha || p.fecha)}). Confírmalo otra vez para guardarlo igual, o descártalo.`);
-        } else { sacarDeMemoria(p); avisar(`Guardado: ${datos.descripcion}, ${montoDe(p)}`, 'ok'); }
+        } else { sacarDeMemoria(p); avisar(`Guardado: ${datos.descripcion}, ${montoDe(p)}${datos.cuotas ? ` en ${datos.cuotas} cuotas` : ''}`, 'ok'); }
       } catch (e) { devolver(p, mensajeError(e, 'No se pudo guardar. Intenta de nuevo.')); }
       enVuelo--; alTerminarEnvios();
     });
@@ -3038,6 +3041,17 @@ async function abrirPendientes() {
           b.classList.toggle('activo', !!p._origen);
         } }, h('span', { class: 'suave' }, 'Sale de'), h('strong', {}, actual().etiqueta));
         b.classList.toggle('activo', !!p._origen);
+        return b;
+      })() : null,
+      motorCuotas() && !directo && !dolar ? (() => {
+        const texto = () => { const c = p._cuotas; const l = c?.cuotas > 1 ? montosDeCuotas(p.monto, c.cuotas, c.montoCuota) : []; return l.length > 1 ? `${c.cuotas} × ${soles(l[l.length - 1])}` : 'No, un solo pago'; };
+        const b = h('button', { type: 'button', class: 'pend-origen pend-cuotas', title: 'Toca si fue en cuotas', onclick: async () => {
+          const r = await elegirCuotas({ total: Number(p.monto), cuotas: p._cuotas?.cuotas || 1, montoCuota: p._cuotas?.montoCuota || 0 });
+          if (r) p._cuotas = r.cuotas > 1 ? r : null;
+          b.lastChild.textContent = texto();
+          b.classList.toggle('activo', !!p._cuotas);
+        } }, h('span', { class: 'suave' }, 'En cuotas'), h('strong', {}, texto()));
+        b.classList.toggle('activo', !!p._cuotas);
         return b;
       })() : null,
       h('div', { class: 'pend-pie' },
@@ -3664,6 +3678,82 @@ function interruptor(activo, etiqueta, alCambiar) {
 // reenvíe solo los avisos de consumo. Tres pasos: agregar el correo, pegar el código (aparece solo) y
 // cargar un filtro ya armado. Nunca se reenvían correos con códigos o claves.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Compras en cuotas (v123, motor 1.11): una compra con tarjeta se reparte en N cuotas, cada una en su mes.
+// ---------------------------------------------------------------------------
+function motorCuotas() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 11); }
+const OPCIONES_CUOTAS = [1, 2, 3, 4, 6, 10, 12, 18, 24, 36];
+// Igual que el motor: partes iguales (los centavos que sobran van en la primera) o todas de la cuota fija.
+function montosDeCuotas(total, n, fija) {
+  const cent = Math.round(Number(total) * 100);
+  if (!(cent > 0) || !(n >= 1)) return [];
+  if (n === 1) return [cent / 100];
+  if (fija > 0) {
+    const cf = Math.round(fija * 100);
+    if (cf * n < cent - n || cf * n > cent * 2) return [];
+    return Array(n).fill(cf / 100);
+  }
+  const parte = Math.floor(cent / n);
+  return Array.from({ length: n }, (_, i) => (parte + (i === 0 ? cent - parte * n : 0)) / 100);
+}
+const mesCorto = (clave) => { const m = /^(\d{4})-(\d{2})$/.exec(clave || ''); return m ? `${ABREV[+m[2] - 1]} ${m[1].slice(2)}` : ''; };
+// Ventanita "¿En cuántas cuotas?". Resuelve {cuotas, montoCuota} o null si se cierra sin cambiar.
+function elegirCuotas({ total, cuotas = 1, montoCuota = 0, mesInicio = '' }) {
+  return new Promise((resolver) => {
+    let n = cuotas > 1 ? cuotas : 1;
+    let terminado = false;
+    const dlg = h('dialog', { class: 'hoja-modal cuotas-dlg', 'aria-label': 'Compra en cuotas' });
+    const salir = (valor) => {
+      if (terminado) return; terminado = true;
+      dlg.classList.add('cerrando');
+      setTimeout(() => { if (dlg.open) dlg.close(); dlg.remove(); }, sinMovimiento() ? 0 : 190);
+      resolver(valor);
+    };
+    dlg.addEventListener('cancel', (ev) => { ev.preventDefault(); salir(null); });
+    dlg.addEventListener('click', (ev) => { if (ev.target === dlg) salir(null); });
+    const inFija = h('input', { type: 'text', inputmode: 'decimal', autocomplete: 'off', 'aria-label': 'Cuota al mes' });
+    if (montoCuota > 0) inFija.value = String(montoCuota);
+    const resumen = h('div', { class: 'cuotas-resumen', 'aria-live': 'polite' });
+    const btnListo = h('button', { type: 'button', class: 'boton primario' }, 'Listo');
+    const botones = OPCIONES_CUOTAS.map((x) => h('button', { type: 'button', class: 'opcion chica cuotas-op', 'data-n': String(x), onclick: () => { n = x; pintar(); if (x === 1) salir({ cuotas: 1, montoCuota: 0 }); } },
+      x === 1 ? 'Sin cuotas' : String(x)));
+    const fija = () => leerMonto(inFija.value) || 0;
+    const pintar = () => {
+      botones.forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.n) === n)));
+      inFija.placeholder = n > 1 ? String(montosDeCuotas(total, n, 0)[n - 1] || '') : '';
+      cajaFija.hidden = n <= 1;
+      const lista = n > 1 ? montosDeCuotas(total, n, fija()) : [];
+      const mal = n > 1 && !lista.length;
+      btnListo.disabled = mal;
+      if (n <= 1) { resumen.replaceChildren(h('strong', {}, soles(total)), h('small', { class: 'suave' }, 'Se paga entero en un solo mes.')); return; }
+      if (mal) { resumen.replaceChildren(h('strong', { class: 'mal' }, 'Esa cuota no cuadra'), h('small', { class: 'suave' }, `${n} × ${soles(fija())} no cubre ${soles(total)}.`)); return; }
+      const totalCuotas = lista.reduce((x, y) => x + y, 0);
+      const desde = mesInicio ? mesCorto(mesInicio) : '';
+      const hasta = mesInicio ? mesCorto(sumarMes(mesInicio, n - 1)) : '';
+      resumen.replaceChildren(
+        h('strong', {}, `${n} × ${soles(lista[n - 1])}`),
+        h('small', { class: 'suave' }, [desde ? `De ${desde} a ${hasta}` : '', Math.abs(totalCuotas - total) >= 0.01 ? `total ${soles(totalCuotas)}` : ''].filter(Boolean).join(' · ') || 'Una cuota por mes'));
+    };
+    inFija.addEventListener('input', pintar);
+    inFija.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); btnListo.click(); } });
+    btnListo.onclick = () => { if (!btnListo.disabled) salir({ cuotas: n, montoCuota: n > 1 ? fija() : 0 }); };
+    const cajaFija = h('label', { class: 'cuotas-fija' }, h('span', {}, 'Cuota al mes'),
+      h('span', { class: 'campo-soles' }, h('span', {}, 'S/'), inFija),
+      h('small', { class: 'suave' }, 'Cámbiala solo si tu banco cobra intereses.'));
+    dlg.append(h('div', { class: 'cierre-caja cuotas-caja' },
+      h('p', { class: 'cierre-etq' }, '¿En cuántas cuotas?'),
+      h('p', { class: 'suave' }, `Compra de ${soles(total)}`),
+      h('div', { class: 'cuotas-opciones' }, botones),
+      resumen, cajaFija,
+      h('div', { class: 'acciones modal-acciones' }, btnListo)));
+    pintar();
+    document.body.append(dlg);
+    dlg.showModal();
+    animarVista(dlg);
+    (botones.find((b) => Number(b.dataset.n) === n) || botones[0]).focus({ preventScroll: true });
+  });
+}
+
 function motorReenvio() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 10); }
 const CLAVE_REENVIO = 'ff:reenvio';
 const GMAIL_REENVIO = 'https://mail.google.com/mail/u/0/#settings/fwdandpop';
@@ -4381,6 +4471,13 @@ async function vistaRegistrar() {
   // si pasa (o casi) el presupuesto de su línea. Devuelve los datos de la ventana o null.
   // ¿Alcanza este gasto? Con sobrante o ahorro: lo que hay ahí. Del fondo común: lo que sobra del mes en que se
   // paga (después de lo planeado) y el tope de su línea del presupuesto. nivel: 'ok' | 'ojo' (queda <15 %) | 'alto'.
+  // Cuotas (v123): solo con tarjeta de crédito y motor 1.11.
+  const conTarjeta = () => medios.find((x) => x.id === f.medio)?.tipo === 'tarjeta';
+  const enCuotas = () => motorCuotas() && conTarjeta() && f.cuotas > 1;
+  const listaCuotas = () => (enCuotas() ? montosDeCuotas(leerMonto(f.monto || '') || 0, f.cuotas, f.montoCuota) : []);
+  const ofrecerCuotas = () => (motorCuotas() && conTarjeta() && !(f.cuotas > 1) ? 'Mejor en cuotas' : '');
+  // Lo que pesa este mes: la primera cuota si es en cuotas (para el semáforo y el freno).
+  const montoDelMes = () => (enCuotas() && listaCuotas().length ? listaCuotas()[0] : leerMonto(f.monto || '') || 0);
   const estadoGasto = (monto) => {
     if (!motorBolsas() || !(monto > 0)) return null;
     const b = bolsasGuardadas();
@@ -4456,7 +4553,7 @@ async function vistaRegistrar() {
   let timerFreno = 0;
   const claveFreno = (e) => [e.monto, f.origen || '', f.medio || '', e.etqTiene || '', f.fecha || ''].join('|'); // mismo motivo = no se repite
   const pintarSemaforo = () => {
-    const e = estadoGasto(leerMonto(f.monto || '') || 0);
+    const e = estadoGasto(montoDelMes());
     semaforo.hidden = !e;
     cajaMonto?.classList.toggle('en-rojo', e?.nivel === 'alto');
     clearTimeout(timerFreno);
@@ -4476,10 +4573,11 @@ async function vistaRegistrar() {
     const clave = claveFreno(e);
     if (clave === frenoVisto) return;
     timerFreno = setTimeout(async () => {
-      const ahora = estadoGasto(leerMonto(f.monto || '') || 0);
+      const ahora = estadoGasto(montoDelMes());
       if (!ahora || ahora.nivel !== 'alto' || claveFreno(ahora) !== clave || document.querySelector('dialog[open]')) return;
       frenoVisto = clave;
-      const seguir = await frenoGasto({ ...ahora, textoNo: 'Mejor no lo gasto', textoSi: 'Seguir igual' });
+      const seguir = await frenoGasto({ ...ahora, textoNo: 'Mejor no lo gasto', textoSi: 'Seguir igual', textoCuotas: ofrecerCuotas() });
+      if (seguir === 'cuotas') { btnCuotas.click(); return; }
       if (seguir) { frenoAceptado = clave; return; }
       // Desistió: se borra el monto para empezar de nuevo.
       f.monto = ''; inMonto.value = ''; cajaMonto?.classList.remove('plegado');
@@ -4576,10 +4674,30 @@ async function vistaRegistrar() {
   const alElegirConcepto = () => { filtroConcepto = ''; filtrarConceptos(); plegar(); };
   const alElegirMedio = () => {};
 
+  const btnCuotas = h('button', { type: 'button', class: 'r-cuotas', title: 'Pagar en cuotas', onclick: async () => {
+    const m = montoActual();
+    if (!(m > 0)) { inMonto.focus(); return; }
+    const md = medios.find((x) => x.id === f.medio);
+    const mesInicio = md ? (calcularCiclo(tarjetaDe(md), f.fecha, ciclos).pago || '').slice(0, 7) : '';
+    const r = await elegirCuotas({ total: m, cuotas: f.cuotas || 1, montoCuota: f.montoCuota || 0, mesInicio });
+    if (r) { f.cuotas = r.cuotas > 1 ? r.cuotas : 0; f.montoCuota = r.montoCuota || 0; }
+    pintarGuardar(); try { pintarSemaforo(); } catch { /* aún no está listo */ }
+  } });
+  const pintarCuotas = () => {
+    const visible = motorCuotas() && conTarjeta();
+    btnCuotas.hidden = !visible;
+    if (!visible && f.cuotas) { f.cuotas = 0; f.montoCuota = 0; }
+    const lista = listaCuotas();
+    btnCuotas.classList.toggle('activo', lista.length > 1);
+    btnCuotas.replaceChildren(icono('calendario'), h('span', {}, lista.length > 1 ? `${f.cuotas} cuotas` : 'En cuotas'));
+  };
   const pintarGuardar = () => {
+    pintarCuotas();
     if (btnGuardar.classList.contains('ocupado')) return;
     const m = montoActual();
-    btnGuardar.textContent = m > 0 && f.concepto ? `Guardar ${soles(m)} · ${f.concepto}` : 'Guardar gasto';
+    const lista = listaCuotas();
+    const cuanto = lista.length > 1 ? `${f.cuotas} × ${soles(lista[lista.length - 1])}` : soles(m);
+    btnGuardar.textContent = m > 0 && f.concepto ? `Guardar ${cuanto} · ${f.concepto}` : 'Guardar gasto';
   };
   const pintarResumen = () => { pintarGuardar(); pintarFecha(); }; // lo llaman pintarOrigen y pintarConceptos
   inMonto.addEventListener('input', pintarGuardar);
@@ -4630,7 +4748,7 @@ async function vistaRegistrar() {
       h('div', { class: 'r-fila r-fila-textos' },
         h('div', { class: 'campo r-desc' }, inDesc, sugerencia),
         h('div', { class: 'campo r-nota' }, inNota)),
-      h('div', { class: 'f-cierre' }, msg, btnGuardar)));
+      h('div', { class: 'f-cierre' }, msg, h('div', { class: 'r-guardar' }, btnCuotas, btnGuardar))));
   inNota.placeholder = 'Nota (opcional)';
   inDesc.placeholder = 'Descripción (opcional)';
   pintarFecha(); pintarGuardar();
@@ -4643,7 +4761,7 @@ async function vistaRegistrar() {
       msg.className = 'mensaje ok';
       msg.replaceChildren(r.datos?.duplicadoId
         ? `Ya estaba guardado en ${r.datos.hoja}.`
-        : `Guardado en ${r.datos?.hoja || 'tu hoja'}: ${datos.descripcion}, ${soles(datos.monto)}.`);
+        : `Guardado en ${r.datos?.hoja || 'tu hoja'}: ${datos.descripcion}, ${soles(datos.monto)}${datos.cuotas > 1 ? ` en ${datos.cuotas} cuotas` : ''}.`);
     } else if (r?.tipo === 'revisar') {
       const c = r.datos?.coincidencia || {};
       const zona = h('div', { class: 'acciones' },
@@ -4709,10 +4827,12 @@ async function vistaRegistrar() {
     msg.className = 'mensaje';
     msg.replaceChildren();
     // Freno: antes de guardar, si no alcanza (o deja muy poco) se avisa en grande y se puede desistir.
-    const freno = revisarFreno(monto);
+    const freno = revisarFreno(montoDelMes());
     clearTimeout(timerFreno);
     // Si ya dijo "Seguir igual" en la ventana que salió sola para este mismo gasto, no se pregunta otra vez.
-    if (freno && !(freno.nivel === 'alto' && claveFreno(freno) === frenoAceptado) && !(await frenoGasto(freno))) {
+    const decision = freno && !(freno.nivel === 'alto' && claveFreno(freno) === frenoAceptado) ? await frenoGasto({ ...freno, textoCuotas: ofrecerCuotas() }) : true;
+    if (decision === 'cuotas') { btnCuotas.click(); return; }
+    if (!decision) {
       msg.className = 'mensaje';
       msg.replaceChildren('No se guardó. Bien pensado.');
       inMonto.focus({ preventScroll: true });
@@ -4729,6 +4849,7 @@ async function vistaRegistrar() {
     const mElegido = medios.find((x) => x.id === f.medio);
     if (motorPrestada() && mElegido?.tipo === 'tarjeta' && tarjetaDe(mElegido) !== idCicloDeMedio(mElegido, quien())) datos.tarjeta = tarjetaDe(mElegido);
     if (motorBolsas() && origenElegido()) datos.origen = origenElegido();
+    if (enCuotas() && listaCuotas().length > 1) { datos.cuotas = f.cuotas; if (f.montoCuota > 0) datos.montoCuota = f.montoCuota; }
     try {
       await cola.encolar('registrar', datos, email);
     } catch {
@@ -4738,7 +4859,7 @@ async function vistaRegistrar() {
       return;
     }
     // Ya está en la cola: se puede registrar el siguiente mientras se envía.
-    Object.assign(f, { monto: '', descripcion: '', concepto: null, conceptoManual: false, nota: '', medioManual: false });
+    Object.assign(f, { monto: '', descripcion: '', concepto: null, conceptoManual: false, nota: '', medioManual: false, cuotas: 0, montoCuota: 0 });
     // la nota queda visible siempre
     cajaMonto?.classList.remove('plegado');
     inMonto.value = ''; inDesc.value = ''; inNota.value = ''; sugerencia.textContent = ''; pintarConceptos();
