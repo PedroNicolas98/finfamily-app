@@ -1,6 +1,7 @@
 // FinFamily: pantallas, navegación por hash y sincronización.
 import * as api from './api.js';
 import * as cola from './cola.js';
+import { API_URL } from './config.js';
 
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
@@ -2565,10 +2566,137 @@ function filaWhatsapp() {
     const ver = d.via === 'green' && motorWhatsappGreen() ? h('button', { type: 'button', class: 'boton chico enlace', onclick: () => abrirWhatsappGreen(d, pintarCon) }, 'Ver')
       : d.via === 'meta' && motorWhatsappMeta() ? h('button', { type: 'button', class: 'boton chico enlace', onclick: () => abrirWhatsappMeta(d, pintarCon) }, 'Ver') : null;
     control.replaceChildren(...[h('span', { class: 'pill ok', title: d.via === 'green' ? 'Green API' : d.via === 'meta' ? 'WhatsApp oficial (Meta)' : 'CallMeBot' }, d.telefono || 'Conectado'), probar, ver, quitar].filter(Boolean));
+    fila.querySelector('.wsp-registro')?.remove();
+    const reg = bloqueRegistroWhatsapp(d);
+    if (reg) fila.append(reg);
   };
   pintarCon(leerCache('whatsapp')?.datos || null);
   cargarRapido('whatsapp', {}, 'whatsapp').then((r) => pintarCon(r?.datos)).catch(() => fila.remove());
   return fila;
+}
+
+// ---------------------------------------------------------------------------
+// v133 (motor 1.20): pases entre ustedes, tope de antojos, antojos → metas y anotar gastos por WhatsApp.
+// ---------------------------------------------------------------------------
+function motorV120() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 20); }
+
+// ¿Es un pase de plata a la otra persona? ("Yape a PersonaB…", "Plin a PersonaA…"). Devuelve su nombre o ''.
+function otroDePase(texto, quien) {
+  const t = ' ' + normalizar(texto) + ' ';
+  if (!/\b(yape|plin|transferencia|transf|te envio|enviaste)\b|^ a /.test(t)) return '';
+  return responsables().find((n) => !mismoNombre(n, quien) && nombreCorto(n).length >= 3 && t.includes(' ' + normalizar(nombreCorto(n)))) || '';
+}
+
+// Ventanita para un gasto ya anotado que en realidad fue un pase: a Cuentas (se lo prestó) o solo borrarlo.
+function abrirNoEraGasto({ c, quien, otro, base, alTerminar }) {
+  const v = ventanita('cuenta-dlg', 'No era gasto');
+  const accion = async (btn, aCuentas) => {
+    ocuparBoton(btn, 'Guardando…');
+    try {
+      if (aCuentas) await enviarCuenta({ de: quien, a: otro, monto: Number(c.monto), nota: limpiarComercio(c.descripcion) || 'Pase' });
+      await llamarApi('borrarGasto', base, { email: emailSesion() });
+      estado.cambioDesde = Date.now();
+      v.cerrar();
+      avisar(aCuentas ? `Pasó a Cuentas: ${nombreCorto(otro)} te debe ${soles(c.monto)}` : 'Quitado de los gastos', 'ok');
+      alTerminar?.();
+    } catch (e) { liberarBoton(btn, aCuentas ? 'Se lo presté' : 'Solo fue un pase'); avisar(mensajeError(e, 'No se pudo cambiar.'), 'error'); }
+  };
+  const b1 = h('button', { type: 'button', class: 'boton primario' }, 'Se lo presté');
+  const b2 = h('button', { type: 'button', class: 'boton' }, 'Solo fue un pase');
+  b1.onclick = () => accion(b1, true);
+  b2.onclick = () => accion(b2, false);
+  v.caja.append(
+    h('div', { class: 'cuenta-pareja' }, avatar(quien, 'grande'), h('span', { class: 'cuenta-flecha' }, icono('adelante')), avatar(otro, 'grande')),
+    h('p', { class: 'cierre-etq' }, `${soles(c.monto)} a ${nombreCorto(otro)}`),
+    h('p', { class: 'suave' }, `Un pase de plata entre ustedes no es gasto. Si se lo prestaste, queda en Cuentas (${nombreCorto(otro)} te lo debe); si no, solo se quita.`),
+    h('div', { class: 'acciones modal-acciones' }, b1, b2, h('button', { type: 'button', class: 'boton enlace', onclick: v.cerrar }, 'Cancelar')));
+  v.abrir();
+}
+
+// ---- Tope semanal de antojos ----
+function abrirAntojos(d, alGuardar) {
+  const conceptosCfg = leerCache('config')?.datos?.conceptos || CONCEPTOS_LOCAL;
+  let elegidos = new Set((d?.conceptos || []).map((x) => normalizar(x)));
+  const sugerido = Math.max(10, Math.round(((d?.promedioSemanal || 0) * 0.8) / 10) * 10);
+  const v = ventanita('meta-dlg antojos-dlg', 'Tope de antojos');
+  const inTope = h('input', { type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: String(sugerido), 'aria-label': 'Tope por semana', value: d?.tope ? String(d.tope) : '' });
+  const chips = h('div', { class: 'opciones chicas antojos-chips' });
+  const msg = h('p', { class: 'mensaje error', hidden: true });
+  const pintar = () => chips.replaceChildren(...conceptosCfg.map((c) => h('button', { type: 'button', class: 'opcion chica', 'aria-pressed': String(elegidos.has(normalizar(c))),
+    onclick: () => { const k = normalizar(c); if (elegidos.has(k)) elegidos.delete(k); else elegidos.add(k); pintar(); } }, catIco(c), h('span', { class: 'opcion-texto' }, c))));
+  const guardar = async (btn, tope) => {
+    msg.hidden = true;
+    ocuparBoton(btn, 'Guardando…');
+    try {
+      const r = await llamarApi('guardarAntojos', { tope, conceptos: conceptosCfg.filter((c) => elegidos.has(normalizar(c))) }, { email: emailSesion() });
+      guardarCache('antojos', r);
+      avisar(tope ? `Tope de antojos: ${soles(tope)} por semana` : 'Tope de antojos apagado', 'ok');
+      v.cerrar(); alGuardar?.(r);
+    } catch (e) { liberarBoton(btn, btn.dataset.texto); msg.textContent = mensajeError(e, 'No se pudo guardar.'); msg.hidden = false; }
+  };
+  const btn = h('button', { type: 'button', class: 'boton primario', 'data-texto': 'Guardar' }, 'Guardar');
+  btn.onclick = () => { const t = leerMonto(inTope.value) || sugerido; guardar(btn, t); };
+  const apagar = d?.tope ? h('button', { type: 'button', class: 'boton enlace', 'data-texto': 'Apagar' }, 'Apagar') : null;
+  if (apagar) apagar.onclick = () => guardar(apagar, 0);
+  v.caja.append(...[
+    h('p', { class: 'cierre-etq' }, 'Tope semanal de antojos'),
+    h('p', { class: 'suave' }, d?.promedioSemanal ? `En las últimas 4 semanas gastaron ${soles(d.promedioSemanal)} por semana en esto. Sugerido: ${soles(sugerido)} (20 % menos).` : 'Elige qué cuenta como antojo y cuánto por semana.'),
+    chips,
+    h('label', { class: 'cuenta-monto' }, h('span', {}, 'S/'), inTope),
+    h('p', { class: 'suave cuadre-tip' }, 'De lunes a domingo. Les aviso al 80 % y si se pasan, por correo y WhatsApp.'),
+    msg,
+    h('div', { class: 'acciones modal-acciones' }, btn, apagar, h('button', { type: 'button', class: 'boton', onclick: v.cerrar }, 'Cancelar'))].filter(Boolean));
+  pintar();
+  v.abrir();
+}
+
+function panelAntojos() {
+  const caja = h('section', { class: 'panel panel-antojos revelar' });
+  const pintar = (d) => {
+    if (!d) { caja.remove(); return; }
+    const recargar = (r) => pintar(r);
+    if (!d.configurado) {
+      if (!(d.promedioSemanal > 0)) { caja.remove(); return; }
+      const sugerido = Math.max(10, Math.round((d.promedioSemanal * 0.8) / 10) * 10);
+      caja.replaceChildren(
+        h('div', { class: 'panel-cab' }, tituloSeccion('Antojos'), null),
+        h('p', { class: 'antojos-invita' }, `Gastan unos ${soles(d.promedioSemanal)} por semana en ${d.conceptos.slice(0, 3).map((x) => x.split(' ')[0].toLowerCase()).join(', ')}.`),
+        h('div', { class: 'cuentas-acciones' },
+          h('button', { type: 'button', class: 'boton chico primario', onclick: () => abrirAntojos(d, recargar) }, icono('meta'), `Ponerle tope (${soles(sugerido)})`)));
+      return;
+    }
+    const pct = d.tope > 0 ? (d.semana.gastado / d.tope) * 100 : 0;
+    const nivel = pct >= 100 ? 'mal' : pct >= 80 ? 'aviso' : 'ok';
+    caja.replaceChildren(
+      h('div', { class: 'panel-cab' }, tituloSeccion('Antojos de la semana'),
+        h('button', { type: 'button', class: 'boton chico enlace', onclick: () => abrirAntojos(d, recargar) }, 'Ajustar')),
+      h('div', { class: 'antojos-cifras' },
+        h('strong', { 'data-contar': String(d.semana.gastado) }, soles(0)),
+        h('span', { class: 'suave' }, ` de ${soles(d.tope)}`),
+        h('span', { class: `meta-estado ${nivel}` }, pct >= 100 ? `Se pasaron ${soles(d.semana.gastado - d.tope)}` : `Quedan ${soles(d.tope - d.semana.gastado)} · ${d.semana.diasQuedan} día${d.semana.diasQuedan === 1 ? '' : 's'}`)),
+      h('div', { class: 'gp-barra antojos-barra ' + nivel }, h('i', { 'data-w': `${Math.min(100, Math.round(pct))}%` })),
+      (d.semana.porConcepto || []).length ? h('p', { class: 'suave antojos-detalle' }, d.semana.porConcepto.map((x) => `${x.concepto}: ${soles(x.monto)}`).join(' · ')) : null);
+    animarVista(caja);
+  };
+  cargarRapido('antojos', {}, 'antojos').then((r) => pintar(r?.datos)).catch(() => caja.remove());
+  return caja;
+}
+
+// ---- Anotar gastos por WhatsApp (en la fila de WhatsApp de Ajustes) ----
+function bloqueRegistroWhatsapp(d) {
+  if (!motorV120() || d?.via !== 'green' || !d?.green?.configurado) return null;
+  const caja = h('div', { class: 'wsp-registro' });
+  caja.append(
+    h('div', { class: 'config-texto' }, h('strong', {}, 'Anotar gastos por WhatsApp'),
+      h('span', { class: 'suave' }, `Escribe en tu chat «Tú»: «25 tambo».${(() => { const o = responsables().find((x) => !mismoNombre(x, usuarioActual()?.nombre || '')); return o ? ` ${nombreCorto(o)} te escribe: «+25 tambo».` : ''; })()} Se anota solo y te confirma.`)),
+    interruptor(!!d.green.registro, 'Anotar gastos por WhatsApp', async (activar) => {
+      try {
+        await llamarApi('registroWhatsapp', { activar, urlMotor: API_URL }, { email: emailSesion() });
+        d.green.registro = activar; guardarCache('whatsapp', d);
+        avisar(activar ? 'Listo: escribe «25 tambo» en tu chat «Tú»' : 'Ya no se anotan gastos por WhatsApp', 'ok');
+      } catch (e) { avisar(mensajeError(e, 'No se pudo cambiar.'), 'error'); }
+    }));
+  return caja;
 }
 
 function actualizarCacheFijo(mes, f) {
@@ -2792,9 +2920,14 @@ function editarConsumo(t, c) {
   function pintarZona() {
     const btnGuardar = h('button', { type: 'button', class: 'boton primario', onclick: () => guardar(btnGuardar) }, 'Guardar');
     const btnCuotas = puedeCuotas ? h('button', { type: 'button', class: 'boton ed-cuotas', onclick: () => pasarACuotas(btnCuotas) }, icono('calendario'), 'Pasar a cuotas') : null;
+    const otroPase = motorCuentas() ? otroDePase(c.descripcion, c.responsable || usuarioActual()?.nombre) : '';
+    const btnPase = otroPase ? h('button', { type: 'button', class: 'boton ed-cuotas', onclick: () => {
+      cerrar(); abrirNoEraGasto({ c, quien: c.responsable || usuarioActual()?.nombre, otro: otroPase, base, alTerminar: () => navegar() });
+    } }, icono('personas'), 'No era gasto') : null;
     zona.replaceChildren(...[
       btnGuardar,
       btnCuotas,
+      btnPase,
       h('button', { type: 'button', class: 'boton peligro', onclick: () => {
         msg.hidden = true;
         cerrar();
@@ -3161,6 +3294,7 @@ async function vistaInicio() {
   const pila = personasPanel || extraPanel ? h('div', { class: 'col-pila' }, personasPanel, extraPanel) : null;
   if (fijosPanel || pila) raiz.append(h('div', { class: 'rejilla-2b' }, fijosPanel, pila));
   if (esHoy && motorCuentas() && emailSesion() && responsables().length > 1) raiz.append(panelCuentas());
+  if (esHoy && motorV120() && emailSesion()) raiz.append(panelAntojos());
 
   if (esHoy && rt?.datos?.tarjetas) {
     const todas = rt.datos.tarjetas;
@@ -3849,6 +3983,22 @@ async function abrirPendientes() {
         botonesP.length ? h('div', { class: 'opciones pend-quien' }, botonesP) : null,
         h('button', { type: 'button', class: 'boton enlace', onclick: () => { if (paso.classList.contains('ocupado')) return; cola.shift(); descartarEnvio(p); avanzar(ticket, 'descartado'); } }, 'Descartar'),
         cola.length > 1 ? h('button', { type: 'button', class: 'boton enlace', onclick: () => { if (paso.classList.contains('ocupado')) return; cola.push(cola.shift()); avanzar(ticket, 'saltar'); } }, 'Saltar') : null),
+      motorCuentas() && otroDePase(p.comercio, quienDe(p)) ? (() => {
+        const otro = otroDePase(p.comercio, quienDe(p));
+        return h('div', { class: 'pend-pase' },
+          h('span', {}, `¿Es un pase de plata a ${nombreCorto(otro)}? No cuenta como gasto.`),
+          h('div', { class: 'pend-pase-botones' },
+            h('button', { type: 'button', class: 'boton chico primario', onclick: () => {
+              if (paso.classList.contains('ocupado')) return;
+              enviarCuenta({ de: quienDe(p), a: otro, monto: Number(p.monto), nota: comercioDe(p) }).then(() => avisar(`Pasó a Cuentas: ${nombreCorto(otro)} te debe ${soles(p.monto)}`, 'ok'))
+                .catch((e) => avisar(mensajeError(e, 'No se pudo anotar en Cuentas.'), 'error'));
+              cola.shift(); descartarEnvio(p); avanzar(ticket, 'descartado');
+            } }, 'Se lo presté'),
+            h('button', { type: 'button', class: 'boton chico', onclick: () => {
+              if (paso.classList.contains('ocupado')) return;
+              cola.shift(); descartarEnvio(p); avanzar(ticket, 'descartado'); avisar('No cuenta como gasto', 'ok');
+            } }, 'Solo un pase')));
+      })() : null,
       h('div', { class: 'pend-acciones' }, btnTodos, btnPrincipal)].filter(Boolean));
     if (btnPrincipal && matchMedia('(pointer: fine)').matches) btnPrincipal.focus({ preventScroll: true });
   };
@@ -3972,7 +4122,7 @@ function panelAvisos(correo, mesPasado) {
         interruptor(ajustes.calendario, 'Vencimientos en el calendario', (v) => { ajustes.calendario = v; guardar(); })),
       filaConfig('Presupuesto al límite', 'Correo cuando una línea del presupuesto llega al 80 % y cuando se pasa.',
         interruptor(ajustes.presupuesto, 'Presupuesto al límite', (v) => { ajustes.presupuesto = v; guardar(); })),
-      filaConfig('Resumen de la semana', 'Los lunes: qué se gastó, cuánto queda del mes y qué vence pronto.',
+      filaConfig('Resumen de la semana', 'Los lunes: qué se gastó, los gastos chicos y qué vence pronto. El día de cobro: cómo cerró el mes.',
         interruptor(ajustes.resumenSemanal, 'Resumen de la semana', (v) => { ajustes.resumenSemanal = v; guardar(); })),
       h('div', { class: 'config-fila apilada' },
         h('div', { class: 'config-texto' }, h('strong', {}, 'Gasto grande'), h('span', { class: 'suave' }, 'Correo al instante cuando un gasto llega a este monto en soles. Vacío = apagado.')),
@@ -6396,6 +6546,7 @@ async function vistaPresupuesto() {
   // Ahorros: una sola lista por meta. De cada una se ve cuánto lleva guardado en total, cuánto se puso este mes
   // (se cambia con un clic) y en cuántos meses se aportó. Arriba, lo ahorrado este mes y el total guardado.
   if (secciones[1] && motorNuevo()) {
+    if (motorV120() && emailSesion() && !leerCache('antojos')) cargarRapido('antojos', {}, 'antojos').catch(() => null);
     cargarRapido('ahorros', { mes: d.mes }, 'ahorros:' + d.mes).then((ra) => {
       const sec = secciones[1];
       if (!ra?.datos?.metas || sec.querySelector('.metas')) return;
@@ -6441,6 +6592,17 @@ async function vistaPresupuesto() {
             usado > 0 ? h('small', { class: 'suave meta-usado' }, `Guardado ${soles(m.acumulado || 0)} · usado ${soles(usado)}`) : null,
             h('div', { class: 'gp-barra' + (plan ? ' hacia-meta' : '') }, h('i', { 'data-w': `${Math.round(plan ? plan.pct : ((m.acumulado || 0) / mayor) * 100)}%` })),
             plan ? h('div', { class: 'meta-avance' }, h('span', { class: 'suave' }, `${Math.floor(plan.pct)} % · faltan ${soles(plan.faltan)}`), h('span', { class: `meta-estado ${tMeta.clase}` }, tMeta.texto)) : null,
+            (() => {
+              const an = motorV120() ? leerCache('antojos')?.datos : null;
+              if (!plan || !(plan.faltan > 0) || !(an?.promedioMensual > 0)) return null;
+              const extra = Math.round(an.promedioMensual * 0.2);
+              const con = Math.ceil(plan.faltan / (aporte + extra));
+              const sin = aporte > 0 ? Math.ceil(plan.faltan / aporte) : null;
+              if (sin !== null && con >= sin) return null;
+              return h('small', { class: 'meta-antojos' }, icono('meta'), sin !== null
+                ? ` Si bajan los antojos 20 % (+${soles(extra)} al mes), llegan en ${con} ${con === 1 ? 'mes' : 'meses'} en vez de ${sin}.`
+                : ` Con el 20 % de los antojos (${soles(extra)} al mes) llegan en ${con} ${con === 1 ? 'mes' : 'meses'}.`);
+            })(),
             h('div', { class: 'meta-pie' },
               h('span', {}, 'Este mes ',
                 f && editable && !(f.monto < 0)

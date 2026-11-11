@@ -3884,3 +3884,25 @@ body .formulario.registro-uno .f-cierre .r-guardar .boton.grande { flex: 1; min-
 .fijos-todos { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; }
 .fijos-todos[hidden] { display: none; }
 .fijos-todos .icono, .fijos-todos .icono svg { width: 14px; height: 14px; }
+
+/* ---------- v133: pases, antojos, metas y WhatsApp ---------- */
+.pend-pase { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--accion) 10%, var(--sup-2)); font-size: 0.84rem; text-align: left; }
+.pend-pase-botones { display: flex; gap: 8px; flex-wrap: wrap; }
+.panel-antojos .antojos-cifras { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.panel-antojos .antojos-cifras strong { font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+.panel-antojos .antojos-cifras .meta-estado { margin-left: auto; }
+.antojos-barra { display: block; height: 10px; border-radius: 99px; background: var(--sup-2); overflow: hidden; margin-top: 8px; }
+.antojos-barra > i { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--ok); transition: width 1000ms var(--suave); }
+.antojos-barra.aviso > i { background: var(--aviso); }
+.antojos-barra.mal > i { background: var(--mal); }
+.antojos-detalle { margin: 8px 0 0; font-size: 0.78rem; }
+.antojos-invita { margin: 0 0 10px; font-size: 0.9rem; }
+.antojos-chips { justify-content: center; }
+.meta-antojos { display: flex; align-items: center; gap: 4px; font-size: 0.75rem; color: var(--accion); }
+.meta-antojos .icono, .meta-antojos .icono svg { width: 12px; height: 12px; }
+.wsp-registro { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--borde); }
+.config-fila:has(.wsp-registro) { flex-wrap: wrap; }
+.hoja-modal.antojos-dlg { width: min(560px, calc(100vw - 24px)); }
+.antojos-dlg .antojos-chips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.antojos-dlg .antojos-chips .opcion { min-height: 34px; padding: 4px 8px; font-size: 0.78rem; }
+@media (max-width: 520px) { .antojos-dlg .antojos-chips { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
