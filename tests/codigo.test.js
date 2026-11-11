@@ -347,13 +347,13 @@ test('version: informa 1.7.1 y la lista de acciones; inicio y config traen el ca
     new HojaFalsa('Configuración', [['Conceptos de Gasto', 'Responsable'], ['Limpieza', 'PersonaB']])]) });
   const r = m.llamar('version', {});
   assert.equal(r.ok, true);
-  assert.equal(r.datos.version, '1.11.0');
+  assert.equal(r.datos.version, '1.12.0');
   for (const a of ['desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'marcarPagado', 'inicio',
     'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos', 'datosTarjetas', 'guardarDatosTarjeta']) {
     assert.ok(r.datos.acciones.includes(a), 'falta la acción ' + a);
   }
-  assert.equal(m.llamar('inicio', {}).datos.version, '1.11.0');
-  assert.equal(m.llamar('config', {}).datos.version, '1.11.0');
+  assert.equal(m.llamar('inicio', {}).datos.version, '1.12.0');
+  assert.equal(m.llamar('config', {}).datos.version, '1.12.0');
 });
 
 test('la lista ACCIONES coincide con las acciones que atiende doPost', () => {
@@ -1986,7 +1986,7 @@ test('config: un ícono guardado para un concepto que ya no existe en Configurac
   assert.deepEqual(m.llamar('config', {}).datos.iconos, { Supermercado: 'carrito' });
   const danado = motorCompleto({ propiedades: { FINFAMILY_ICONOS: '{roto' } });
   assert.deepEqual(danado.llamar('config', {}).datos.iconos, {});
-  assert.equal(danado.llamar('version', {}).datos.version, '1.11.0');
+  assert.equal(danado.llamar('version', {}).datos.version, '1.12.0');
   assert.ok(danado.llamar('version', {}).datos.acciones.includes('guardarIconoConcepto'));
 });
 
@@ -2224,7 +2224,7 @@ test('gasto grande con tarjeta prestada: el correo dice quién gastó; versión 
   const m = motorCompleto();
   m.llamar('registrar', Object.assign({}, GASTO_PRESTADO, { monto: 450, descripcion: 'Saga Falabella' }));
   assert.equal(m.correos[0].subject, 'FinFamily: PersonaA registró S/ 450 en Saga Falabella (TC Interbank)');
-  assert.equal(m.llamar('version', {}).datos.version, '1.11.0');
+  assert.equal(m.llamar('version', {}).datos.version, '1.12.0');
 });
 
 // ===========================================================================
@@ -2504,7 +2504,7 @@ test('bolsas con un solo usuario (N = 1): todo el saldo de los meses anteriores 
 test('versión 1.7.0: la acción bolsas está en la lista y presupuesto no cambió', () => {
   const m = motorBolsas();
   const v = m.llamar('version', {}).datos;
-  assert.equal(v.version, '1.11.0');
+  assert.equal(v.version, '1.12.0');
   assert.ok(v.acciones.includes('bolsas'));
   const p = m.llamar('presupuesto', { mes: '2026-11' }).datos;
   assert.equal(p.totales.saldo, 985.57);
@@ -3065,4 +3065,50 @@ test('1.11.0: editar la fecha de una cuota deja su pago en el mes de esa cuota',
   const r = m.llamar('editarGasto', { idCliente: 'cuotas-0010', hoja: 'TC IBK', fila: 5, verificar: { descripcion: 'Silla · cuota 3/3', monto: 100 }, cambios: { fecha: '2026-11-06' } });
   assert.equal(r.ok, true, JSON.stringify(r));
   assert.equal(fechaDe(ibk.valores[4][6]).slice(0, 7), antes[2]);
+});
+
+
+// ---------- 1.12.0: pasar a cuotas un gasto ya anotado ----------
+
+test('1.12.0: pasarACuotas convierte la fila en la cuota 1 y agrega las demás, cada una en su mes', () => {
+  const m = motorCompleto({ hoy: '2026-11-10' });
+  const ibk = hojaDe(m, 'TC IBK');
+  m.llamar('registrar', { idCliente: 'pasar-0001', monto: 1200, medio: 'TC_IBK', concepto: 'Ropa y Calzado', descripcion: 'Televisor', fecha: '2026-11-05' });
+  const pagoOriginal = fechaDe(ibk.valores[2][6]);
+  const r = m.llamar('pasarACuotas', { idCliente: 'pasar-0002', hoja: 'TC IBK', fila: 3, verificar: { monto: 1200, descripcion: 'Televisor' }, cuotas: 6 });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.datos.convertido, true);
+  assert.equal(r.datos.montoCuota, 200);
+  const filas = ibk.valores.slice(2).filter((f) => f[4]);
+  assert.equal(filas.length, 6);
+  assert.deepEqual(filas.map((f) => f[4]), [1, 2, 3, 4, 5, 6].map((k) => `Televisor · cuota ${k}/6`));
+  assert.deepEqual(filas.map((f) => f[5]), [200, 200, 200, 200, 200, 200]);
+  assert.equal(fechaDe(filas[0][6]), pagoOriginal, 'la cuota 1 se queda con su mes de pago');
+  assert.deepEqual(filas.map((f) => fechaDe(f[6]).slice(0, 7)), ['2026-11', '2026-12', '2027-01', '2027-02', '2027-03', '2027-04']);
+  assert.ok(filas.every((f) => fechaDe(f[2]) === '2026-11-05'));
+  assert.equal(filas[0][9], 'Compra de S/ 1,200 en 6 cuotas');
+  // Reintento: no duplica.
+  const otra = m.llamar('pasarACuotas', { idCliente: 'pasar-0002', hoja: 'TC IBK', fila: 3, verificar: { monto: 1200, descripcion: 'Televisor' }, cuotas: 6 });
+  assert.equal(otra.datos.duplicadoId, true, JSON.stringify(otra));
+  assert.equal(ibk.valores.slice(2).filter((f) => f[4]).length, 6);
+  // Ya está en cuotas: no se vuelve a partir.
+  const de_nuevo = m.llamar('pasarACuotas', { idCliente: 'pasar-0003', hoja: 'TC IBK', fila: 3, verificar: { monto: 200, descripcion: 'Televisor · cuota 1/6' }, cuotas: 3 });
+  assert.equal(de_nuevo.ok, false);
+  assert.match(de_nuevo.error, /ya está en cuotas/);
+});
+
+test('1.12.0: pasarACuotas no acepta gastos pagados, de Gastos Hormiga ni filas que cambiaron', () => {
+  const m = motorCompleto({ hoy: '2026-11-10' });
+  const ibk = hojaDe(m, 'TC IBK');
+  m.llamar('registrar', { idCliente: 'pasar-0004', monto: 300, medio: 'TC_IBK', concepto: 'Ropa y Calzado', descripcion: 'Silla', fecha: '2026-11-05' });
+  const cambio = m.llamar('pasarACuotas', { idCliente: 'pasar-0005', hoja: 'TC IBK', fila: 3, verificar: { monto: 299, descripcion: 'Silla' }, cuotas: 3 });
+  assert.equal(cambio.ok, false);
+  ibk.valores[2][8] = 'Pagado';
+  const pagado = m.llamar('pasarACuotas', { idCliente: 'pasar-0006', hoja: 'TC IBK', fila: 3, verificar: { monto: 300, descripcion: 'Silla' }, cuotas: 3 });
+  assert.equal(pagado.ok, false);
+  assert.match(pagado.error, /pagado/);
+  const hormiga = m.llamar('pasarACuotas', { idCliente: 'pasar-0007', hoja: 'Gastos Hormiga', fila: 4, verificar: { monto: 10, descripcion: 'X' }, cuotas: 3 });
+  assert.equal(hormiga.ok, false);
+  assert.match(hormiga.error, /tarjetas de crédito/);
+  assert.equal(ibk.valores.slice(2).filter((f) => f[4]).length, 1, 'no se agregó nada');
 });

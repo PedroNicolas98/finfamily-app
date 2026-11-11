@@ -26,7 +26,7 @@
  *   FINFAMILY_ICONOS               ícono elegido para cada tipo de gasto (motor 1.5.1).
  */
 
-var VERSION = '1.11.0';
+var VERSION = '1.12.0';
 var ZONA_HORARIA = 'America/Lima';
 var DIAS_AVISO = 3;
 var SEGUNDOS_CACHE_TOKEN = 300;
@@ -52,7 +52,7 @@ var DIAS_CORREOS = 3; // cuántos días hacia atrás busca el lector
 
 /** Acciones que entiende este motor (la acción 'version' las devuelve). */
 var ACCIONES = ['inicio', 'tarjetas', 'presupuesto', 'config', 'registrar', 'marcarPagado', 'marcarFijo',
-  'editarGasto', 'borrarGasto', 'personas', 'desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'abrirSesion', 'cerrarSesion', 'reenvio',
+  'editarGasto', 'borrarGasto', 'personas', 'desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'abrirSesion', 'cerrarSesion', 'reenvio', 'pasarACuotas',
   'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos',
   'datosTarjetas', 'guardarDatosTarjeta',
   'agregarTarjeta', 'editarTarjeta', 'quitarTarjeta', 'restaurarTarjeta',
@@ -133,6 +133,7 @@ function doPost(e) {
       case 'abrirSesion': resultado = accionAbrirSesion_(usuario, cuerpo); break;
       case 'cerrarSesion': resultado = accionCerrarSesion_(usuario, cuerpo); break;
       case 'reenvio': resultado = accionReenvio_(usuario, datos); break;
+      case 'pasarACuotas': resultado = accionPasarACuotas_(usuario, datos); break;
       case 'pendientes': resultado = accionPendientes_(usuario, datos); break;
       case 'confirmarPendiente': resultado = accionConfirmarPendiente_(usuario, datos); break;
       case 'descartarPendiente': resultado = accionDescartarPendiente_(usuario, datos); break;
@@ -830,6 +831,7 @@ function registrarGasto_(datos, responsable) {
     idCiclo = tarjetaPedida.id;
   }
   var ciclo = calcularCiclo(idCiclo, fecha, catalogo);
+  if (nCuotas > 1 && !ciclo.pago) throw errorApp_('datos_invalidos', 'Esa tarjeta no tiene fechas de pago: no se puede repartir en cuotas.');
   // De dónde sale el gasto (motor 1.7): '' = fondo común, 'P:<persona>' o 'A:<ahorro>'.
   var origen = resolverOrigen_(datos.origen);
   var idForm = 'APP:' + idCliente;
@@ -1287,6 +1289,104 @@ function accionEditarGasto_(usuario, datos) {
 }
 
 /** Borra la fila de un gasto (queda en el historial de versiones del Sheets). */
+/**
+ * Pasa a cuotas un gasto con tarjeta ya anotado entero (motor 1.12.0). La fila queda como cuota 1 (con su
+ * mismo mes de pago) y se agregan al final las cuotas 2..N, cada una un mes después. Primero se agregan las
+ * nuevas y al último se cambia la original: si se corta a medias, el reintento completa sin duplicar.
+ */
+function accionPasarACuotas_(usuario, datos) {
+  var idCliente = validarIdCliente_(datos.idCliente);
+  if (idCliente.length > 60) throw errorApp_('datos_invalidos', 'Falta el identificador del registro.');
+  var nombreHoja = hojaConsumosCanonica_(datos.hoja);
+  if (!nombreHoja || nombreHoja === HOJA_HORMIGA) throw errorApp_('datos_invalidos', 'Las cuotas son solo para tarjetas de crédito.');
+  var n = Number(datos.cuotas);
+  if (n !== Math.floor(n) || n < 2 || n > MAXIMO_CUOTAS) throw errorApp_('datos_invalidos', 'Las cuotas deben ser de 2 a ' + MAXIMO_CUOTAS + '.');
+  var hoja = obtenerHoja_(nombreHoja);
+  var candado = tomarCandado_();
+  try {
+    var h = leerHojaConEncabezado_(hoja);
+    var valores = h.valores, cols = h.cols, idxEnc = h.idxEnc;
+    if (cols.monto === -1 || cols.descripcion === -1 || cols.fecha === -1 || cols.idForm === -1) {
+      throw errorApp_('error_interno', 'La hoja "' + nombreHoja + '" no tiene el formato esperado.');
+    }
+    var fila = datos.fila;
+    if (!Number.isInteger(fila) || fila <= idxEnc + 1 || fila > valores.length) throw errorApp_('datos_invalidos', 'Ese gasto cambió en el Sheets. Actualiza y vuelve a intentar.');
+    var f = valores[fila - 1];
+
+    // Cuotas 2..N que ya se agregaron en un intento anterior.
+    var yaEstan = {};
+    for (var q = 2; q <= n; q++) yaEstan['APP:' + idCliente + '-c' + q] = 0;
+    var ultimaConDatos = idxEnc;
+    for (var r = idxEnc + 1; r < valores.length; r++) {
+      var fr = valores[r];
+      var tieneDesc = fr[cols.descripcion] !== '' && fr[cols.descripcion] !== null && fr[cols.descripcion] !== undefined;
+      if (parsearMonto(fr[cols.monto]) !== null || tieneDesc) ultimaConDatos = r;
+      var b = partesIdForm(fr[cols.idForm]).base;
+      if (yaEstan[b] === 0) yaEstan[b] = r + 1;
+    }
+    var faltan = Object.keys(yaEstan).filter(function (k) { return !yaEstan[k]; });
+    var cuotaFila = numeroDeCuota(f[cols.descripcion]);
+    if (!faltan.length && cuotaFila && cuotaFila.n === n) return { convertido: false, duplicadoId: true, hoja: nombreHoja, cuotas: n };
+
+    if (filaNoCoincide_(valores, cols, idxEnc, fila, datos.verificar)) throw errorApp_('datos_invalidos', 'Ese gasto cambió en el Sheets. Actualiza y vuelve a intentar.');
+    if (cuotaFila) throw errorApp_('datos_invalidos', 'Ese gasto ya está en cuotas.');
+    if (cols.estado !== -1 && estaPagado_(f[cols.estado])) throw errorApp_('datos_invalidos', 'Ese gasto ya está pagado: no se puede pasar a cuotas.');
+    var total = parsearMonto(f[cols.monto]);
+    var montos = montosDeCuotas(total, n, datos.montoCuota);
+    if (!montos) throw errorApp_('datos_invalidos', 'La cuota no cuadra con el total de la compra.');
+    var fechaD = parsearFecha(f[cols.fecha]);
+    if (!fechaD) throw errorApp_('datos_invalidos', 'Ese gasto no tiene una fecha válida.');
+    var fecha = fechaISO(fechaD);
+    var responsable = cols.responsable !== -1 ? String(f[cols.responsable] || '') : '';
+    var partes = partesIdForm(f[cols.idForm]);
+    var catalogo = leerCatalogo_();
+    var idCiclo = partes.tarjeta || idTarjeta(nombreHoja, responsable, catalogo);
+    var c0 = calcularCiclo(idCiclo, fecha, catalogo, 0);
+    if (!c0.pago) throw errorApp_('datos_invalidos', 'Esa tarjeta no tiene fechas de pago: no se puede repartir en cuotas.');
+    // La cuota 1 se queda con el mes de pago que ya tiene la fila (aunque lo hayan cambiado a mano).
+    var pagoFila = cols.fechaPago !== -1 ? parsearFecha(f[cols.fechaPago]) : null;
+    var pagoCalc = parsearFecha(c0.pago);
+    var corrimiento = pagoFila ? Math.max(0, (pagoFila.getFullYear() * 12 + pagoFila.getMonth()) - (pagoCalc.getFullYear() * 12 + pagoCalc.getMonth())) : 0;
+    var desc = String(f[cols.descripcion] || '').trim();
+    var notaFila = cols.nota !== -1 ? String(f[cols.nota] || '').trim() : '';
+    var nota = notaFila || ('Compra de ' + formatoSoles_(total) + ' en ' + n + ' cuotas');
+    var concepto = cols.concepto !== -1 ? String(f[cols.concepto] || '') : '';
+
+    var anchoFila = 0;
+    Object.keys(cols).forEach(function (k) { if (cols[k] + 1 > anchoFila) anchoFila = cols[k] + 1; });
+    for (var k = 1; k < n; k++) {
+      var idK = idCliente + '-c' + (k + 1);
+      if (yaEstan['APP:' + idK]) continue;
+      var nueva = construirFila(cols, anchoFila, {
+        idCliente: idK, monto: montos[k], concepto: concepto, descripcion: descripcionDeCuota(desc, k + 1, n),
+        nota: nota, fecha: fecha, tarjetaExplicita: partes.tarjeta, origen: partes.origen
+      }, responsable, nombreHoja, calcularCiclo(idCiclo, fecha, catalogo, k + corrimiento), catalogo);
+      if (cols.huella !== -1 && nueva[cols.huella]) nueva[cols.huella] = hashHex_(String(nueva[cols.huella]));
+      [cols.fecha, cols.fechaPago, cols.fechaVencimiento].forEach(function (col) {
+        if (col !== -1 && nueva[col] instanceof Object && nueva[col].getTime) nueva[col] = fechaParaHoja_(nueva[col]);
+      });
+      var filaDestino = ultimaConDatos + 2;
+      escribirFila_(hoja, filaDestino, nueva, cols, ultimaConDatos > idxEnc ? ultimaConDatos + 1 : 0);
+      ultimaConDatos = filaDestino - 1;
+    }
+
+    // Al último, la fila original pasa a ser la cuota 1.
+    var formulas = hoja.getRange(fila, 1, 1, f.length).getFormulas()[0];
+    var poner = function (col, valor) { if (col >= 0 && col < f.length && !formulas[col]) hoja.getRange(fila, col + 1).setValue(valor); };
+    var descUno = descripcionDeCuota(desc, 1, n);
+    poner(cols.monto, montos[0]);
+    poner(cols.descripcion, neutralizarTexto(descUno));
+    if (!notaFila) poner(cols.nota, neutralizarTexto(nota));
+    if (cols.huella !== -1 && String(f[cols.huella] || '').trim()) {
+      poner(cols.huella, hashHex_(firmaGasto({ fecha: fecha, monto: montos[0], descripcion: descUno })));
+    }
+    SpreadsheetApp.flush();
+    return { convertido: true, hoja: nombreHoja, cuotas: n, montoCuota: montos[0], total: total };
+  } finally {
+    candado.releaseLock();
+  }
+}
+
 function accionBorrarGasto_(usuario, datos) {
   validarIdCliente_(datos.idCliente);
   var nombreHoja = hojaConsumosCanonica_(datos.hoja);
