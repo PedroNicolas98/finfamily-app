@@ -704,7 +704,8 @@ function leerConsumos(valores2D, hoja, catalogo) {
       huella: texto_(celda_(f, cols.huella)),
       tarjeta: tarjetaFila,
       prestada: esPrestada(tarjetaFila, responsable, catalogo),
-      origen: partesIdForm(idFormFila).origen
+      origen: partesIdForm(idFormFila).origen,
+      deTarjeta: normalizar(hoja) !== 'gastos hormiga'
     });
   }
   return salida;
@@ -1516,6 +1517,8 @@ function gastoRealDeLinea(linea, consumos, claveMes, mapa, conceptosConfig, rang
     if (rango ? (c.fecha < rango.desde || c.fecha > rango.hasta) : c.fecha.slice(0, 7) !== claveMes) return;
     // Lo que sale del sobrante de alguien (P:) o de un ahorro (A:) no gasta la línea (regla del usuario, 1.21).
     if (c.origen) return;
+    // Lo pagado con tarjeta de crédito ya cuenta en la línea de la tarjeta: no descuenta de los gastos fijos (1.21.1).
+    if (c.deTarjeta) return;
     if (claves[normalizar(c.concepto)]) total += c.monto;
   });
   return redondear_(total);

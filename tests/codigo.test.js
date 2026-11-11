@@ -382,13 +382,13 @@ test('version: informa 1.7.1 y la lista de acciones; inicio y config traen el ca
     new HojaFalsa('Configuración', [['Conceptos de Gasto', 'Responsable'], ['Limpieza', 'PersonaB']])]) });
   const r = m.llamar('version', {});
   assert.equal(r.ok, true);
-  assert.equal(r.datos.version, '1.21.0');
+  assert.equal(r.datos.version, '1.21.1');
   for (const a of ['desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'marcarPagado', 'inicio',
     'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos', 'datosTarjetas', 'guardarDatosTarjeta']) {
     assert.ok(r.datos.acciones.includes(a), 'falta la acción ' + a);
   }
-  assert.equal(m.llamar('inicio', {}).datos.version, '1.21.0');
-  assert.equal(m.llamar('config', {}).datos.version, '1.21.0');
+  assert.equal(m.llamar('inicio', {}).datos.version, '1.21.1');
+  assert.equal(m.llamar('config', {}).datos.version, '1.21.1');
 });
 
 test('la lista ACCIONES coincide con las acciones que atiende doPost', () => {
@@ -752,7 +752,7 @@ function hojaBcpConLuz() {
 function motorCompleto(config) {
   const c = config || {};
   const hojas = [hojaSip(), hojaTc('TC IBK', []), c.bcp || hojaTc('TC BCP', []), hojaTc('TC Ripley', []),
-    new HojaFalsa('Gastos Hormiga', [['Responsable', 'Mes', 'Fecha', 'Concepto', 'Descripción', 'Monto', 'Medio de Pago', 'Estado']]),
+    c.hormiga || new HojaFalsa('Gastos Hormiga', [['Responsable', 'Mes', 'Fecha', 'Concepto', 'Descripción', 'Monto', 'Medio de Pago', 'Estado']]),
     hojaPresupuesto(), hojaConfig()];
   return crearMotor(Object.assign({ hojas }, c));
 }
@@ -1111,7 +1111,9 @@ test('lector con correos reales: débito BCP va como efectivo (de la cuenta de q
 test('revisarAlertas (presupuesto): avisa al 80 % una vez y al 100 % otra, y lo recuerda en Properties', () => {
   // Viernes 6 nov: sin resumen semanal. Cobran a fin de mes: el 6 de noviembre se gasta el presupuesto de octubre
   // (Luz S/ 80, del 31 oct al 29 nov).
-  const m = motorCompleto({ bcp: hojaBcpConLuz(), hoy: '2026-11-06' });
+  // Con tarjeta de crédito la Luz no descuenta de la línea (ya cuenta en TC BCP): aquí se pagó en efectivo (1.21.1).
+  const m = motorCompleto({ hormiga: new HojaFalsa('Gastos Hormiga', [['Responsable', 'Mes', 'Fecha', 'Concepto', 'Descripción', 'Monto', 'Medio de Pago', 'Estado'],
+    ['PersonaA', 'Noviembre', fecha(2026, 11, 3), 'Luz', 'Recibo luz sintético', 75, 'Efectivo', '']]), hoy: '2026-11-06' });
   const r = m.contexto.revisarAlertas();
   assert.equal(r.presupuesto.enviado, true);
   assert.equal(r.presupuesto.avisos, 1);
@@ -1126,7 +1128,7 @@ test('revisarAlertas (presupuesto): avisa al 80 % una vez y al 100 % otra, y lo 
   assert.equal(m.correos.length, 1);
 
   // Otro consumo de Luz: se pasa del 100 %, aviso nuevo (y único).
-  m.llamar('registrar', { idCliente: 'prueba-0020', monto: 20, medio: 'TC_BCP', concepto: 'Luz', descripcion: 'Reconexión', fecha: '2026-11-06' });
+  m.llamar('registrar', { idCliente: 'prueba-0020', monto: 20, medio: 'YAPE', concepto: 'Luz', descripcion: 'Reconexión', fecha: '2026-11-06' });
   assert.equal(m.contexto.revisarAlertas().presupuesto.enviado, true);
   assert.equal(m.correos[1].subject, 'FinFamily: Luz va en 118 % del presupuesto');
   assert.match(m.correos[1].body, /ya se pasó/);
@@ -1641,7 +1643,7 @@ function lineaDe(r, nombre) {
 
 test('lineasPresupuesto: líneas del mes con sección, conceptos sugeridos y "Llevas X de Y"', () => {
   const m = motorPresupuestoReal();
-  m.llamar('registrar', { idCliente: 'prueba-0100', monto: 120, medio: 'TC_BCP', concepto: 'Supermercado', descripcion: 'Compra', fecha: '2026-11-05' });
+  m.llamar('registrar', { idCliente: 'prueba-0100', monto: 120, medio: 'YAPE', concepto: 'Supermercado', descripcion: 'Compra', fecha: '2026-11-05' });
   m.llamar('registrar', { idCliente: 'prueba-0101', monto: 15, medio: 'YAPE', concepto: 'Desayuno', descripcion: 'Pan', fecha: '2026-11-06' });
   const r = m.llamar('lineasPresupuesto', { mes: '2026-11' });
   assert.equal(r.ok, true, JSON.stringify(r));
@@ -1842,7 +1844,7 @@ test('quitarLinea: una nota "Pagado" también cuenta; verifica el nombre y recha
 
 test('asignarConceptos: guarda el mapa con nombres canónicos, mueve conceptos entre líneas y cambia "Llevas X de Y"', () => {
   const m = motorPresupuestoReal();
-  m.llamar('registrar', { idCliente: 'prueba-0110', monto: 100, medio: 'TC_BCP', concepto: 'Supermercado', descripcion: 'Compra', fecha: '2026-11-05' });
+  m.llamar('registrar', { idCliente: 'prueba-0110', monto: 100, medio: 'YAPE', concepto: 'Supermercado', descripcion: 'Compra', fecha: '2026-11-05' });
   m.llamar('registrar', { idCliente: 'prueba-0111', monto: 30, medio: 'YAPE', concepto: 'Delivery', descripcion: 'Pollo', fecha: '2026-11-05' });
   const r = m.llamar('asignarConceptos', { linea: 'alimentación (bcp-deb-pe)', conceptos: ['supermercado', 'DELIVERY', 'Supermercado'] });
   assert.equal(r.ok, true, JSON.stringify(r));
@@ -1911,14 +1913,14 @@ test('editarLineaMeses: nunca pisa fórmulas y valida fila, mes y monto', () => 
 
 test('revisarAlertas (presupuesto) usa los conceptos asignados a cada línea', () => {
   const m = motorPresupuestoReal({ propiedades: { FINFAMILY_AJUSTES_AVISOS: JSON.stringify({ resumenSemanal: false, calendario: false, gastoGrande: 0 }) } });
-  m.llamar('registrar', { idCliente: 'prueba-0120', monto: 700, medio: 'TC_BCP', concepto: 'Supermercado', descripcion: 'Mercado', fecha: '2026-11-03' });
+  m.llamar('registrar', { idCliente: 'prueba-0120', monto: 700, medio: 'YAPE', concepto: 'Supermercado', descripcion: 'Mercado', fecha: '2026-11-03' });
   // Sugerido: Supermercado cuenta para Alimentación (700/800 = 87 %).
   const r = m.contexto.revisarAlertas();
   assert.equal(r.presupuesto.enviado, true);
   assert.equal(m.correos[0].subject, 'FinFamily: Alimentación (BCP-DEB-PE) va en 87 % del presupuesto');
   // Guardado distinto: Supermercado ya no cuenta para Alimentación, sino para Alacena (100) -> 700 %.
   const m2 = motorPresupuestoReal({ propiedades: { FINFAMILY_AJUSTES_AVISOS: JSON.stringify({ resumenSemanal: false, calendario: false, gastoGrande: 0 }) } });
-  m2.llamar('registrar', { idCliente: 'prueba-0121', monto: 700, medio: 'TC_BCP', concepto: 'Supermercado', descripcion: 'Mercado', fecha: '2026-11-03' });
+  m2.llamar('registrar', { idCliente: 'prueba-0121', monto: 700, medio: 'YAPE', concepto: 'Supermercado', descripcion: 'Mercado', fecha: '2026-11-03' });
   m2.llamar('asignarConceptos', { linea: 'Alacena (SIP)', conceptos: ['Supermercado'] });
   m2.llamar('asignarConceptos', { linea: 'Alimentación (BCP-DEB-PE)', conceptos: ['Desayuno'] });
   const r2 = m2.contexto.revisarAlertas();
@@ -2021,7 +2023,7 @@ test('config: un ícono guardado para un concepto que ya no existe en Configurac
   assert.deepEqual(m.llamar('config', {}).datos.iconos, { Supermercado: 'carrito' });
   const danado = motorCompleto({ propiedades: { FINFAMILY_ICONOS: '{roto' } });
   assert.deepEqual(danado.llamar('config', {}).datos.iconos, {});
-  assert.equal(danado.llamar('version', {}).datos.version, '1.21.0');
+  assert.equal(danado.llamar('version', {}).datos.version, '1.21.1');
   assert.ok(danado.llamar('version', {}).datos.acciones.includes('guardarIconoConcepto'));
 });
 
@@ -2259,7 +2261,7 @@ test('gasto grande con tarjeta prestada: el correo dice quién gastó; versión 
   const m = motorCompleto();
   m.llamar('registrar', Object.assign({}, GASTO_PRESTADO, { monto: 450, descripcion: 'Saga Falabella' }));
   assert.equal(m.correos[0].subject, 'FinFamily: PersonaA registró S/ 450 en Saga Falabella (TC Interbank)');
-  assert.equal(m.llamar('version', {}).datos.version, '1.21.0');
+  assert.equal(m.llamar('version', {}).datos.version, '1.21.1');
 });
 
 // ===========================================================================
@@ -2539,7 +2541,7 @@ test('bolsas con un solo usuario (N = 1): todo el saldo de los meses anteriores 
 test('versión 1.7.0: la acción bolsas está en la lista y presupuesto no cambió', () => {
   const m = motorBolsas();
   const v = m.llamar('version', {}).datos;
-  assert.equal(v.version, '1.21.0');
+  assert.equal(v.version, '1.21.1');
   assert.ok(v.acciones.includes('bolsas'));
   const p = m.llamar('presupuesto', { mes: '2026-11' }).datos;
   assert.equal(p.totales.saldo, 985.57);

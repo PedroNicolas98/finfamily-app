@@ -1170,6 +1170,16 @@ test('gastoRealDeLinea: guardado = solo los asignados; sugerido o sin asignar = 
   assert.equal(L.gastoRealDeLinea({ concepto: 'Pasajes' }, consumos, '2026-11', {}, null), 0);
 });
 
+test('gastoRealDeLinea: lo pagado con tarjeta de crédito no descuenta de la línea (ya cuenta en la línea TC)', () => {
+  const consumos = [
+    { fecha: '2026-11-03', concepto: 'Supermercado', monto: 100, deTarjeta: true },
+    { fecha: '2026-11-04', concepto: 'Supermercado', monto: 40, deTarjeta: false },
+    { fecha: '2026-11-05', concepto: 'Supermercado', monto: 25, deTarjeta: false, origen: 'P:Pedro' }
+  ];
+  const linea = { concepto: 'Alacena (SIP)', seccion: 'gastos', monto: 365 };
+  assert.equal(L.gastoRealDeLinea(linea, consumos, '2026-11', { 'alacena (sip)': ['Supermercado'] }, null), 40);
+});
+
 test('alertasPresupuesto con mapa: el gasto real de la línea sale de sus conceptos asignados', () => {
   const presupuesto = { filas: [
     { concepto: 'Alimentación (BCP-DEB-PE)', seccion: 'gastos', monto: 800 },
