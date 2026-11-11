@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v148';
+const VERSION_APP = 'finfamily-v149';
 
 // Instalación en el equipo (el navegador avisa cuando se puede).
 let eventoInstalar = null;
@@ -4670,22 +4670,51 @@ function panelPresupuestoAdmin() {
     estado.cambioDesde = Date.now();
     pintar();
   };
-  const grupo = (seccion, titulo) => {
-    const propias = lineas.filter((l) => l.seccion === seccion);
-    return h('section', { class: `pres-grupo ${seccion}` },
-      h('div', { class: 'pres-grupo-cab' }, h('p', { class: 'etq' }, titulo),
-        motorPresupuesto() ? h('button', { type: 'button', class: 'boton chico', onclick: () => dialogoLinea(seccion, recargar) }, '+ Agregar') : null),
-      propias.length ? h('div', { class: 'config-lista' }, propias.map((l) => {
-        const esTC = /^tc\s/i.test(l.concepto);
-        const sub = l.seccion === 'gastos' && !esTC && (l.conceptos || []).length ? (l.conceptos.join(', ') + (l.sugerido ? ' (sugerido)' : '')) : (esTC ? 'Lo que se paga a la tarjeta; lo calcula la hoja' : '');
-        return h('button', { type: 'button', class: 'config-fila toca' + (esTC ? ' tc-linea' : ''), disabled: esTC || !motorPresupuesto(), onclick: () => dialogoLineaEdit(l, mes, recargar) },
-          h('div', { class: 'config-texto' }, h('strong', {}, nombreLinea(l.concepto)), sub ? h('span', { class: 'suave' }, sub) : null),
-          h('span', { class: 'linea-monto' }, soles(l.monto || 0)), esTC || !motorPresupuesto() ? null : icono('adelante'));
-      })) : h('p', { class: 'suave' }, 'Sin líneas.'));
+  // v149: se entiende de un vistazo. Arriba qué es y cómo se reparte lo que entra; a la izquierda ingresos y ahorros;
+  // a la derecha las tarjetas (las calcula la hoja, no se tocan) y las líneas de gasto con los tipos que cuentan en cada una.
+  const editable = motorPresupuesto();
+  const fila = (l, mostrarTipos) => {
+    const tipos = mostrarTipos ? (l.conceptos || []) : [];
+    return h('button', { type: 'button', class: 'pa-fila' + (l.sugerido ? ' sugerido' : ''), disabled: !editable, onclick: () => dialogoLineaEdit(l, mes, recargar),
+      title: mostrarTipos ? (tipos.length ? `Cuentan aquí: ${tipos.join(', ')}${l.sugerido ? ' (sugerido; tócalo para confirmarlo)' : ''}` : 'Ningún tipo de gasto cuenta aquí todavía') : 'Cambiar monto o nombre' },
+      h('span', { class: 'pa-nombre' }, h('strong', {}, nombreLinea(l.concepto)),
+        mostrarTipos ? h('small', { class: tipos.length ? '' : 'falta' }, tipos.length ? tipos.join(' · ') : 'Sin tipos de gasto') : null),
+      h('b', { class: 'pa-monto' }, soles(l.monto || 0)),
+      editable ? h('span', { class: 'pa-lapiz', 'aria-hidden': 'true' }, icono('lapiz')) : null);
   };
+  const grupo = (seccion, titulo, ico, contenido, total) => h('section', { class: `pa-grupo pa-${seccion}` },
+    h('div', { class: 'pa-cab' }, h('span', { class: 'pa-ico' }, icono(ico)), h('strong', {}, titulo), h('span', { class: 'pa-total' }, soles(total)),
+      editable ? h('button', { type: 'button', class: 'boton chico enlace pa-mas', title: `Agregar a ${titulo}`, 'aria-label': `Agregar a ${titulo}`, onclick: () => dialogoLinea(seccion, recargar) }, icono('mas')) : null),
+    contenido);
   const pintar = () => {
-    cuerpo.replaceChildren(grupo('ingresos', 'Ingresos'), grupo('gastos', 'Gastos'), grupo('ahorros', 'Ahorros'));
-    if (!motorPresupuesto()) cuerpo.prepend(h('p', { class: 'suave' }, 'Para cambiar las líneas desde aquí hace falta el motor 1.5.'));
+    const de = (sec) => lineas.filter((l) => l.seccion === sec);
+    const suma = (ls) => ls.reduce((t, l) => t + Math.max(0, Number(l.monto) || 0), 0);
+    const ingresos = de('ingresos'), ahorros = de('ahorros'), gastos = de('gastos');
+    const tcs = gastos.filter((l) => /^tc\s/i.test(l.concepto)), otros = gastos.filter((l) => !/^tc\s/i.test(l.concepto));
+    const tIng = suma(ingresos), tTc = suma(tcs), tOtros = suma(otros), tAho = suma(ahorros);
+    const libre = tIng - tTc - tOtros - tAho;
+    const partes = [
+      { etiqueta: 'Tarjetas', valor: tTc, clase: 'pf-tc' },
+      { etiqueta: 'Gastos', valor: tOtros, clase: 'pf-gasto' },
+      { etiqueta: 'Ahorros', valor: tAho, clase: 'pf-ahorro' },
+      { etiqueta: libre >= 0 ? 'Libre' : 'Falta', valor: Math.abs(libre), clase: libre >= 0 ? 'pf-sobra' : 'pf-falta' },
+    ];
+    const resumen = h('div', { class: 'pa-resumen' },
+      h('p', { class: 'pa-guia' }, h('strong', {}, `Cada mes entran ${soles(tIng)}`), ' y así los repartes. Toca una línea para cambiar su monto o qué gastos cuentan en ella.'),
+      h('div', { class: 'pres-flujo' }, barraPartes(partes.filter((x) => x.clase !== 'pf-falta')),
+        h('ul', { class: 'pf-leyenda' }, partes.filter((x) => x.valor > 0).map((x) => h('li', { class: x.clase === 'pf-falta' ? 'falta' : '' },
+          h('i', { class: `pf-punto ${x.clase}`, 'aria-hidden': 'true' }), h('span', {}, x.etiqueta), h('strong', {}, soles(x.valor)))))));
+    cuerpo.replaceChildren(resumen,
+      h('div', { class: 'pa-izq' },
+        grupo('ingresos', 'Ingresos', 'sube', h('div', { class: 'pa-lista' }, ingresos.map((l) => fila(l, false))), tIng),
+        grupo('ahorros', 'Ahorros', 'billetera', h('div', { class: 'pa-lista' }, ahorros.length ? ahorros.map((l) => fila(l, false)) : h('p', { class: 'suave' }, 'Sin ahorros.')), tAho)),
+      grupo('gastos', 'Gastos', 'baja', h('div', { class: 'pa-cuerpo-gastos' },
+        tcs.length ? h('div', { class: 'pa-tcs', title: 'Lo que se paga de cada tarjeta lo calcula la hoja con los consumos: no se cambia aquí.' },
+          h('span', { class: 'pa-tcs-etq' }, icono('tarjetas'), 'Tarjetas · automático'),
+          tcs.map((l) => h('span', { class: 'pa-tc' }, nombreLinea(l.concepto).replace(/^TC\s+/i, ''), h('b', {}, soles(l.monto || 0))))) : null,
+        h('div', { class: 'pa-lista pa-lista-gastos' }, otros.map((l) => fila(l, true)))), tTc + tOtros));
+    if (!editable) cuerpo.prepend(h('p', { class: 'suave' }, 'Para cambiar las líneas desde aquí hace falta el motor 1.5.'));
+    animarVista(cuerpo);
   };
   (motorPresupuesto()
     ? llamarApi('lineasPresupuesto', { mes }, { email: emailSesion() }).then((r) => { lineas = r?.lineas || []; })
