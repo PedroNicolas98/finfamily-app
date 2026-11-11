@@ -4105,3 +4105,106 @@ body.menu-chico .cuenta-menu.nav .cuenta-boton:has(.avatar.con-foto):focus-visib
   body .rejilla-config.una[data-seccion="tarjetas"] { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 1240px; }
   body .rejilla-config.una[data-seccion="tarjetas"] > .panel { max-width: none; }
 }
+/* Débito por banco (v146): Interbank verde, BCP azul, Sip negra; los demás gris azulado */
+[class*="tc-TD-"] { --c1: #3E6F94; --c2: #1D3C57; --acento: #BFE3FF; --op: #3E6F94; }
+.tc-TD-interbank { --c1: #0C9C62; --c2: #054B32; --acento: #B5F26B; --op: #0C9C62; }
+.tc-TD-bcp { --c1: #2259CC; --c2: #123B98; --acento: #FF7A00; --op: #2259CC; }
+.tc-TD-sip { --c1: #2A2B30; --c2: #08090B; --acento: #29AEF3; --op: #29AEF3; }
+/* Configuración › Personas (v146): fichas compactas lado a lado (antes heredaban el estilo de otra pantalla) */
+.config-personas .config-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 12px; }
+.config-personas .config-fila.persona-adm { border: 1px solid var(--borde); border-radius: 16px; padding: 12px 14px; background: var(--sup-2); margin: 0; animation: subir 420ms var(--suave) both; animation-delay: calc(var(--i, 0) * 70ms); transition: transform 220ms var(--suave), border-color 200ms ease; }
+.config-personas .config-fila.persona-adm:first-child { padding-top: 12px; border-top: 1px solid var(--borde); }
+.config-personas .config-fila.persona-adm:hover { transform: translateY(-2px); border-color: var(--borde-fuerte); }
+.config-personas .persona-adm .avatar { flex-shrink: 0; }
+.config-personas .persona-adm .config-texto { min-width: 0; }
+.config-personas .persona-adm .config-texto span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.config-personas .persona-adm .pill { flex-shrink: 0; }
+.config-personas .etq { margin: 8px 0 0; }
+@media (min-width: 900px) { body .rejilla-config.una[data-seccion="personas"] > .panel { max-width: 900px; } }
+/* Gasto rápido en computadora (v146): sin menú, centrado, con el diseño de dos columnas de "Nuevo gasto" */
+body.gasto-pc { padding-left: 0 !important; }
+body.gasto-pc .barra-nav, body.gasto-pc .nav-plegar { display: none !important; }
+body.gasto-pc .pantalla { margin-inline: auto; max-width: 1180px; }
+/* ---------- Presupuesto más claro y sin scroll en computadora (v146) ---------- */
+.pres-flujo { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.pf-titulo { margin: 0; font-size: 0.8rem; font-weight: 650; opacity: 0.85; }
+.pres-flujo .partes { height: 14px; border-radius: 99px; overflow: hidden; display: flex; gap: 2px; }
+.pres-flujo .partes i { border-radius: 4px; transform-origin: left; animation: crecer-x 900ms var(--suave) both; }
+@keyframes crecer-x { from { transform: scaleX(0); } }
+.pf-tc, .pres-flujo .partes i.pf-tc { background: linear-gradient(90deg, #E8615A, #C8372C); }
+.pf-gasto, .pres-flujo .partes i.pf-gasto { background: linear-gradient(90deg, #F2A93B, #D9822B); }
+.pf-ahorro, .pres-flujo .partes i.pf-ahorro { background: linear-gradient(90deg, #7FB8FF, #4C8FE8); }
+.pf-sobra, .pres-flujo .partes i.pf-sobra { background: linear-gradient(90deg, #57E3A3, #22B573); }
+.pf-leyenda { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.8rem; }
+.pf-leyenda li { display: inline-flex; align-items: baseline; gap: 6px; }
+.pf-leyenda strong { font-variant-numeric: tabular-nums; }
+.pf-leyenda small { opacity: 0.7; }
+.pf-punto { width: 10px; height: 10px; border-radius: 3px; display: inline-block; align-self: center; }
+/* Filas de gastos: la barra es lo usado de lo planeado; sin datos (tarjetas) no hay barra */
+.seccion-gastos .filas-pres > li:not([data-linea]) .barra-pres { visibility: hidden; }
+.seccion-gastos .barra-pres { background: color-mix(in srgb, var(--tinta) 8%, transparent); }
+.seccion-gastos .barra-pres b.real { left: 0; }
+.seccion-gastos .llevas { white-space: nowrap; }
+
+@media (min-width: 1024px) {
+  body .pantalla.presupuesto { display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding-top: 14px; padding-bottom: 10px; }
+  body .pantalla.presupuesto > * { width: 100%; max-width: none; margin-inline: 0; }
+  body .pantalla.presupuesto > .mensaje { margin: 0; }
+  /* Resumen: saldo y meses arriba, el reparto del ingreso abajo; sin las 4 fichas (ya están en el reparto) */
+  body .pantalla.presupuesto .hero.hero-meses { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr); grid-template-areas: 'principal meses' 'flujo flujo'; padding: 14px 22px; gap: 10px 26px; align-items: center; }
+  body .pantalla.presupuesto .hero-meses .hero-datos { display: none; }
+  body .pantalla.presupuesto .hero-meses .pres-flujo { grid-area: flujo; }
+  body .pantalla.presupuesto .hero-meses .hero-monto { margin: 2px 0 6px; }
+  body .pantalla.presupuesto .meses-barras .mb-plano { height: 104px; }
+  /* Ingresos y ahorros lado a lado, compactos */
+  body .pantalla.presupuesto > .rejilla-pres { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: stretch; }
+  body .pantalla.presupuesto .seccion-pres { padding: 12px 16px; gap: 6px; }
+  body .pantalla.presupuesto .filas-pres > li { padding-block: 4px; }
+  body .pantalla.presupuesto .seccion-ahorros .ahorro-resumen { display: none; }
+  body .pantalla.presupuesto .seccion-ahorros .metas { gap: 2px; }
+  body .pantalla.presupuesto .seccion-ahorros li.meta { padding-block: 4px; gap: 3px; }
+  body .pantalla.presupuesto .seccion-ahorros .meta-usado { display: none; }
+  body .pantalla.presupuesto .seccion-ahorros .gp-barra { height: 5px; }
+  /* Gastos: título, orden y nota en una franja; las líneas en tres columnas */
+  body .pantalla.presupuesto .seccion-gastos { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 6px; align-items: center; }
+  body .pantalla.presupuesto .seccion-gastos > .panel-cab { grid-column: 1; }
+  body .pantalla.presupuesto .seccion-gastos > .pres-controles { grid-column: 2; grid-row: 1; margin: 0; }
+  body .pantalla.presupuesto .seccion-gastos > .nota-ciclo { grid-column: 1 / -1; margin: 0; font-size: 0.74rem; }
+  body .pantalla.presupuesto .seccion-gastos > .filas-pres { grid-column: 1 / -1; columns: 3; column-gap: 24px; }
+  /* Filas de gasto en una línea: nombre (cortado si es largo) y monto, sin la columna del % */
+  body .pantalla.presupuesto .seccion-gastos .fila-pres-top > span:last-child { display: inline-flex; grid-template-columns: none; }
+  body .pantalla.presupuesto .seccion-gastos .fila-pres-nombre:not(:has(.check-fijo)) { padding-left: 32px; }
+  body .pantalla.presupuesto .seccion-gastos .fila-pres-nombre > span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; word-break: normal; }
+  body .pantalla.presupuesto .seccion-gastos .check-fijo { width: 24px; height: 24px; flex-shrink: 0; }
+  body .pantalla.presupuesto .seccion-gastos .filas-pres li { gap: 3px; margin-bottom: 2px; }
+  body .pantalla.presupuesto .seccion-gastos .nota-pagado { display: none; }
+  /* Resumen: a la izquierda el saldo y su reparto; a la derecha los meses */
+  body .pantalla.presupuesto .hero.hero-meses { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.2fr); grid-template-areas: 'principal meses' 'flujo meses'; grid-template-rows: auto auto; row-gap: 10px; }
+  body .pantalla.presupuesto .pres-flujo { gap: 6px; }
+  body .pantalla.presupuesto .pf-leyenda { gap: 4px 14px; font-size: 0.76rem; }
+  body .pantalla.presupuesto .pf-leyenda small { display: none; }
+  /* Ahorros: las metas en dos columnas, cada una en dos renglones */
+  body .pantalla.presupuesto .seccion-ahorros .metas { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px 14px; }
+  body .pantalla.presupuesto > .rejilla-pres { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); }
+  body .pantalla.presupuesto .seccion-ahorros .chip-meta { font-size: 0; gap: 0; padding: 3px; }
+  body .pantalla.presupuesto .seccion-ahorros .meta-top { flex-wrap: nowrap; gap: 6px; }
+  body .pantalla.presupuesto .seccion-ahorros .meta-nombre { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  body .pantalla.presupuesto .seccion-ahorros .meta-pie .suave { display: none; }
+  body .pantalla.presupuesto > .rejilla-pres, body .pantalla.presupuesto { gap: 10px; }
+  body .pantalla.presupuesto .filas-pres li { gap: 3px; }
+  body .pantalla.presupuesto .seccion-gastos > .nota-ciclo { display: none; } /* va como ayuda al pasar el cursor por el título */
+  body .pantalla.presupuesto .meses-barras .mb-plano { height: 92px; }
+  body .pantalla.presupuesto .hero.hero-meses { padding-block: 12px; }
+  body .pantalla.presupuesto .hero-meses .hero-monto { font-size: 2.6rem; margin: 0 0 4px; }
+  body .pantalla.presupuesto .hero-meses .hero-etq { margin: 0; }
+  body .pantalla.presupuesto .pf-titulo { font-size: 0.74rem; }
+  body .pantalla.presupuesto .seccion-ahorros .meta-top strong { white-space: nowrap; }
+  body:has(.pantalla.presupuesto) .pantalla.presupuesto { padding-top: 8px; }
+  body .pantalla.presupuesto .seccion-gastos .filas-pres > li { padding-block: 3px; margin-bottom: 1px; }
+  body .pantalla.presupuesto .seccion-pres { padding-block: 10px; }
+}
+@media (min-width: 1024px) and (max-height: 820px) {
+  body .pantalla.presupuesto .meses-barras .mb-plano { height: 92px; }
+  body .pantalla.presupuesto .hero-meses .hero-monto { font-size: 2.6rem; }
+  body .pantalla.presupuesto .filas-pres > li { padding-block: 3px; }
+}
