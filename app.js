@@ -5,6 +5,8 @@ import { API_URL } from './config.js';
 
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
+// Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
+const VERSION_APP = 'finfamily-v147';
 
 // Instalación en el equipo (el navegador avisa cuando se puede).
 let eventoInstalar = null;
@@ -7195,6 +7197,20 @@ async function arrancar() {
     el.append(onda);
     setTimeout(() => onda.remove(), 700);
   });
+  // Al abrir: si lo publicado es más nuevo que esta copia (GitHub tardó y se abrió la guardada), se recarga sola una vez.
+  setTimeout(async () => {
+    try {
+      const txt = await fetch(`./sw.js?v=${Date.now()}`, { cache: 'no-store' }).then((r) => (r.ok ? r.text() : ''));
+      const publicada = (txt.match(/finfamily-v\d+/) || [])[0];
+      if (!publicada || publicada === VERSION_APP) return;
+      let ya = false;
+      try { ya = Date.now() - Number(sessionStorage.getItem('ff:recargo') || 0) < 120000; } catch { /* nada */ }
+      if (ya || hayEdicionAbierta() || document.querySelector('dialog[open]')) return;
+      try { sessionStorage.setItem('ff:recargo', String(Date.now())); } catch { /* nada */ }
+      await estado.registroSW?.update?.().catch(() => {});
+      setTimeout(() => location.reload(), 1500); // deja que el service worker nuevo guarde los archivos
+    } catch { /* sin red: se queda la que hay */ }
+  }, 2500);
   if ('serviceWorker' in navigator) {
     // Si la app ya estaba abierta cuando se publicó una versión nueva, se avisa con un botón para actualizar.
     const habiaVersion = !!navigator.serviceWorker.controller;
