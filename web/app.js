@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v149';
+const VERSION_APP = 'finfamily-v150';
 
 // Instalación en el equipo (el navegador avisa cuando se puede).
 let eventoInstalar = null;
@@ -4667,6 +4667,7 @@ function panelPresupuestoAdmin() {
   const recargar = async () => {
     const r = await llamarApi('lineasPresupuesto', { mes }, { email: emailSesion() });
     lineas = r?.lineas || [];
+    guardarCache('lineas:' + mes, { lineas });
     estado.cambioDesde = Date.now();
     pintar();
   };
@@ -4716,8 +4717,11 @@ function panelPresupuestoAdmin() {
     if (!editable) cuerpo.prepend(h('p', { class: 'suave' }, 'Para cambiar las líneas desde aquí hace falta el motor 1.5.'));
     animarVista(cuerpo);
   };
+  // Lo último guardado en el equipo se pinta al instante; el Sheets (que puede tardar) lo actualiza después.
+  const guardadas = motorPresupuesto() ? leerCache('lineas:' + mes)?.datos?.lineas : null;
+  if (guardadas?.length) { lineas = guardadas; setTimeout(pintar, 0); }
   (motorPresupuesto()
-    ? llamarApi('lineasPresupuesto', { mes }, { email: emailSesion() }).then((r) => { lineas = r?.lineas || []; })
+    ? llamarApi('lineasPresupuesto', { mes }, { email: emailSesion() }).then((r) => { lineas = r?.lineas || []; guardarCache('lineas:' + mes, { lineas }); })
     : cargarRapido('presupuesto', { mes }, 'presupuesto:' + mes).then((r) => { lineas = (r?.datos?.filas || []).map((f) => ({ ...f, conceptos: f.conceptos || [] })); })
   ).then(pintar).catch(() => { cuerpo.replaceChildren(h('p', { class: 'suave' }, 'No se pudo leer el presupuesto. Intenta en un momento.')); });
   return caja;
