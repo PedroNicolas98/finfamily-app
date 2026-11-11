@@ -26,7 +26,7 @@
  *   FINFAMILY_ICONOS               ícono elegido para cada tipo de gasto (motor 1.5.1).
  */
 
-var VERSION = '1.17.0';
+var VERSION = '1.18.0';
 var ZONA_HORARIA = 'America/Lima';
 var DIAS_AVISO = 3;
 var SEGUNDOS_CACHE_TOKEN = 300;
@@ -45,6 +45,7 @@ var PROPIEDAD_LINEAS = 'FINFAMILY_LINEAS';
 var PROPIEDAD_ICONOS = 'FINFAMILY_ICONOS';
 var PROPIEDAD_CUENTAS = 'FINFAMILY_CUENTAS';           // motor 1.14.0: préstamos y devoluciones entre ustedes
 var PROPIEDAD_WHATSAPP = 'FINFAMILY_WHATSAPP';         // motor 1.17.0: {correo: {telefono, apikey, desde}} (privado)
+var PROPIEDAD_WA_META = 'FINFAMILY_WA_META';           // motor 1.18.0: {token, phoneId, plantilla, idioma, version} (privado)
 var PROPIEDAD_CUADRES = 'FINFAMILY_CUADRES';           // motor 1.16.0: último cuadre de cada cuenta
 var PROPIEDAD_METAS = 'FINFAMILY_METAS';               // motor 1.15.0: objetivo y mes límite por línea de ahorro
 var PROPIEDAD_FIJOS = 'FINFAMILY_FIJOS';               // motor 1.13.0: día y si se paga solo, por línea fija
@@ -58,7 +59,7 @@ var DIAS_CORREOS = 3; // cuántos días hacia atrás busca el lector
 
 /** Acciones que entiende este motor (la acción 'version' las devuelve). */
 var ACCIONES = ['inicio', 'tarjetas', 'presupuesto', 'config', 'registrar', 'marcarPagado', 'marcarFijo',
-  'editarGasto', 'borrarGasto', 'personas', 'desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'abrirSesion', 'cerrarSesion', 'reenvio', 'pasarACuotas', 'fijosAuto', 'guardarFijoAuto', 'cuentas', 'anotarCuenta', 'borrarCuenta', 'guardarMeta', 'cuadres', 'guardarCuadre', 'whatsapp', 'guardarWhatsapp', 'probarWhatsapp',
+  'editarGasto', 'borrarGasto', 'personas', 'desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'abrirSesion', 'cerrarSesion', 'reenvio', 'pasarACuotas', 'fijosAuto', 'guardarFijoAuto', 'cuentas', 'anotarCuenta', 'borrarCuenta', 'guardarMeta', 'cuadres', 'guardarCuadre', 'whatsapp', 'guardarWhatsapp', 'probarWhatsapp', 'guardarWhatsappMeta',
   'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos',
   'datosTarjetas', 'guardarDatosTarjeta',
   'agregarTarjeta', 'editarTarjeta', 'quitarTarjeta', 'restaurarTarjeta',
@@ -151,6 +152,7 @@ function doPost(e) {
       case 'whatsapp': resultado = estadoWhatsapp_(usuario); break;
       case 'guardarWhatsapp': resultado = accionGuardarWhatsapp_(usuario, datos); break;
       case 'probarWhatsapp': resultado = accionProbarWhatsapp_(usuario); break;
+      case 'guardarWhatsappMeta': resultado = accionGuardarWhatsappMeta_(usuario, datos); break;
       case 'pendientes': resultado = accionPendientes_(usuario, datos); break;
       case 'confirmarPendiente': resultado = accionConfirmarPendiente_(usuario, datos); break;
       case 'descartarPendiente': resultado = accionDescartarPendiente_(usuario, datos); break;
@@ -1936,7 +1938,74 @@ function leerWhatsapp_() {
 
 function estadoWhatsapp_(usuario) {
   var w = leerWhatsapp_()[usuario.email];
-  return w && w.telefono ? { conectado: true, telefono: telefonoOculto(w.telefono), desde: w.desde || '' } : { conectado: false };
+  var meta = leerWaMeta_();
+  var salida = w && w.telefono ? { conectado: true, telefono: telefonoOculto(w.telefono), desde: w.desde || '', via: w.via === 'meta' ? 'meta' : 'callmebot' } : { conectado: false };
+  salida.meta = meta ? { configurado: true, plantilla: meta.plantilla } : { configurado: false };
+  return salida;
+}
+
+// ---------------------------------------------------------------------------
+// WhatsApp oficial de Meta (motor 1.18.0): número de prueba de la Cloud API (gratis hasta 5 destinatarios).
+// Los avisos van con una plantilla aprobada por Meta que tiene un solo dato variable ({{1}}).
+// ---------------------------------------------------------------------------
+
+var PLANTILLA_WA_DEFECTO = 'aviso_finfamily';
+var VERSION_GRAPH_DEFECTO = 'v25.0';
+
+function leerWaMeta_() {
+  try {
+    var m = JSON.parse(propiedad_(PROPIEDAD_WA_META) || 'null');
+    return m && m.token && m.phoneId ? m : null;
+  } catch (err) { return null; }
+}
+
+/** Llamada a la API de Meta. Nunca lanza: {ok, codigo, datos, motivo}. */
+function llamarMeta_(meta, ruta, cuerpo) {
+  try {
+    var opciones = { muteHttpExceptions: true, headers: { Authorization: 'Bearer ' + meta.token } };
+    if (cuerpo) { opciones.method = 'post'; opciones.contentType = 'application/json'; opciones.payload = JSON.stringify(cuerpo); }
+    var resp = UrlFetchApp.fetch('https://graph.facebook.com/' + (meta.version || VERSION_GRAPH_DEFECTO) + '/' + ruta, opciones);
+    var codigo = resp.getResponseCode();
+    var datos = {};
+    try { datos = JSON.parse(resp.getContentText() || '{}'); } catch (err) { datos = {}; }
+    var e = datos && datos.error;
+    return { ok: codigo === 200 && !e, codigo: codigo, datos: datos,
+      motivo: e ? String(e.error_user_msg || e.message || '').slice(0, 160) + (e.code ? ' (' + e.code + ')' : '') : (codigo === 200 ? '' : 'código ' + codigo) };
+  } catch (err) {
+    return { ok: false, codigo: 0, datos: {}, motivo: String(err).slice(0, 120) };
+  }
+}
+
+/** Manda una plantilla. parametro = texto del {{1}} (o null para plantillas sin datos, como hello_world). */
+function mandarPlantillaMeta_(meta, telefono, plantilla, idioma, parametro) {
+  var plantillaObj = { name: plantilla, language: { code: idioma } };
+  if (parametro !== null && parametro !== undefined) plantillaObj.components = [{ type: 'body', parameters: [{ type: 'text', text: String(parametro) }] }];
+  return llamarMeta_(meta, meta.phoneId + '/messages', {
+    messaging_product: 'whatsapp', to: String(telefono).replace(/\D/g, ''), type: 'template', template: plantillaObj
+  });
+}
+
+/** {token, phoneId, plantilla?, idioma?, version?}: guarda los datos de la app de Meta después de comprobarlos. {quitar: true} los borra. */
+function accionGuardarWhatsappMeta_(usuario, datos) {
+  var props = PropertiesService.getScriptProperties();
+  if (datos.quitar === true) { props.deleteProperty(PROPIEDAD_WA_META); return estadoWhatsapp_(usuario); }
+  var actual = leerWaMeta_() || {};
+  var token = String(datos.token || actual.token || '').trim();
+  var phoneId = String(datos.phoneId || actual.phoneId || '').replace(/\D/g, '');
+  if (!/^[A-Za-z0-9_\-]{30,600}$/.test(token)) throw errorApp_('datos_invalidos', 'El token de Meta no es válido: cópialo entero.');
+  if (!/^\d{8,25}$/.test(phoneId)) throw errorApp_('datos_invalidos', 'El identificador del número (Phone number ID) no es válido.');
+  var plantilla = String(datos.plantilla || actual.plantilla || PLANTILLA_WA_DEFECTO).trim().toLowerCase();
+  if (!/^[a-z0-9_]{1,512}$/.test(plantilla)) throw errorApp_('datos_invalidos', 'El nombre de la plantilla solo lleva minúsculas, números y _.');
+  var idioma = String(datos.idioma || actual.idioma || 'es').trim();
+  if (!/^[a-z]{2}(_[A-Z]{2})?$/.test(idioma)) throw errorApp_('datos_invalidos', 'El idioma de la plantilla no es válido (ej. es o es_PE).');
+  var version = /^v\d{2}\.0$/.test(String(datos.version || '')) ? datos.version : (actual.version || VERSION_GRAPH_DEFECTO);
+  var meta = { token: token, phoneId: phoneId, plantilla: plantilla, idioma: idioma, version: version };
+  var prueba = llamarMeta_(meta, phoneId + '?fields=display_phone_number,verified_name');
+  if (!prueba.ok) throw errorApp_('datos_invalidos', 'Meta no aceptó el token o el número: ' + (prueba.motivo || 'revisa los datos') + '.');
+  props.setProperty(PROPIEDAD_WA_META, JSON.stringify(meta));
+  var salida = estadoWhatsapp_(usuario);
+  salida.meta.numero = String(prueba.datos.display_phone_number || '');
+  return salida;
 }
 
 /** {telefono, apikey} conecta; {quitar: true} desconecta. Prueba la clave antes de guardarla. */
@@ -1949,6 +2018,20 @@ function accionGuardarWhatsapp_(usuario, datos) {
   }
   var telefono = telefonoWhatsapp(datos.telefono);
   if (!telefono) throw errorApp_('datos_invalidos', 'Escribe tu número con el código del país (ej. +51 987 654 321).');
+  if (datos.via === 'meta') {
+    var meta = leerWaMeta_();
+    if (!meta) throw errorApp_('datos_invalidos', 'Primero guarda los datos de la app de Meta.');
+    // hello_world viene aprobada en toda cuenta nueva: sirve para comprobar que el número está en la lista de Meta.
+    var hola = mandarPlantillaMeta_(meta, telefono, 'hello_world', 'en_US', null);
+    if (!hola.ok) {
+      var fuera = /131030|allowed list|not in allowed/i.test(hola.motivo);
+      throw errorApp_('datos_invalidos', fuera ? 'Ese número no está en la lista de destinatarios de tu app de Meta: agrégalo en «API Setup» y vuelve a intentar.'
+        : 'Meta no pudo mandar el mensaje: ' + hola.motivo + '.');
+    }
+    todos[usuario.email] = { via: 'meta', telefono: telefono, desde: hoyServidor_() };
+    PropertiesService.getScriptProperties().setProperty(PROPIEDAD_WHATSAPP, JSON.stringify(todos));
+    return estadoWhatsapp_(usuario);
+  }
   var apikey = String(datos.apikey || '').trim();
   if (!/^[A-Za-z0-9]{4,32}$/.test(apikey)) throw errorApp_('datos_invalidos', 'La clave (apikey) no es válida: cópiala tal cual del mensaje del bot.');
   var prueba = mandarWhatsapp_(telefono, apikey, '*FinFamily*\n\n¡Listo! Aquí te llegarán los avisos de FinFamily.');
@@ -1961,8 +2044,11 @@ function accionGuardarWhatsapp_(usuario, datos) {
 function accionProbarWhatsapp_(usuario) {
   var w = leerWhatsapp_()[usuario.email];
   if (!w || !w.telefono) throw errorApp_('datos_invalidos', 'Primero conecta tu WhatsApp.');
-  var r = mandarWhatsapp_(w.telefono, w.apikey, '*FinFamily*\n\nMensaje de prueba: tus avisos llegan bien. 👍');
-  return { enviado: r.ok, motivo: r.motivo || '' };
+  var r = w.via === 'meta' ? mandarAvisoMeta_(w.telefono, 'Mensaje de prueba: tus avisos llegan bien')
+    : mandarWhatsapp_(w.telefono, w.apikey, '*FinFamily*\n\nMensaje de prueba: tus avisos llegan bien. 👍');
+  var motivo = r.motivo || '';
+  if (!r.ok && /132001|template name does not exist|does not exist in/i.test(motivo)) motivo = 'Meta todavía no aprueba la plantilla «' + ((leerWaMeta_() || {}).plantilla || PLANTILLA_WA_DEFECTO) + '» (' + motivo + ')';
+  return { enviado: r.ok, motivo: motivo };
 }
 
 /** Un mensaje por CallMeBot. Nunca lanza: devuelve {ok, motivo}. */
@@ -1979,6 +2065,12 @@ function mandarWhatsapp_(telefono, apikey, texto) {
   }
 }
 
+function mandarAvisoMeta_(telefono, parametro) {
+  var meta = leerWaMeta_();
+  if (!meta) return { ok: false, motivo: 'faltan los datos de la app de Meta' };
+  return mandarPlantillaMeta_(meta, telefono, meta.plantilla || PLANTILLA_WA_DEFECTO, meta.idioma || 'es', parametro);
+}
+
 /** Manda el aviso {asunto, cuerpo} por WhatsApp a quienes lo tengan conectado (todos, o solo esos correos). */
 function avisarWhatsapp_(texto, correos) {
   var enviados = 0;
@@ -1986,8 +2078,9 @@ function avisarWhatsapp_(texto, correos) {
     var todos = leerWhatsapp_();
     var lista = (correos || Object.keys(todos)).filter(function (c) { return todos[c] && todos[c].telefono; });
     var mensaje = textoWhatsapp(texto);
+    var parametro = textoPlantillaWhatsapp(texto);
     lista.forEach(function (c) {
-      var r = mandarWhatsapp_(todos[c].telefono, todos[c].apikey, mensaje);
+      var r = todos[c].via === 'meta' ? mandarAvisoMeta_(todos[c].telefono, parametro) : mandarWhatsapp_(todos[c].telefono, todos[c].apikey, mensaje);
       if (r.ok) enviados++;
       else console.warn('FinFamily WhatsApp: no se pudo avisar a ' + c.split('@')[0] + ': ' + r.motivo);
     });

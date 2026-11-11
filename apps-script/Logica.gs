@@ -1176,6 +1176,19 @@ function textoWhatsapp(texto) {
   return t.length > 1500 ? t.slice(0, 1497) + '…' : t;
 }
 
+/**
+ * Texto para la plantilla oficial de WhatsApp (motor 1.18.0): Meta no acepta saltos de línea, tabulaciones ni
+ * más de 4 espacios seguidos en el dato variable. Queda "Asunto: línea · línea · …" (máximo 900 caracteres).
+ */
+function textoPlantillaWhatsapp(texto) {
+  var asunto = String((texto && texto.asunto) || 'FinFamily').replace(/\s+/g, ' ').trim();
+  var lineas = String((texto && texto.cuerpo) || '').replace(/\r/g, '').split('\n')
+    .map(function (l) { return l.replace(/^[\s•\-*]+/, '').replace(/\s+/g, ' ').trim(); })
+    .filter(Boolean);
+  var t = (asunto + (lineas.length ? ': ' + lineas.join(' · ') : '')).replace(/\s{2,}/g, ' ');
+  return t.length > 900 ? t.slice(0, 897) + '…' : t;
+}
+
 // ---------------------------------------------------------------------------
 // Cuadre de saldos (motor 1.16.0): el último cuadre de cada cuenta (débito, Lemon o el estado de una tarjeta).
 // clave: 'debito|<persona>', 'lemon|<persona>' o 'tc|<idTarjeta>|<vence>'.

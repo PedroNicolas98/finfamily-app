@@ -23,6 +23,7 @@ const USUARIOS = {
   'persona-b@example.test': { nombre: 'PersonaB', clave: 'B' }
 };
 const TOKEN_PERSONA_A = 'token-PersonaA';
+const TOKEN_META_PRUEBA = 'EAAprueba0123456789abcdefghijklmnopqrstuvwxyz';
 const ID = 'prueba-0001';
 
 // ---------- Imitación de una hoja del Sheets ----------
@@ -182,6 +183,7 @@ function crearMotor(config) {
   const propiedades = Object.assign({ CLIENT_ID, USUARIOS: JSON.stringify(USUARIOS), SHEET_ID: 'id-hoja-ficticio' }, c.propiedades || {});
   const correos = [];
   const whatsapps = [];
+  const metaLlamadas = [];
   const activadores = (c.activadores || []).map((nombre) => ({ nombre }));
   const cache = {};
   const estado = { hoy: c.hoy || '2026-11-06', cuotaCorreo: c.cuotaCorreo === undefined ? 100 : c.cuotaCorreo, idsHojaAbiertos: [] };
@@ -281,7 +283,18 @@ function crearMotor(config) {
     },
     UrlFetchApp: {
       // Imita la respuesta de Google al verificar el inicio de sesión (y CallMeBot, motor 1.17.0).
-      fetch: (url) => {
+      fetch: (url, opciones) => {
+        if (String(url).indexOf('https://graph.facebook.com/') === 0) {
+          const auth = ((opciones || {}).headers || {}).Authorization || '';
+          const cuerpo = opciones && opciones.payload ? JSON.parse(opciones.payload) : null;
+          metaLlamadas.push({ url: String(url), cuerpo });
+          const resp = (codigo, obj) => ({ getResponseCode: () => codigo, getContentText: () => JSON.stringify(obj) });
+          if (!auth.endsWith(TOKEN_META_PRUEBA)) return resp(401, { error: { message: 'Invalid OAuth access token.', code: 190 } });
+          if (!cuerpo) return resp(200, { display_phone_number: '+1 555 010 0000', verified_name: 'Test Number', id: '123456789012345' });
+          if (cuerpo.to === '51900000999') return resp(400, { error: { message: '(#131030) Recipient phone number not in allowed list', code: 131030 } });
+          if (cuerpo.template.name === 'no_aprobada') return resp(404, { error: { message: '(#132001) Template name does not exist in the translation', code: 132001 } });
+          return resp(200, { messages: [{ id: 'wamid.prueba' }] });
+        }
         if (String(url).indexOf('https://api.callmebot.com/whatsapp.php?') === 0) {
           const q = new URLSearchParams(String(url).split('?')[1]);
           whatsapps.push({ phone: q.get('phone'), text: q.get('text'), apikey: q.get('apikey') });
@@ -332,7 +345,7 @@ function crearMotor(config) {
   vm.runInContext(FUENTE_CODIGO, contexto, { filename: 'Codigo.gs' });
 
   return {
-    contexto, propiedades, correos, whatsapps, activadores, estado, hojas, hilos, etiquetasGmail, consultasGmail, eventos, avisosConsola,
+    contexto, propiedades, correos, whatsapps, metaLlamadas, activadores, estado, hojas, hilos, etiquetasGmail, consultasGmail, eventos, avisosConsola,
     // Llama al motor igual que la web: POST con {accion, token, datos}.
     llamar(accion, datos, token) {
       const cuerpo = JSON.stringify({ accion, token: token === undefined ? TOKEN_PERSONA_A : token, datos });
@@ -354,13 +367,13 @@ test('version: informa 1.7.1 y la lista de acciones; inicio y config traen el ca
     new HojaFalsa('Configuración', [['Conceptos de Gasto', 'Responsable'], ['Limpieza', 'PersonaB']])]) });
   const r = m.llamar('version', {});
   assert.equal(r.ok, true);
-  assert.equal(r.datos.version, '1.17.0');
+  assert.equal(r.datos.version, '1.18.0');
   for (const a of ['desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'marcarPagado', 'inicio',
     'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos', 'datosTarjetas', 'guardarDatosTarjeta']) {
     assert.ok(r.datos.acciones.includes(a), 'falta la acción ' + a);
   }
-  assert.equal(m.llamar('inicio', {}).datos.version, '1.17.0');
-  assert.equal(m.llamar('config', {}).datos.version, '1.17.0');
+  assert.equal(m.llamar('inicio', {}).datos.version, '1.18.0');
+  assert.equal(m.llamar('config', {}).datos.version, '1.18.0');
 });
 
 test('la lista ACCIONES coincide con las acciones que atiende doPost', () => {
@@ -1993,7 +2006,7 @@ test('config: un ícono guardado para un concepto que ya no existe en Configurac
   assert.deepEqual(m.llamar('config', {}).datos.iconos, { Supermercado: 'carrito' });
   const danado = motorCompleto({ propiedades: { FINFAMILY_ICONOS: '{roto' } });
   assert.deepEqual(danado.llamar('config', {}).datos.iconos, {});
-  assert.equal(danado.llamar('version', {}).datos.version, '1.17.0');
+  assert.equal(danado.llamar('version', {}).datos.version, '1.18.0');
   assert.ok(danado.llamar('version', {}).datos.acciones.includes('guardarIconoConcepto'));
 });
 
@@ -2231,7 +2244,7 @@ test('gasto grande con tarjeta prestada: el correo dice quién gastó; versión 
   const m = motorCompleto();
   m.llamar('registrar', Object.assign({}, GASTO_PRESTADO, { monto: 450, descripcion: 'Saga Falabella' }));
   assert.equal(m.correos[0].subject, 'FinFamily: PersonaA registró S/ 450 en Saga Falabella (TC Interbank)');
-  assert.equal(m.llamar('version', {}).datos.version, '1.17.0');
+  assert.equal(m.llamar('version', {}).datos.version, '1.18.0');
 });
 
 // ===========================================================================
@@ -2511,7 +2524,7 @@ test('bolsas con un solo usuario (N = 1): todo el saldo de los meses anteriores 
 test('versión 1.7.0: la acción bolsas está en la lista y presupuesto no cambió', () => {
   const m = motorBolsas();
   const v = m.llamar('version', {}).datos;
-  assert.equal(v.version, '1.17.0');
+  assert.equal(v.version, '1.18.0');
   assert.ok(v.acciones.includes('bolsas'));
   const p = m.llamar('presupuesto', { mes: '2026-11' }).datos;
   assert.equal(p.totales.saldo, 985.57);
@@ -3293,13 +3306,13 @@ test('1.16.0: guardarCuadre guarda el último cuadre por cuenta y valida la clav
 
 test('1.17.0: conectar WhatsApp prueba la clave, la guarda en privado y nunca la devuelve', () => {
   const m = motorCompleto({ hoy: '2026-11-10' });
-  assert.deepEqual(m.llamar('whatsapp', {}).datos, { conectado: false });
+  assert.deepEqual(m.llamar('whatsapp', {}).datos, { conectado: false, meta: { configurado: false } });
   const mal = m.llamar('guardarWhatsapp', { telefono: '+51 987 654 321', apikey: '0000' });
   assert.equal(mal.ok, false, 'clave rechazada por CallMeBot');
   assert.equal(m.llamar('guardarWhatsapp', { telefono: '123', apikey: '1234567' }).ok, false);
   const r = m.llamar('guardarWhatsapp', { telefono: '+51 987 654 321', apikey: '1234567' });
   assert.equal(r.ok, true, JSON.stringify(r));
-  assert.deepEqual(r.datos, { conectado: true, telefono: '+51 ••• ••• 321', desde: '2026-11-10' });
+  assert.deepEqual(r.datos, { conectado: true, telefono: '+51 ••• ••• 321', desde: '2026-11-10', via: 'callmebot', meta: { configurado: false } });
   assert.ok(!JSON.stringify(r).includes('1234567'), 'la clave no vuelve a la app');
   assert.equal(m.whatsapps.at(-1).phone, '+51987654321');
   const p = m.llamar('probarWhatsapp', {});
@@ -3319,4 +3332,49 @@ test('1.17.0: los avisos por correo también salen por WhatsApp a quien lo tenga
   assert.equal(m.whatsapps.length, antes + 1);
   assert.equal(w.apikey, 'abc1234');
   assert.equal(w.text, '*Hoy vence: Luz*\n\nHoy toca pagar:\n\n• Luz: S/ 80');
+});
+
+
+// ---------- 1.18.0: WhatsApp oficial de Meta ----------
+
+test('1.18.0: guardar los datos de Meta los comprueba y nunca devuelve el token', () => {
+  const m = motorCompleto({ hoy: '2026-11-10' });
+  assert.equal(m.llamar('guardarWhatsappMeta', { token: 'EAAmalo0123456789abcdefghijklmnopqrstuvwxyz', phoneId: '123456789012345' }).ok, false);
+  assert.equal(m.llamar('guardarWhatsappMeta', { token: TOKEN_META_PRUEBA, phoneId: 'abc' }).ok, false);
+  const r = m.llamar('guardarWhatsappMeta', { token: TOKEN_META_PRUEBA, phoneId: '123456789012345' });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual(r.datos.meta, { configurado: true, plantilla: 'aviso_finfamily', numero: '+1 555 010 0000' });
+  assert.ok(!JSON.stringify(r).includes(TOKEN_META_PRUEBA));
+  assert.ok(m.metaLlamadas[0].url.startsWith('https://graph.facebook.com/v25.0/123456789012345?'));
+});
+
+test('1.18.0: conectar un número por Meta manda hello_world; si no está en la lista de Meta, lo dice', () => {
+  const m = motorCompleto({ hoy: '2026-11-10' });
+  assert.equal(m.llamar('guardarWhatsapp', { via: 'meta', telefono: '+51 987 654 321' }).ok, false, 'sin datos de Meta');
+  m.llamar('guardarWhatsappMeta', { token: TOKEN_META_PRUEBA, phoneId: '123456789012345' });
+  const fuera = m.llamar('guardarWhatsapp', { via: 'meta', telefono: '+51 900 000 999' });
+  assert.equal(fuera.ok, false);
+  assert.match(fuera.error, /lista de destinatarios/);
+  const r = m.llamar('guardarWhatsapp', { via: 'meta', telefono: '+51 987 654 321' });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.datos.via, 'meta');
+  const hola = m.metaLlamadas.at(-1).cuerpo;
+  assert.deepEqual(hola, { messaging_product: 'whatsapp', to: '51987654321', type: 'template', template: { name: 'hello_world', language: { code: 'en_US' } } });
+});
+
+test('1.18.0: los avisos por Meta van en la plantilla con el texto en una sola línea', () => {
+  const m = motorCompleto({ hoy: '2026-11-10' });
+  m.llamar('guardarWhatsappMeta', { token: TOKEN_META_PRUEBA, phoneId: '123456789012345' });
+  m.llamar('guardarWhatsapp', { via: 'meta', telefono: '+51 987 654 321' });
+  const r = m.contexto.enviarCorreoAUsuarios_({ asunto: 'Hoy vence: Luz', cuerpo: 'Hoy toca pagar:\n\n• Luz: S/ 80\n• Agua:    S/ 30' }, 'prueba');
+  assert.equal(r.whatsapp, 1);
+  const t = m.metaLlamadas.at(-1).cuerpo.template;
+  assert.equal(t.name, 'aviso_finfamily');
+  assert.equal(t.language.code, 'es');
+  assert.equal(t.components[0].parameters[0].text, 'Hoy vence: Luz: Hoy toca pagar: · Luz: S/ 80 · Agua: S/ 30');
+  // Probar con una plantilla que Meta aún no aprueba: lo explica.
+  m.llamar('guardarWhatsappMeta', { plantilla: 'no_aprobada' });
+  const p = m.llamar('probarWhatsapp', {});
+  assert.equal(p.datos.enviado, false);
+  assert.match(p.datos.motivo, /todavía no aprueba la plantilla «no_aprobada»/);
 });
