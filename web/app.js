@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v155';
+const VERSION_APP = 'finfamily-v156';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -517,8 +517,11 @@ function colorAppTC(t) {
 }
 // Pedido del usuario (v155): con las tarjetas de débito sobran Efectivo y Lemon en "Pagué con" (lo ya anotado queda).
 // Yape sale de la cuenta BCP y Plin de la de Interbank: se muestran con su banco y, como un débito, piden de dónde sale.
-const MEDIOS_OCULTOS_REGISTRO = ['EFECTIVO', 'LEMON'];
+const MEDIOS_OCULTOS_REGISTRO = ['EFECTIVO'];
 const CUENTA_DE_MEDIO = { YAPE: 'BCP', PLIN: 'Interbank' };
+// v156: la débito BCP es la misma cuenta que Yape y la Interbank la misma que Plin: en "Pagué con" sobran.
+const BILLETERA_DE_BANCO = { bcp: 'YAPE', interbank: 'PLIN' };
+const billeteraDeDebito = (m) => (m?.tipo === 'debito' ? BILLETERA_DE_BANCO[normalizar(m.banco || '').replace(/[^a-z]/g, '')] || null : null);
 const comoDebito = (m) => !!m && (m.tipo === 'debito' || !!CUENTA_DE_MEDIO[m.id]);
 // Clase de color de una tarjeta de débito: por su banco (Interbank verde, BCP azul, Sip negra).
 const claseDebito = (banco) => `TD-${normalizar(banco || '').replace(/[^a-z]/g, '') || 'otro'}`;
@@ -5459,8 +5462,14 @@ async function vistaRegistrar() {
 
   let medioRecordado = '';
   try { medioRecordado = localStorage.getItem('ff:medio') || ''; } catch { /* nada */ }
+  const medioVisible = (id) => {
+    const m = medios.find((x) => x.id === id);
+    if (!m || MEDIOS_OCULTOS_REGISTRO.includes(id)) return null;
+    const b = billeteraDeDebito(m);
+    return b ? (medios.some((x) => x.id === b) ? b : null) : id;
+  };
   const f = estado.form || (estado.form = {
-    monto: '', medio: medios.some((m) => m.id === medioRecordado) && !MEDIOS_OCULTOS_REGISTRO.includes(medioRecordado) ? medioRecordado : null,
+    monto: '', medio: medioVisible(medioRecordado),
     descripcion: '', concepto: null, conceptoManual: false, nota: '', fecha: hoyISO(), fechaManual: false, responsable: null,
   });
   // Quién gastó: por defecto quien tiene la sesión; con el motor 1.3 se puede registrar a nombre de la otra persona.
@@ -5496,7 +5505,7 @@ async function vistaRegistrar() {
   const plegar = () => cajaMonto?.classList.add('plegado');
 
   const quien = () => (f.responsable ? { nombre: f.responsable } : usuario);
-  const colorMedio = (m) => (m.tipo === 'tarjeta' ? (idCicloDeMedio(m, quien()) || 'HORMIGA') : m.tipo === 'debito' ? claseDebito(m.banco) : CUENTA_DE_MEDIO[m.id] ? claseDebito(CUENTA_DE_MEDIO[m.id]) : (COLOR_MEDIO[m.id] || 'HORMIGA'));
+  const colorMedio = (m) => (m.tipo === 'tarjeta' ? (idCicloDeMedio(m, quien()) || 'HORMIGA') : m.tipo === 'debito' ? claseDebito(m.banco) : CUENTA_DE_MEDIO[m.id] ? claseDebito(CUENTA_DE_MEDIO[m.id]) : m.id === 'LEMON' ? 'TD-lemon' : (COLOR_MEDIO[m.id] || 'HORMIGA'));
   // Tarjetas de débito (motor 1.21): se muestran las de quien gastó (y la que ya esté elegida).
   const debitoAjeno = (m) => m.tipo === 'debito' && !!m.titular && !mismoNombre(m.titular, quien().nombre || '') && f.medio !== m.id;
   const tarjetasDe = (m) => catalogoTC().filter((t) => t.medio === m.id);
@@ -5504,7 +5513,7 @@ async function vistaRegistrar() {
   const tarjetaDe = (m) => (f.tarjeta && tarjetasDe(m).some((t) => t.id === f.tarjeta) ? f.tarjeta : idCicloDeMedio(m, quien()));
   const opcionesMedio = [];
   for (const m of medios) {
-    if (MEDIOS_OCULTOS_REGISTRO.includes(m.id) && f.medio !== m.id) continue;
+    if ((MEDIOS_OCULTOS_REGISTRO.includes(m.id) || billeteraDeDebito(m)) && f.medio !== m.id) continue;
     const ts = m.tipo === 'tarjeta' ? tarjetasDe(m) : [];
     if (motorPrestada() && ts.length > 1) ts.forEach((t) => opcionesMedio.push({ m, t }));
     else opcionesMedio.push({ m, t: null });
@@ -5568,7 +5577,9 @@ async function vistaRegistrar() {
   })();
   const ponerMedio = (md) => {
     if (!md) return;
-    f.medio = md.medio; f.tarjeta = md.tarjeta || null;
+    const visible = medioVisible(md.medio);
+    if (!visible) return;
+    f.medio = visible; f.tarjeta = visible === md.medio ? (md.tarjeta || null) : null;
     pintarMedios(); pintarOrigen(); actualizarPrevia(); limpiarError(campoMedio);
   };
 

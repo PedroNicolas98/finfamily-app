@@ -4340,3 +4340,5 @@ body .grupo-cabecera .derecha .acciones { background: none; border: 0; box-shado
   body:not(.solo-gasto) .registrar .formulario.registro-uno { grid-template-columns: minmax(290px, 0.62fr) minmax(0, 1.7fr); }
   body:not(.solo-gasto) .registrar .formulario.registro-uno .tecla { aspect-ratio: 5 / 4; max-height: 76px; }
 }
+/* v156: Lemon (tarjeta negra con verde neón) */
+.tc-TD-lemon { --c1: #1E1F1C; --c2: #050505; --acento: #00F068; --op: #00C45A; }
