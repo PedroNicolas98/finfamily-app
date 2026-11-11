@@ -4440,3 +4440,107 @@ body .pantalla.inicio .hero .hero-dato-extra { font-size: 0.875rem; white-space:
 @supports not selector(::-webkit-scrollbar) {
   html, body, * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--tinta) 26%, transparent) transparent; }
 }
+/* ---------- v164: Inicio del mes actual en UNA pantalla en computadora (sin scroll) ---------- */
+@media (min-width: 1024px) {
+  body .pantalla.inicio.una-pantalla { max-width: none; padding: 16px 28px 14px; gap: 12px; min-height: 100dvh; box-sizing: border-box; }
+  body:has(.pantalla.inicio.una-pantalla) { padding-bottom: 0; }
+  /* Avisos: todos en una fila, cada uno compacto */
+  .una-pantalla > .avisos-fila { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+  .una-pantalla > .avisos-fila > .avisos-inicio { display: contents; }
+  .una-pantalla > .avisos-fila :is(.aviso-fila, .aviso-pend) { margin: 0; min-width: 0; min-height: 52px; padding: 8px 12px; gap: 10px; }
+  .una-pantalla > .avisos-fila :is(.aviso-fila, .aviso-pend) :is(strong, small, .suave) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+  .una-pantalla > .avisos-fila :is(.aviso-pend > .aviso-pend-texto, .aviso-fila > span:not([class])) { min-width: 0; flex: 1 1 auto; }
+  .una-pantalla > .avisos-fila :is(.aviso-pend-total, .aviso-pend-ir, .aviso-monto) { flex: 0 0 auto; }
+  /* Resumen: una sola franja (saldo · anillo · cuatro datos en 2×2 · por pagar) */
+  body .pantalla.inicio.una-pantalla > .hero { grid-template-columns: minmax(0, 1.05fr) auto minmax(0, 1fr) minmax(250px, 290px); grid-template-areas: 'principal anillo datos pagar'; grid-template-rows: auto; padding: 20px 24px; column-gap: 22px; row-gap: 0; align-items: center; }
+  body .pantalla.inicio.una-pantalla > .hero .hero-monto { font-size: 3rem; margin: 2px 0 4px; }
+  body .pantalla.inicio.una-pantalla > .hero .anillo { width: 104px; height: 104px; margin: 0; }
+  body .pantalla.inicio.una-pantalla > .hero .anillo-texto strong { font-size: 1.55rem; }
+  body .pantalla.inicio.una-pantalla > .hero .hero-datos { grid-area: datos; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 14px; padding: 0 0 0 22px; border-top: 0; border-left: 1px solid rgba(255, 255, 255, 0.14); align-self: stretch; align-content: center; }
+  body .pantalla.inicio.una-pantalla > .hero .hero-datos li { padding: 0; border-left: 0; grid-template-columns: 30px minmax(0, 1fr); column-gap: 10px; }
+  body .pantalla.inicio.una-pantalla > .hero .hero-datos .hero-ico { width: 30px; height: 30px; border-radius: 9px; }
+  body .pantalla.inicio.una-pantalla > .hero .hero-datos .hero-ico .icono, body .pantalla.inicio.una-pantalla > .hero .hero-datos .hero-ico .icono svg { width: 16px; height: 16px; }
+  body .pantalla.inicio.una-pantalla > .hero .hero-datos strong { font-size: 1.15rem; }
+  body .pantalla.inicio.una-pantalla > .hero .hero-pagar { padding: 14px 16px; gap: 8px; }
+  body .pantalla.inicio.una-pantalla > .hero .hero-pagar-monto { font-size: 1.7rem; }
+  /* Abajo: quién gastó · últimos gastos · entre ustedes y antojos, del mismo alto y llenando lo que queda */
+  .una-pantalla > .inicio-abajo { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 0.85fr); gap: 12px; align-items: stretch; }
+  .una-pantalla > .inicio-abajo > * { min-width: 0; min-height: 0; margin: 0; }
+  .una-pantalla > .inicio-abajo > .panel { padding: 14px 16px; gap: 8px; }
+  .una-pantalla > .inicio-abajo > .tiras-inicio { display: flex; flex-direction: column; gap: 12px; margin: 0; }
+  .una-pantalla > .inicio-abajo > .tiras-inicio > .tira { flex: 1 1 0; min-height: 0; }
+}
+@media (min-width: 1024px) {
+  body .pantalla.inicio.una-pantalla { padding-top: 10px; }
+  body .pantalla.inicio.una-pantalla > .hero { padding-block: 16px; }
+  .una-pantalla > .inicio-abajo .panel-cab { min-height: 0; }
+  .una-pantalla > .inicio-abajo .pest-cuerpo { min-height: 0; }
+  .una-pantalla > .inicio-abajo .gd { padding-top: 22px; }
+  .una-pantalla > .inicio-abajo .gd-plano { height: clamp(90px, calc(100dvh - 560px), 280px); }
+  .una-pantalla > .inicio-abajo .gp-lista { gap: 8px; }
+  .una-pantalla > .inicio-abajo .gp-fila .avatar.grande { width: 36px; height: 36px; font-size: 0.95rem; }
+  .una-pantalla > .inicio-abajo .lista-mov > li { padding-block: 6px; }
+}
+@media (min-width: 1024px) and (max-height: 800px) {
+  .una-pantalla > .inicio-abajo .gp-texto > .suave { display: none; }
+  .una-pantalla > .inicio-abajo .gp-fila .avatar.grande { width: 32px; height: 32px; }
+  body .pantalla.inicio.una-pantalla { gap: 10px; }
+}
+@media (min-width: 1024px) { body .pantalla.inicio.una-pantalla { padding-bottom: 8px; } }
+@media (min-width: 1024px) {
+  .una-pantalla > .avisos-fila { display: flex; flex-wrap: nowrap; gap: 10px; }
+  .una-pantalla > .avisos-fila :is(.aviso-fila, .aviso-pend):not([hidden]) { flex: 1 1 0; display: flex; }
+}
+/* La fila de abajo toma justo lo que sobra de la ventana; lo que no entra en un panel no estira la página */
+@media (min-width: 1024px) and (min-height: 600px) {
+  body .pantalla.inicio.una-pantalla { height: calc(100dvh - 1px); min-height: 0; }
+  .una-pantalla > .cabecera-fila { margin-top: 0; }
+  .una-pantalla > .inicio-abajo { flex: 1 1 0; }
+  .una-pantalla > .inicio-abajo > .panel { overflow: hidden; }
+  .una-pantalla > .inicio-abajo :is(.gp-lista, .pest-cuerpo) { overflow: hidden; }
+}
+@media (min-width: 1024px) {
+  body .pantalla.inicio.una-pantalla > .hero { grid-template-columns: minmax(0, 0.95fr) auto minmax(0, 1.3fr) minmax(240px, 270px); }
+  body .pantalla.inicio.una-pantalla > .hero .hero-dato-etq { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .una-pantalla > .avisos-fila .aviso-pend .aviso-pend-ir { font-size: 0; gap: 0; }
+  .una-pantalla > .avisos-fila .aviso-pend .aviso-pend-ir .icono { font-size: 1rem; }
+  .una-pantalla > .inicio-abajo { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1fr); }
+  .una-pantalla > .inicio-abajo .tira-texto small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+}
+@media (min-width: 1024px) and (min-height: 600px) { body .pantalla.inicio.una-pantalla { overflow-y: clip; overflow-clip-margin: 6px; } }
+/* Computadora angosta (1024–1399 px): el resumen en dos filas y textos que no se corten */
+@media (min-width: 1024px) and (max-width: 1399px) {
+  body .pantalla.inicio.una-pantalla > .hero { grid-template-columns: minmax(0, 1fr) auto minmax(240px, 280px); grid-template-areas: 'principal anillo pagar' 'datos datos datos'; row-gap: 14px; }
+  body .pantalla.inicio.una-pantalla > .hero .hero-datos { grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 14px 0 0; border-left: 0; border-top: 1px solid rgba(255, 255, 255, 0.14); gap: 0 14px; }
+  body .pantalla.inicio.una-pantalla > .hero .hero-personas .hp-lista { flex-wrap: nowrap; }
+  .una-pantalla > .avisos-fila :is(.aviso-fila, .aviso-pend) small, .una-pantalla > .avisos-fila .aviso-pend .suave { display: none; }
+  .una-pantalla > .avisos-fila :is(.aviso-fila, .aviso-pend) strong, .una-pantalla > .avisos-fila .aviso-pend-texto { white-space: normal; line-height: 1.25; }
+  .una-pantalla > .inicio-abajo .gp-texto > .suave { display: none; }
+  .una-pantalla > .inicio-abajo .lista-mov .mov-der .suave { display: none; }
+}
+@media (min-width: 1024px) {
+  /* Tiras altas en la columna derecha: texto arriba, botón abajo (así no se corta nada) */
+  .una-pantalla > .inicio-abajo .tira { flex-direction: column; align-items: stretch; justify-content: center; gap: 10px; padding: 14px 16px; }
+  .una-pantalla > .inicio-abajo .tira-principal { width: 100%; min-width: 0; }
+  .una-pantalla > .inicio-abajo .tira-accion { align-self: flex-start; }
+  .una-pantalla > .inicio-abajo .tira-texto :is(small, span) { white-space: normal; overflow: visible; text-overflow: clip; }
+}
+@media (min-width: 1024px) and (max-width: 1399px) {
+  body .pantalla.inicio.una-pantalla > .avisos-fila :is(.aviso-fila, .aviso-pend) :is(strong, .aviso-pend-texto) { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.25; }
+}
+@media (min-width: 1024px) and (max-width: 1399px) {
+  body .pantalla.inicio.una-pantalla > .avisos-fila :is(.aviso-fila small, .aviso-pend .suave) { display: none; }
+}
+@media (min-width: 1024px) {
+  .una-pantalla > .inicio-abajo .panel-pestanas .pest-cuerpo { justify-content: flex-start; }
+  .una-pantalla > .inicio-abajo .panel-pestanas .panel-cab { flex-wrap: nowrap; }
+  .una-pantalla > .inicio-abajo .panel-pestanas .pest-lado { flex-shrink: 0; white-space: nowrap; }
+}
+@media (min-width: 1024px) and (max-width: 1399px) {
+  .una-pantalla > .inicio-abajo .panel-pestanas .pest { padding-inline: 10px; }
+}
+@media (max-width: 1023px) {
+  .una-pantalla > .avisos-fila, .una-pantalla > .inicio-abajo { display: flex; flex-direction: column; gap: 12px; }
+  .una-pantalla > .avisos-fila > .avisos-inicio { margin: 0; }
+  .una-pantalla > .avisos-fila > .avisos-inicio:empty { display: none; }
+}
