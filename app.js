@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v167';
+const VERSION_APP = 'finfamily-v168';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -236,6 +236,13 @@ function limpiarComercio(texto) {
   return s || original;
 }
 
+function alCambiarOcultos() {
+  const caja = document.querySelector('.nav-proximo');
+  if (caja) caja.dataset.clave = '';
+  try { pintarProximoPago(); } catch { /* aún no hay menú */ }
+  try { navegar({ silencioso: true }); } catch { /* nada */ }
+}
+
 // Escribe un monto. Con data-rico, el símbolo y los céntimos van más chicos (se lee primero la cifra).
 function pintarMonto(el, valor) {
   const texto = soles(valor);
@@ -282,6 +289,7 @@ function botonCuenta(variante) {
       h('button', { type: 'button', class: 'cuenta-enlace', 'aria-pressed': String(document.body.classList.contains('montos-ocultos')), onclick: (ev) => {
         const oculto = document.body.classList.toggle('montos-ocultos');
         try { localStorage.setItem('ff:ocultar', oculto ? '1' : ''); } catch { /* nada */ }
+        alCambiarOcultos();
         ev.currentTarget.setAttribute('aria-pressed', String(oculto));
         ev.currentTarget.lastChild.textContent = oculto ? 'Mostrar montos' : 'Ocultar montos';
         ev.currentTarget.firstChild.replaceWith(icono(oculto ? 'ojo-tachado' : 'ojo'));
@@ -482,6 +490,7 @@ function svg(tag, attrs, ...hijos) {
 }
 
 function solesCorto(n) {
+  if (document.body.classList.contains('montos-ocultos')) return 'S/ ••••';
   const v = Math.round(Number(n) || 0);
   return (v < 0 ? '-' : '') + 'S/ ' + Math.abs(v).toLocaleString('en-US');
 }
@@ -1224,7 +1233,10 @@ function deISO(s) {
 const fmtNumero = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtEntero = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
 // 6000 -> 'S/ 6,000'; 1042.96 -> 'S/ 1,042.96'; 7.5 -> 'S/ 7.50'. Sin céntimos no se escriben decimales.
+// v168: con "Ocultar montos" todo monto se escribe como en las tarjetas: S/ ••••
+const montosOcultos = () => document.body.classList.contains('montos-ocultos');
 function soles(n) {
+  if (montosOcultos()) return 'S/ ••••';
   const v = Math.round((Number(n) || 0) * 100) / 100;
   const abs = Math.abs(v);
   const s = 'S/ ' + (Number.isInteger(abs) ? fmtEntero.format(abs) : fmtNumero.format(abs));
@@ -1573,7 +1585,7 @@ function pintarProximoPago() {
     .sort((a, b) => String(fechaPagoTC(a)).localeCompare(String(fechaPagoTC(b))))[0];
   if (!prox || !api.emailGuardado()) { caja.hidden = true; caja.dataset.clave = ''; return; }
   const e = estadoVence(prox.proximoVence, prox.pendiente, pagoDeTC(prox));
-  const clave = [prox.id, prox.pendiente, e.texto].join('|');
+  const clave = [prox.id, prox.pendiente, e.texto, montosOcultos()].join('|');
   if (caja.dataset.clave === clave) return; // sin cambios: no se vuelve a animar
   caja.dataset.clave = clave;
   caja.hidden = false;
@@ -5270,10 +5282,11 @@ async function vistaConfiguracion(seccion) {
   // Privacidad
   const oculto = document.body.classList.contains('montos-ocultos');
   rejilla.append(panel('revelar', 'Privacidad', null,
-    filaConfig('Ocultar montos', 'Las cifras se ven borrosas hasta que las toques. Útil si alguien mira tu pantalla.',
+    filaConfig('Ocultar montos', 'Los montos se ven como S/ ••••, igual que el número de una tarjeta. Útil si alguien mira tu pantalla.',
       interruptor(oculto, 'Ocultar montos', (v) => {
         document.body.classList.toggle('montos-ocultos', v);
         try { localStorage.setItem('ff:ocultar', v ? '1' : ''); } catch { /* nada */ }
+        alCambiarOcultos();
       })),
     ));
 
@@ -7005,10 +7018,11 @@ async function vistaPresupuesto() {
           const botonMeta = motorMetas() && editable ? h('button', { type: 'button', class: 'chip-meta' + (plan ? ' con-meta' : ''), title: plan ? 'Cambiar la meta' : 'Ponerle una meta con fecha',
             onclick: () => abrirMeta({ concepto: f?.concepto || m.concepto, disponible: Number(m.disponible ?? m.acumulado) || 0, aporteMes: aporte, mes: d.mes,
               actual: plan ? { objetivo: plan.objetivo, fecha: plan.fecha } : null }, () => navegar({ silencioso: true })) },
-            icono('meta'), plan ? `${soles(plan.objetivo)} · ${mesCorto(plan.fecha)}` : 'Meta') : null;
-          return h('li', { class: vacia ? 'meta vacia' : 'meta', style: `--i: ${k}`, title: aportes.map((x) => `${x.etiqueta}: ${soles(x.monto)}`).join('\n') },
-            h('div', { class: 'meta-top' }, h('span', { class: 'meta-nombre' }, nombre, botonMeta),
-              h('strong', { 'data-contar': String(Math.max(0, (m.acumulado || 0) - usado)) }, soles(0))),
+            icono('meta'), plan ? `${soles(plan.objetivo)} · ${mesCorto(plan.fecha)}` : 'Ponle meta') : null;
+          // v168: todas iguales: nombre arriba, monto grande, barra y abajo "Este mes" a la izquierda y la meta a la derecha.
+          return h('li', { class: vacia ? 'meta aho vacia' : 'meta aho', style: `--i: ${k}`, title: aportes.map((x) => `${x.etiqueta}: ${soles(x.monto)}`).join('\n') },
+            h('div', { class: 'aho-cab' }, h('span', { class: 'aho-ico', 'aria-hidden': 'true' }, icono('billetera')), h('span', { class: 'aho-nombre', title: nombre }, nombre)),
+            h('strong', { class: 'aho-monto', 'data-contar': String(Math.max(0, (m.acumulado || 0) - usado)) }, soles(0)),
             usado > 0 ? h('small', { class: 'suave meta-usado' }, `Guardado ${soles(m.acumulado || 0)} · usado ${soles(usado)}`) : null,
             h('div', { class: 'gp-barra' + (plan ? ' hacia-meta' : '') }, h('i', { 'data-w': `${Math.round(plan ? plan.pct : ((m.acumulado || 0) / mayor) * 100)}%` })),
             plan ? h('div', { class: 'meta-avance' }, h('span', { class: 'suave' }, `${Math.floor(plan.pct)} % · faltan ${soles(plan.faltan)}`), h('span', { class: `meta-estado ${tMeta.clase}` }, tMeta.texto)) : null,
@@ -7023,12 +7037,12 @@ async function vistaPresupuesto() {
                 ? ` Si bajan los antojos 20 % (+${soles(extra)} al mes), llegan en ${con} ${con === 1 ? 'mes' : 'meses'} en vez de ${sin}.`
                 : ` Con el 20 % de los antojos (${soles(extra)} al mes) llegan en ${con} ${con === 1 ? 'mes' : 'meses'}.`);
             })(),
-            h('div', { class: 'meta-pie' },
-              h('span', {}, 'Este mes ',
+            h('div', { class: 'aho-pie' },
+              h('span', { class: 'aho-este' }, h('small', {}, 'Este mes'),
                 f && editable && !(f.monto < 0)
                   ? h('button', { type: 'button', class: 'monto-editable', title: 'Clic para cambiar lo de este mes', 'aria-label': `Cambiar el ahorro de este mes en ${nombre}`, onclick: (ev) => editarEnLinea(ev.currentTarget, d.mes, f) }, soles(f.monto || 0))
                   : h('b', {}, soles(m.delMes || 0))),
-              h('span', { class: 'suave' }, vacia ? 'Aún sin aportes' : aportes.length === 1 ? `1 aporte (${aportes[0].etiqueta.replace('-', ' ')})` : aportes.length ? `${aportes.length} aportes desde ${aportes[0].etiqueta.replace('-', ' ')}` : '')));
+              botonMeta));
         })));
       animarVista(sec);
     }).catch(() => {});
