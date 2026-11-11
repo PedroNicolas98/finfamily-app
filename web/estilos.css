@@ -3984,3 +3984,46 @@ body.menu-chico .cuenta-menu.nav .cuenta-boton:has(.avatar.con-foto):focus-visib
   body .ruta-paso .ruta-texto { align-items: flex-start; text-align: left; }
   body .ruta-paso .ruta-monto { justify-self: end; }
 }
+/* Inicio: "Entre ustedes" y "Antojos" en dos tiras compactas lado a lado (v139) */
+.tiras-inicio { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 14px; }
+.tablero > .tiras-inicio { grid-column: 1 / -1; }
+.tira {
+  position: relative; display: flex; align-items: center; gap: 12px; min-width: 0; padding: 12px 14px 12px 12px;
+  border-radius: var(--radio); border: 1px solid var(--borde); background: var(--sup); box-shadow: var(--sombra);
+  opacity: 0; translate: 0 8px; transition: opacity 380ms ease, translate 420ms var(--suave), transform 260ms var(--suave), border-color 200ms ease, box-shadow 260ms ease;
+}
+.tira.tira-lista { opacity: 1; translate: 0 0; }
+.tira + .tira.tira-lista { transition-delay: 80ms, 80ms, 0s, 0s, 0s; }
+.tira:hover { transform: translateY(-2px); border-color: var(--borde-fuerte); box-shadow: var(--sombra-alta); }
+.tira-principal { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; padding: 2px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 12px; }
+.tira-principal:focus-visible { outline: 2px solid var(--accion); outline-offset: 3px; }
+.tira-ico { position: relative; flex-shrink: 0; width: 46px; height: 46px; border-radius: 15px; display: grid; place-items: center; background: var(--sup-2); color: var(--tinta-2); transition: transform 300ms var(--suave); }
+.tira:hover .tira-ico { transform: scale(1.06) rotate(-4deg); }
+.tira-ico .icono, .tira-ico .icono svg { width: 22px; height: 22px; }
+.tira-ico.ok { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+.tira-ico.ok .icono { animation: marca 520ms var(--suave) both; }
+.tira-ico.antojo { background: color-mix(in srgb, var(--aviso) 18%, transparent); color: var(--aviso); }
+.tira-ico.pareja { background: none; width: 52px; }
+.tira-ico.pareja .avatar { width: 30px; height: 30px; position: absolute; top: 8px; }
+.tira-ico.pareja .avatar:first-child { left: 0; z-index: 1; }
+.tira-ico.pareja .avatar:last-child { right: 0; }
+.tira-ico.tira-anillo { background: none; border-radius: 50%; }
+.tira-ico.tira-anillo .anillo-svg, .tira-ico.tira-anillo svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.tira-ico.tira-anillo circle { fill: none; stroke-width: 5; stroke-linecap: round; }
+.tira-ico.tira-anillo .anillo-fondo { stroke: var(--sup-2); }
+.tira-ico.tira-anillo .anillo-valor { stroke: var(--ok); transition: stroke-dashoffset 1100ms var(--suave); }
+.tira-ico.tira-anillo.aviso .anillo-valor { stroke: var(--aviso); }
+.tira-ico.tira-anillo.mal .anillo-valor { stroke: var(--mal); }
+.tira-ico.tira-anillo b { position: relative; font-size: 0.7rem; font-weight: 750; color: var(--tinta); font-variant-numeric: tabular-nums; }
+.tira-texto { display: flex; flex-direction: column; gap: 1px; min-width: 0; line-height: 1.2; }
+.tira-texto small { font-size: 0.74rem; font-weight: 650; color: var(--tinta-2); }
+.tira-texto strong { font-size: 1.28rem; font-weight: 750; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.tira-texto span { font-size: 0.78rem; color: var(--tinta-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tira-cuentas.a-mano .tira-texto strong { color: var(--ok); }
+.tira-accion { display: flex; align-items: center; flex-shrink: 0; color: var(--tinta-3); }
+.tira-accion > .icono, .tira-accion > .icono svg { width: 18px; height: 18px; }
+.tira-accion .boton.chico { white-space: nowrap; }
+.tira-mas { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--borde); background: var(--sup-2); color: var(--tinta); cursor: pointer; transition: transform 220ms var(--suave), background 200ms ease; }
+.tira-mas:hover { transform: rotate(90deg) scale(1.06); background: var(--accion); color: var(--sobre-accion, #0B1220); }
+.tira-mas .icono, .tira-mas .icono svg { width: 18px; height: 18px; }
+@media (prefers-reduced-motion: reduce) { .tira, .tira-ico, .tira-mas { transition: none; } .tira { opacity: 1; translate: none; } }
