@@ -885,7 +885,7 @@ test('avisosDelDia con hojas sintéticas y textoAvisos: asunto y cuerpo del corr
 // ===========================================================================
 
 test('ajustesAvisosDesde y validarAjustesAvisos: defectos, mezcla y validación', () => {
-  const defecto = { vencimiento: true, presupuesto: true, gastoGrande: 300, resumenSemanal: true, calendario: true, recordatorio: true };
+  const defecto = { vencimiento: true, presupuesto: true, gastoGrande: 300, resumenSemanal: true, calendario: true, recordatorio: true, subidas: true };
   assert.deepEqual(L.AJUSTES_AVISOS_DEFECTO, defecto);
   assert.deepEqual(L.ajustesAvisosDesde(null), defecto);
   assert.deepEqual(L.ajustesAvisosDesde('no es json'), defecto);
@@ -1343,4 +1343,21 @@ test('1.23.0: pagos de servicios: qué correo cuenta, a qué línea va y sin con
   assert.equal(L.lineaDePago('pago en dentelandia', lineas), null, 'solo palabras completas');
   assert.equal(L.sumaPagosFijo([{ fecha: '2026-11-13', monto: 37.94 }, { fecha: '2026-11-13', monto: 37.94 }, { fecha: '2026-11-14', monto: 29.95 }]), 67.89);
   assert.equal(L.textoPagadoPorCorreo('2026-11-13'), 'Pagado el 13/11/2026 · automático (correo)');
+});
+
+test('1.25.0: cobros aprendidos (dos recibos de Entel son dos cobros) y subidas de precio', () => {
+  const reg = { meses: {
+    '2026-09': { 'plan movil': [{ fecha: '2026-10-13', monto: 37.94, de: 'entel' }, { fecha: '2026-10-13', monto: 37.94, de: 'entel' }, { fecha: '2026-10-05', monto: 29.95, de: 'entel' }] },
+    '2026-10': { 'plan movil': [{ fecha: '2026-11-12', monto: 38.5, de: 'entel' }] }
+  } };
+  assert.deepEqual(L.cobrosAprendidos(reg).map((c) => [c.de, c.dia, c.monto, c.veces]), [['entel', 5, 29.95, 1], ['entel', 12, 38.5, 2]]);
+  const antes = reg.meses['2026-09']['plan movil'];
+  assert.equal(L.subidaDePrecio(antes, { fecha: '2026-11-12', monto: 38.5 }), null, 'S/ 0.56 es menos del 3 %');
+  assert.deepEqual(JSON.parse(JSON.stringify(L.subidaDePrecio(antes, { fecha: '2026-11-12', monto: 45.94 }))), { antes: 37.94, fechaAntes: '2026-10-13', ahora: 45.94, dif: 8 });
+  assert.equal(L.subidaDePrecio(antes, { fecha: '2026-11-05', monto: 29.95 }), null, 'el otro recibo no subió');
+  assert.equal(L.subidaDePrecio(antes, { fecha: '2026-10-20', monto: 50 }), null, 'muy cerca del anterior: no se compara');
+  const t = L.textoSubidaPrecio({ de: 'entel', linea: 'Plan móvil', antes: 37.94, fechaAntes: '2026-10-13', ahora: 45.94, dif: 8 });
+  assert.equal(t.asunto, 'FinFamily: Entel subió S/ 8');
+  assert.match(t.cuerpo, /Entel cobró S\/ 45\.94\. La vez anterior \(13\/10\/2026\) fueron S\/ 37\.94\./);
+  assert.equal(L.textoCobrosProximos([{ de: 'entel', monto: 37.94, fecha: '2026-12-13', linea: 'Plan móvil' }]).asunto, 'FinFamily: en 2 días toca Entel');
 });

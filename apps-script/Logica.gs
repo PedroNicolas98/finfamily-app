@@ -2245,7 +2245,7 @@ function pendientesActivos(lista, catalogo) {
 // Ajustes de avisos y datos de tarjetas (motor 1.3)
 // ---------------------------------------------------------------------------
 
-var AJUSTES_AVISOS_DEFECTO = { vencimiento: true, presupuesto: true, gastoGrande: 300, resumenSemanal: true, calendario: true, recordatorio: true };
+var AJUSTES_AVISOS_DEFECTO = { vencimiento: true, presupuesto: true, gastoGrande: 300, resumenSemanal: true, calendario: true, recordatorio: true, subidas: true };
 var GASTO_GRANDE_MAXIMO = 100000;
 var IDS_TARJETAS_DATOS = ['SIP', 'IBK_P', 'IBK_B', 'BCP', 'RIPLEY']; // valor inicial; manda el catálogo
 
@@ -2261,7 +2261,7 @@ function ajustesAvisosDesde(crudo) {
   var g;
   try { g = JSON.parse(crudo); } catch (err) { return a; }
   if (!g || typeof g !== 'object') return a;
-  ['vencimiento', 'presupuesto', 'resumenSemanal', 'calendario', 'recordatorio'].forEach(function (k) {
+  ['vencimiento', 'presupuesto', 'resumenSemanal', 'calendario', 'recordatorio', 'subidas'].forEach(function (k) {
     if (typeof g[k] === 'boolean') a[k] = g[k];
   });
   if (typeof g.gastoGrande === 'number' && isFinite(g.gastoGrande) && g.gastoGrande >= 0 && g.gastoGrande <= GASTO_GRANDE_MAXIMO) {
@@ -2277,7 +2277,7 @@ function ajustesAvisosDesde(crudo) {
 function validarAjustesAvisos(datos, actuales) {
   var d = datos || {};
   var a = ajustesAvisosDesde(JSON.stringify(actuales || AJUSTES_AVISOS_DEFECTO));
-  var booleanos = ['vencimiento', 'presupuesto', 'resumenSemanal', 'calendario', 'recordatorio'];
+  var booleanos = ['vencimiento', 'presupuesto', 'resumenSemanal', 'calendario', 'recordatorio', 'subidas'];
   for (var i = 0; i < booleanos.length; i++) {
     var k = booleanos[i];
     if (d[k] === undefined) continue;
@@ -2490,17 +2490,99 @@ function lineaDePago(texto, lineas) {
 
 /** Total pagado de una línea sin contar dos veces el mismo pago (mismo monto con 2 días o menos de diferencia). */
 function sumaPagosFijo(lista) {
+  var total = pagosUnicos(lista).reduce(function (t, p) { return t + p.monto; }, 0);
+  return Math.round(total * 100) / 100;
+}
+
+// ---------------------------------------------------------------------------
+// Cobros de servicios (motor 1.25.0): con los pagos leídos del correo se aprende qué día y cuánto se cobra cada
+// empresa (dos recibos de Entel de montos distintos son dos cobros) y se avisa si un cobro sube de precio.
+// ---------------------------------------------------------------------------
+
+/** Los pagos sin repetir (el mismo monto con 2 días o menos de diferencia es el mismo pago), del más viejo al más nuevo. */
+function pagosUnicos(lista) {
   var vistos = [];
-  var total = 0;
   (lista || []).slice().sort(function (a, b) { return a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0; }).forEach(function (p) {
     var monto = Number(p.monto) || 0;
     var repetido = vistos.some(function (v) { return Math.abs(v.monto - monto) < 0.01 && Math.abs(diasEntre_(v.fecha, p.fecha)) <= 2; });
-    if (repetido) return;
-    vistos.push({ monto: monto, fecha: p.fecha });
-    total += monto;
+    if (!repetido) vistos.push({ id: p.id, fecha: p.fecha, monto: monto, de: p.de });
   });
-  return Math.round(total * 100) / 100;
+  return vistos;
 }
+
+/**
+ * Cobros aprendidos del registro de pagos: [{clave, de, dia, monto, ultima, veces}], uno por empresa, línea y
+ * monto parecido (±15 % o S/ 3). dia y monto son los del último cobro.
+ */
+function cobrosAprendidos(registro) {
+  var grupos = {};
+  var meses = (registro && registro.meses) || {};
+  Object.keys(meses).forEach(function (mes) {
+    Object.keys(meses[mes]).forEach(function (clave) {
+      meses[mes][clave].forEach(function (p) {
+        if (!p.de) return;
+        var k = clave + '\u0001' + p.de;
+        (grupos[k] = grupos[k] || []).push(p);
+      });
+    });
+  });
+  var salida = [];
+  Object.keys(grupos).forEach(function (k) {
+    var partes = k.split('\u0001');
+    var racimos = [];
+    pagosUnicos(grupos[k]).forEach(function (p) {
+      var mejor = null;
+      racimos.forEach(function (r) {
+        var d = Math.abs(r.ultimo.monto - p.monto);
+        if (d <= Math.max(3, r.ultimo.monto * 0.15) && (!mejor || d < Math.abs(mejor.ultimo.monto - p.monto))) mejor = r;
+      });
+      if (mejor) { mejor.veces++; mejor.ultimo = p; } else racimos.push({ ultimo: p, veces: 1 });
+    });
+    racimos.forEach(function (r) {
+      salida.push({ clave: partes[0], de: partes[1], dia: Number(r.ultimo.fecha.slice(8, 10)), monto: r.ultimo.monto, ultima: r.ultimo.fecha, veces: r.veces });
+    });
+  });
+  return salida.sort(function (a, b) { return (a.clave < b.clave ? -1 : a.clave > b.clave ? 1 : 0) || (a.dia - b.dia); });
+}
+
+/**
+ * ¿Este pago {fecha, monto} sube frente al cobro anterior de la misma empresa y línea? anteriores: pagos ya
+ * guardados. Se compara con el más parecido de hace 20 a 75 días. Devuelve {antes, fechaAntes, ahora, dif} o null.
+ */
+function subidaDePrecio(anteriores, pago) {
+  var previos = pagosUnicos(anteriores).filter(function (p) {
+    var d = diasEntre_(p.fecha, pago.fecha);
+    return d >= 20 && d <= 75;
+  });
+  if (!previos.length) return null;
+  var ahora = Number(pago.monto) || 0;
+  var cerca = previos.reduce(function (a, b) { return Math.abs(b.monto - ahora) < Math.abs(a.monto - ahora) ? b : a; });
+  var dif = Math.round((ahora - cerca.monto) * 100) / 100;
+  if (dif < Math.max(1, cerca.monto * 0.03)) return null;
+  return { antes: cerca.monto, fechaAntes: cerca.fecha, ahora: ahora, dif: dif };
+}
+
+/** {asunto, cuerpo} del aviso de subida. x: {de, linea, antes, fechaAntes, ahora, dif}. */
+function textoSubidaPrecio(x) {
+  var de = capitalizar_(x.de);
+  return {
+    asunto: 'FinFamily: ' + de + ' subió ' + formatoSoles_(x.dif),
+    cuerpo: [de + ' cobró ' + formatoSoles_(x.ahora) + '. La vez anterior (' + fechaCorta_(x.fechaAntes) + ') fueron ' + formatoSoles_(x.antes) + '.',
+      '', 'Va en la línea ' + x.linea + ' del presupuesto. Si no esperabas el cambio, revisa tu plan con ' + de + '.'].join('\n')
+  };
+}
+
+/** {asunto, cuerpo} de los cobros que vienen en 2 días. lista: [{de, monto, fecha, linea}]. */
+function textoCobrosProximos(lista) {
+  var nombres = lista.map(function (x) { return capitalizar_(x.de); });
+  return {
+    asunto: 'FinFamily: en 2 días toca ' + (nombres.length > 2 ? nombres.slice(0, 2).join(', ') + ' y ' + (nombres.length - 2) + ' más' : nombres.join(' y ')),
+    cuerpo: 'Se vienen estos cobros:\n\n' + lista.map(function (x) {
+      return '• ' + capitalizar_(x.de) + ': ~' + formatoSoles_(x.monto) + ' el ' + fechaCorta_(x.fecha).slice(0, 5) + ' (' + x.linea + ')';
+    }).join('\n') + '\n\nQue la tarjeta o la cuenta tenga saldo.'
+  };
+}
+
 
 /** Registro guardado de pagos fijos (texto JSON o null): {ids: {idCorreo: fecha}, meses: {mes: {clave: [pagos]}}}. */
 function pagosFijosDesde(texto) {
@@ -3084,6 +3166,11 @@ if (typeof module !== 'undefined') {
     datosTarjetasDesde: datosTarjetasDesde,
     validarDatosTarjeta: validarDatosTarjeta,
     textoGastoGrande: textoGastoGrande,
+    pagosUnicos: pagosUnicos,
+    cobrosAprendidos: cobrosAprendidos,
+    subidaDePrecio: subidaDePrecio,
+    textoSubidaPrecio: textoSubidaPrecio,
+    textoCobrosProximos: textoCobrosProximos,
     metasAnualesDesde: metasAnualesDesde,
     validarMetaAnual: validarMetaAnual,
     palabrasValidas: palabrasValidas,

@@ -26,7 +26,7 @@
  *   FINFAMILY_ICONOS               ícono elegido para cada tipo de gasto (motor 1.5.1).
  */
 
-var VERSION = '1.24.0';
+var VERSION = '1.25.0';
 var ZONA_HORARIA = 'America/Lima';
 var DIAS_AVISO = 3;
 var SEGUNDOS_CACHE_TOKEN = 300;
@@ -55,6 +55,7 @@ var PROPIEDAD_WA_GREEN = 'FINFAMILY_WA_GREEN';         // motor 1.19.0: {apiUrl,
 var PROPIEDAD_WA_META = 'FINFAMILY_WA_META';           // motor 1.18.0: {token, phoneId, plantilla, idioma, version} (privado)
 var PROPIEDAD_CUADRES = 'FINFAMILY_CUADRES';           // motor 1.16.0: último cuadre de cada cuenta
 var PROPIEDAD_METAS = 'FINFAMILY_METAS';               // motor 1.15.0: objetivo y mes límite por línea de ahorro
+var PROPIEDAD_PAGOS_HISTORIA = 'FINFAMILY_PAGOS_HISTORIA'; // motor 1.25.0: ya se leyeron los cobros de los últimos 75 días
 var PROPIEDAD_META_ANUAL = 'FINFAMILY_META_ANUAL';     // motor 1.24.0: meta de ahorro de cada año {'2027': 12000}
 var PROPIEDAD_FIJOS = 'FINFAMILY_FIJOS';               // motor 1.13.0: día y si se paga solo, por línea fija
 var PROPIEDAD_FIJOS_HECHOS = 'FINFAMILY_FIJOS_HECHOS'; // lo ya marcado o avisado, por línea y mes
@@ -1536,7 +1537,9 @@ function accionFijosAuto_(usuario) {
     (p ? p.filas : []).forEach(function (f) { if (f.seccion === 'gastos' && !f.esTarjeta) palabras[f.concepto] = palabrasDeFijo(f.concepto, config); });
     salida.palabras = palabras;
   } catch (err) { /* sin presupuesto del mes: la app usa lo que tiene */ }
-  salida.pagos = resumenPagosFijos(pagosFijosDesde(propiedad_(PROPIEDAD_PAGOS_FIJOS)));
+  var registro = pagosFijosDesde(propiedad_(PROPIEDAD_PAGOS_FIJOS));
+  salida.pagos = resumenPagosFijos(registro);
+  salida.cobros = cobrosAprendidos(registro).map(function (c) { return { clave: c.clave, de: capitalizar_(c.de), dia: c.dia, monto: c.monto, ultima: c.ultima }; });
   return salida;
 }
 
@@ -2970,8 +2973,8 @@ function corregirFechasDeLaAppUnaVez_() {
 // ---------------------------------------------------------------------------
 
 /** Correos de pagos de servicios ya hechos (de cualquier remitente) de los últimos días. */
-function consultaPagosServicio_() {
-  return 'newer_than:' + DIAS_CORREOS + 'd ("débito automático" OR "debito automatico" OR "pago de servicio" OR ' +
+function consultaPagosServicio_(dias) {
+  return 'newer_than:' + (dias || DIAS_CORREOS) + 'd ("débito automático" OR "debito automatico" OR "pago de servicio" OR ' +
     '"pago de tu servicio" OR "yapeo de servicio" OR "servicio fue yapeado" OR "cobro de tu recibo" OR "pago exitoso")';
 }
 
@@ -2980,13 +2983,17 @@ function consultaPagosServicio_() {
  * (extras: [{id, monto, fecha, texto}] del lector). Cuando lo pagado de una línea llega al 90 % de lo planeado,
  * la marca pagada en el mes del presupuesto que la paga (una sola vez: si alguien la desmarca, no se vuelve a marcar).
  */
-function revisarPagosDeServicios_(extras) {
+function revisarPagosDeServicios_(extras, opciones) {
+  var op = opciones || {};
+  var dias = op.dias || DIAS_CORREOS;
   var hoy = hoyServidor_();
   var registro = pagosFijosDesde(propiedad_(PROPIEDAD_PAGOS_FIJOS));
   var nuevos = (extras || []).filter(function (p) { return p && p.id && !registro.ids[p.id]; });
-  var desde = new Date(parsearFecha(hoy).getTime() - DIAS_CORREOS * 86400000);
+  var desde = new Date(parsearFecha(hoy).getTime() - dias * 86400000);
+  var recientes = new Date(parsearFecha(hoy).getTime() - DIAS_CORREOS * 86400000);
   var hilos = [];
-  try { hilos = GmailApp.search(consultaPagosServicio_(), 0, 50); } catch (err) { console.warn('FinFamily pagos fijos: no se pudo buscar en Gmail: ' + err); }
+  var subidas = []; // motor 1.25.0
+  try { hilos = GmailApp.search(consultaPagosServicio_(dias), 0, op.soloRegistrar ? 100 : 50); } catch (err) { console.warn('FinFamily pagos fijos: no se pudo buscar en Gmail: ' + err); }
   hilos.forEach(function (hilo) {
     try {
       hilo.getMessages().forEach(function (mensaje) {
@@ -2995,6 +3002,8 @@ function revisarPagosDeServicios_(extras) {
           if (registro.ids[id]) return;
           var fechaCorreo = mensaje.getDate();
           if (fechaCorreo && fechaCorreo.getTime && fechaCorreo.getTime() < desde.getTime()) return;
+          // El historial deja los de los últimos días para la pasada normal (esos sí marcan y avisan).
+          if (op.soloRegistrar && fechaCorreo && fechaCorreo.getTime && fechaCorreo.getTime() >= recientes.getTime()) return;
           var pago = pagoDeServicioDeCorreo({ remitente: mensaje.getFrom(), asunto: mensaje.getSubject(),
             cuerpo: mensaje.getPlainBody(), fechaISO: fechaISO(fechaCorreo) });
           if (pago) { pago.id = id; nuevos.push(pago); } else registro.ids[id] = hoy; // no era un pago: no se vuelve a leer
@@ -3014,19 +3023,30 @@ function revisarPagosDeServicios_(extras) {
       var display = rango.getDisplayValues(), valores = rango.getValues(), notas = rango.getNotes();
       var porMes = {};
       var tocadas = {};
-      nuevos.forEach(function (pago) {
+      // Para los meses que la hoja no tiene (cobros viejos), las líneas del mes en curso sirven para reconocerlos.
+      var mesHoy = mesDelCiclo(hoy);
+      var pHoy = leerPresupuesto(display, valores, mesHoy, notas);
+      nuevos.sort(function (a, b) { return a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0; }).forEach(function (pago) {
         registro.ids[pago.id] = pago.fecha;
         var mes = mesDelCiclo(pago.fecha);
         if (!porMes.hasOwnProperty(mes)) porMes[mes] = leerPresupuesto(display, valores, mes, notas);
-        var p = porMes[mes];
+        var p = porMes[mes] || pHoy;
         if (!p) return;
-        var lineas = p.filas.filter(function (f) { return f.seccion === 'gastos' && !f.esTarjeta && f.monto > 0; })
-          .map(function (f) { return { clave: claveLinea(f.concepto), palabras: palabrasDeFijo(f.concepto, config) }; });
+        var filasG = p.filas.filter(function (f) { return f.seccion === 'gastos' && !f.esTarjeta && f.monto > 0; });
+        var lineas = filasG.map(function (f) { return { clave: claveLinea(f.concepto), palabras: palabrasDeFijo(f.concepto, config) }; });
         var l = lineaDePago(pago.texto, lineas);
         if (!l) return;
+        if (!op.soloRegistrar) {
+          var anteriores = [];
+          Object.keys(registro.meses).forEach(function (m) { (registro.meses[m][l.clave] || []).forEach(function (x) { if (x.de === l.palabra) anteriores.push(x); }); });
+          var sube = subidaDePrecio(anteriores, pago);
+          var fl = filasG.filter(function (f) { return claveLinea(f.concepto) === l.clave; })[0];
+          if (sube) subidas.push(Object.assign({ de: l.palabra, linea: fl ? fl.concepto : l.clave }, sube));
+        }
         registro.meses[mes] = registro.meses[mes] || {};
         registro.meses[mes][l.clave] = registro.meses[mes][l.clave] || [];
         registro.meses[mes][l.clave].push({ id: pago.id, fecha: pago.fecha, monto: pago.monto, de: l.palabra });
+        if (op.soloRegistrar || !porMes[mes]) return; // los cobros viejos solo se guardan: no marcan nada
         var k2 = mes + '|' + l.clave;
         if (!tocadas[k2] || pago.fecha > tocadas[k2].fecha) tocadas[k2] = { mes: mes, clave: l.clave, fecha: pago.fecha };
       });
@@ -3052,13 +3072,61 @@ function revisarPagosDeServicios_(extras) {
   }
   PropertiesService.getScriptProperties().setProperty(PROPIEDAD_PAGOS_FIJOS, JSON.stringify(podarPagosFijos(registro, hoy)));
   if (marcados.length) console.log('FinFamily pagos fijos: marcado(s) por el correo: ' + marcados.join(', '));
-  return { pagos: nuevos.length, marcados: marcados.length };
+  // Motor 1.25.0: si un cobro subió frente al anterior de la misma empresa, se avisa (una vez por cobro).
+  var avisadas = 0;
+  if (subidas.length) {
+    try {
+      if (leerAjustesAvisos_().subidas !== false) {
+        subidas.forEach(function (x) { if (enviarCorreoAUsuarios_(textoSubidaPrecio(x), 'subida de precio').enviado) avisadas++; });
+      }
+    } catch (err) { console.warn('FinFamily subidas: ' + err); }
+  }
+  return { pagos: nuevos.length, marcados: marcados.length, subidas: avisadas };
+}
+
+/** Una sola vez: guarda los cobros de servicios de los últimos 75 días (sin marcar ni avisar) para aprender sus días. */
+function historialPagosServicioUnaVez_() {
+  if (propiedad_(PROPIEDAD_PAGOS_HISTORIA)) return null;
+  var r = revisarPagosDeServicios_([], { dias: 75, soloRegistrar: true });
+  PropertiesService.getScriptProperties().setProperty(PROPIEDAD_PAGOS_HISTORIA, new Date().toISOString());
+  return r;
+}
+
+/**
+ * Motor 1.25.0: dos días antes de un cobro aprendido (Entel el 13, la luz el 20...) avisa cuánto viene, una vez por
+ * cobro y mes. Si ese cobro ya llegó este mes, no avisa.
+ */
+function revisarCobrosProximos_(hoy) {
+  var cobros = cobrosAprendidos(pagosFijosDesde(propiedad_(PROPIEDAD_PAGOS_FIJOS)));
+  if (!cobros.length) return { motivo: 'sin cobros aprendidos' };
+  var objetivo = sumarDias_(hoy, 2);
+  var mesCal = objetivo.slice(0, 7);
+  var hechos = {};
+  try { hechos = JSON.parse(propiedad_(PROPIEDAD_FIJOS_HECHOS) || '{}') || {}; } catch (err) { hechos = {}; }
+  var nombres = {};
+  try {
+    var p = leerPresupuestoDelMes_(mesDelCiclo(hoy));
+    (p ? p.filas : []).forEach(function (f) { nombres[claveLinea(f.concepto)] = f.concepto; });
+  } catch (err) { /* sin presupuesto: se usa la clave */ }
+  var lista = [];
+  cobros.forEach(function (c) {
+    if (fechaDelFijo(c.dia, mesCal) !== objetivo || c.ultima.slice(0, 7) === mesCal) return;
+    var k = 'cobro|' + c.clave + '|' + c.de + '|' + c.monto + '|' + mesCal;
+    if (hechos[k]) return;
+    hechos[k] = hoy;
+    lista.push({ de: c.de, monto: c.monto, fecha: objetivo, linea: nombres[c.clave] || c.clave });
+  });
+  if (!lista.length) return { motivo: 'nada para avisar' };
+  var r = enviarCorreoAUsuarios_(textoCobrosProximos(lista), 'cobros próximos');
+  if (r.enviado) PropertiesService.getScriptProperties().setProperty(PROPIEDAD_FIJOS_HECHOS, JSON.stringify(hechos));
+  return { avisados: lista.length, enviado: r.enviado };
 }
 
 function leerCorreosDeBancos() {
   var extras = [];
   var r = leerCorreosDeBancosNucleo_(extras);
   // Motor 1.23.0: fuera del candado del lector (marcar pagado toma el suyo).
+  try { historialPagosServicioUnaVez_(); } catch (err) { console.warn('FinFamily historial de cobros: ' + err); }
   try { revisarPagosDeServicios_(extras); } catch (err) { console.warn('FinFamily pagos fijos: ' + err); }
   return r;
 }
@@ -3378,6 +3446,9 @@ function revisarAlertas() {
     resultado.fijos = { motivo: 'error' };
   }
   if (ajustes.recordatorio !== false) resultado.recordatorio = revisarRecordatorioAnotar_(hoy, consumos);
+  if (ajustes.vencimiento !== false) {
+    try { resultado.cobros = revisarCobrosProximos_(hoy); } catch (err) { console.warn('FinFamily cobros próximos: ' + err); resultado.cobros = { motivo: 'error' }; }
+  }
   if (ajustes.calendario) {
     try { resultado.calendario = sincronizarCalendario(resumen); } catch (err) {
       console.warn('FinFamily alertas (calendario): ' + err);

@@ -382,13 +382,13 @@ test('version: informa 1.7.1 y la lista de acciones; inicio y config traen el ca
     new HojaFalsa('Configuración', [['Conceptos de Gasto', 'Responsable'], ['Limpieza', 'PersonaB']])]) });
   const r = m.llamar('version', {});
   assert.equal(r.ok, true);
-  assert.equal(r.datos.version, '1.24.0');
+  assert.equal(r.datos.version, '1.25.0');
   for (const a of ['desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'marcarPagado', 'inicio',
     'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos', 'datosTarjetas', 'guardarDatosTarjeta']) {
     assert.ok(r.datos.acciones.includes(a), 'falta la acción ' + a);
   }
-  assert.equal(m.llamar('inicio', {}).datos.version, '1.24.0');
-  assert.equal(m.llamar('config', {}).datos.version, '1.24.0');
+  assert.equal(m.llamar('inicio', {}).datos.version, '1.25.0');
+  assert.equal(m.llamar('config', {}).datos.version, '1.25.0');
 });
 
 test('la lista ACCIONES coincide con las acciones que atiende doPost', () => {
@@ -835,7 +835,7 @@ test('gasto grande: si el correo falla el registro se guarda igual; con gastoGra
 
 test('ajustesAvisos: valores por defecto; guardarAjustesAvisos mezcla y valida', () => {
   const m = motorCompleto();
-  const defecto = { vencimiento: true, presupuesto: true, gastoGrande: 300, resumenSemanal: true, calendario: true, recordatorio: true };
+  const defecto = { vencimiento: true, presupuesto: true, gastoGrande: 300, resumenSemanal: true, calendario: true, recordatorio: true, subidas: true };
   assert.deepEqual(m.llamar('ajustesAvisos', {}), { ok: true, datos: { ajustes: defecto } });
 
   const r = m.llamar('guardarAjustesAvisos', { gastoGrande: 500, calendario: false });
@@ -2049,7 +2049,7 @@ test('config: un ícono guardado para un concepto que ya no existe en Configurac
   assert.deepEqual(m.llamar('config', {}).datos.iconos, { Supermercado: 'carrito' });
   const danado = motorCompleto({ propiedades: { FINFAMILY_ICONOS: '{roto' } });
   assert.deepEqual(danado.llamar('config', {}).datos.iconos, {});
-  assert.equal(danado.llamar('version', {}).datos.version, '1.24.0');
+  assert.equal(danado.llamar('version', {}).datos.version, '1.25.0');
   assert.ok(danado.llamar('version', {}).datos.acciones.includes('guardarIconoConcepto'));
 });
 
@@ -2287,7 +2287,7 @@ test('gasto grande con tarjeta prestada: el correo dice quién gastó; versión 
   const m = motorCompleto();
   m.llamar('registrar', Object.assign({}, GASTO_PRESTADO, { monto: 450, descripcion: 'Saga Falabella' }));
   assert.equal(m.correos[0].subject, 'FinFamily: PersonaA registró S/ 450 en Saga Falabella (TC Interbank)');
-  assert.equal(m.llamar('version', {}).datos.version, '1.24.0');
+  assert.equal(m.llamar('version', {}).datos.version, '1.25.0');
 });
 
 // ===========================================================================
@@ -2567,7 +2567,7 @@ test('bolsas con un solo usuario (N = 1): todo el saldo de los meses anteriores 
 test('versión 1.7.0: la acción bolsas está en la lista y presupuesto no cambió', () => {
   const m = motorBolsas();
   const v = m.llamar('version', {}).datos;
-  assert.equal(v.version, '1.24.0');
+  assert.equal(v.version, '1.25.0');
   assert.ok(v.acciones.includes('bolsas'));
   const p = m.llamar('presupuesto', { mes: '2026-11' }).datos;
   assert.equal(p.totales.saldo, 985.57);
@@ -2659,9 +2659,10 @@ test('1.8.0: la primera pasada trae Yape y Lemon desde el día 1 del mes; los en
   assert.match(m.contexto.consultaGmail_(), /subject:yapeo/);
   const r = m.contexto.leerCorreosDeBancos();
   assert.equal(r.agregados, 2);
-  assert.equal(m.consultasGmail.length, 3, 'bancos, la primera pasada de billeteras y los pagos de servicios (1.23.0)');
+  assert.equal(m.consultasGmail.length, 4, 'bancos, la primera pasada de billeteras, el historial de cobros (1.25.0) y los pagos de servicios (1.23.0)');
   assert.match(m.consultasGmail[1], /^newer_than:9d \(from:yape\.pe OR from:lemoncash\.com\.ar/);
-  assert.match(m.consultasGmail[2], /débito automático/);
+  assert.match(m.consultasGmail[2], /^newer_than:75d .*débito automático/);
+  assert.match(m.consultasGmail[3], /^newer_than:3d .*débito automático/);
   assert.ok(m.propiedades.FINFAMILY_BILLETERAS_V3, 'queda anotado que ya se hizo la primera pasada');
 
   const hoja = hojaDe(m, 'Por confirmar');
@@ -2682,7 +2683,7 @@ test('1.8.0: la primera pasada trae Yape y Lemon desde el día 1 del mes; los en
 
   // Segunda pasada: ya no busca desde el día 1 (solo bancos y pagos de servicios).
   m.contexto.leerCorreosDeBancos();
-  assert.equal(m.consultasGmail.length, 5);
+  assert.equal(m.consultasGmail.length, 6);
   assert.ok(!/from:yape\.pe OR from:lemoncash/.test(m.consultasGmail[3]) || /subject:/.test(m.consultasGmail[3]));
 });
 
@@ -3623,4 +3624,42 @@ test('1.24.0: metaAnual y guardarMetaAnual guardan, cambian y quitan la meta de 
   for (const [datos, error] of errores) assert.deepEqual(m.llamar('guardarMetaAnual', datos), { ok: false, codigo: 'datos_invalidos', error });
   // Una propiedad dañada no rompe.
   assert.deepEqual(JSON.parse(JSON.stringify(motorCompleto({ propiedades: { FINFAMILY_META_ANUAL: '{roto' } }).llamar('metaAnual', {}).datos)), { metas: {} });
+});
+
+// ---------- 1.25.0: cobros aprendidos del correo y subidas de precio ----------
+
+test('1.25.0: el historial guarda los cobros viejos sin marcar; un cobro que sube avisa y dos días antes del siguiente se avisa', () => {
+  const pago = (id, dia, mes, monto) => ({ id, de: 'WOW Perú <noreply@wow.example>', asunto: 'Detalle de tu pago',
+    cuerpo: 'Se realizó con éxito el cobro de tu recibo a través del Débito Automático Importe debitado S/ ' + monto, fecha: new Date(2026, mes - 1, dia, 9, 0) });
+  const m = motorCompleto({ hoy: '2026-11-14', hilos: [{ mensajes: [pago('wow-oct', 13, 10, '60.00')] }, { mensajes: [pago('wow-nov', 13, 11, '68.00')] }] });
+  m.contexto.leerCorreosDeBancos();
+  assert.ok(m.propiedades.FINFAMILY_PAGOS_HISTORIA, 'el historial se lee una sola vez');
+  const reg = JSON.parse(m.propiedades.FINFAMILY_PAGOS_FIJOS);
+  assert.deepEqual(reg.meses['2026-09'].internet.map((x) => [x.fecha, x.monto]), [['2026-10-13', 60]], 'el de octubre solo se guarda');
+  assert.deepEqual(reg.meses['2026-10'].internet.map((x) => [x.fecha, x.monto]), [['2026-11-13', 68]]);
+  // Subió S/ 8 frente al cobro anterior: un aviso. Con S/ 68 de S/ 100 la línea todavía no se marca.
+  const sub = m.correos.filter((c) => /subió/.test(c.subject));
+  assert.equal(sub.length, 1);
+  assert.match(sub[0].subject, /^FinFamily: Wow subió S\/ 8/);
+  assert.match(sub[0].body, /La vez anterior \(13\/10\/2026\)/);
+  assert.equal(m.llamar('presupuesto', { mes: '2026-10' }).datos.filas.find((f) => f.concepto === 'Internet').pagado, false);
+  // La app recibe el cobro aprendido.
+  assert.deepEqual(JSON.parse(JSON.stringify(m.llamar('fijosAuto', {}).datos.cobros)), [{ clave: 'internet', de: 'Wow', dia: 13, monto: 68, ultima: '2026-11-13' }]);
+  // Dos días antes del 13 de diciembre: aviso de cobro próximo, una sola vez.
+  const r = m.contexto.revisarCobrosProximos_('2026-12-11');
+  assert.equal(r.avisados, 1);
+  const prox = m.correos[m.correos.length - 1];
+  assert.equal(prox.subject, 'FinFamily: en 2 días toca Wow');
+  assert.match(prox.body, /• Wow: ~S\/ 68 el 13\/12 \(Internet\)/);
+  assert.equal(m.contexto.revisarCobrosProximos_('2026-12-11').motivo, 'nada para avisar');
+  assert.equal(m.contexto.revisarCobrosProximos_('2026-12-12').motivo, 'nada para avisar');
+});
+
+test('1.25.0: con el aviso de subidas apagado no se manda nada', () => {
+  const pago = (id, dia, mes, monto) => ({ id, de: 'WOW Perú <noreply@wow.example>', asunto: 'Detalle de tu pago',
+    cuerpo: 'Se realizó con éxito el cobro de tu recibo a través del Débito Automático Importe debitado S/ ' + monto, fecha: new Date(2026, mes - 1, dia, 9, 0) });
+  const m = motorCompleto({ hoy: '2026-11-14', hilos: [{ mensajes: [pago('a', 13, 10, '60.00')] }, { mensajes: [pago('b', 13, 11, '75.00')] }],
+    propiedades: { FINFAMILY_AJUSTES_AVISOS: JSON.stringify({ subidas: false }) } });
+  m.contexto.leerCorreosDeBancos();
+  assert.equal(m.correos.filter((c) => /subió/.test(c.subject)).length, 0);
 });
