@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v161';
+const VERSION_APP = 'finfamily-v162';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -814,7 +814,8 @@ function editarDatosTC(t) {
 function anillo(pct, etiqueta = 'del plan') {
   const r = 52;
   const c = 2 * Math.PI * r;
-  const caja = h('div', { class: 'anillo', role: 'img', title: `${pct}% del ingreso ya ${etiqueta}`, 'aria-label': `${pct}% del ingreso ya ${etiqueta}` });
+  const frase = etiqueta === 'en gastos' ? `${pct}% de lo que entra se va en gastos, según tu presupuesto` : `${pct}% del ingreso ya ${etiqueta}`;
+  const caja = h('div', { class: 'anillo', role: 'img', title: frase, 'aria-label': frase });
   caja.append(
     svg('svg', { viewBox: '0 0 120 120', 'aria-hidden': 'true' },
       svg('defs', {}, svg('linearGradient', { id: 'anillo-degradado', x1: 0, y1: 0, x2: 1, y2: 1 },
@@ -3261,6 +3262,7 @@ async function vistaInicio() {
   const mesNombre = (nombreMesClave(mes) || '').split(' ')[0].toLowerCase();
   const ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
   const diasQuedan = ultimoDia - hoy.getDate();
+  const diaCobro2 = () => fechaCorta(iso(new Date(hoy.getFullYear(), hoy.getMonth(), ultimoDia)));
   // En computadora con ventana suficiente, Inicio es un tablero que entra completo, sin bajar.
   // El dueño prefirió el Inicio amplio con scroll antes que el tablero apretado sin scroll (6 nov 2026).
   const tablero = false;
@@ -3386,26 +3388,42 @@ async function vistaInicio() {
   } else if (p) {
     const pct = Math.max(0, Math.min(100, Math.round((p.gastos / p.ingresos) * 100)));
     const falta = p.saldo < 0;
+    // v162: cuánto le toca a cada uno al cobrar, ya sin lo que separó para su tarjeta (antes decía "Tarjeta nov").
+    const prox0 = esHoy && !falta ? bolsas?.proximos?.find((x) => x.mes === mes) : null;
+    const diaCobro = fechaCorta(iso(new Date(hoy.getFullYear(), hoy.getMonth(), ultimoDia)));
+    const personal = prox0?.personas?.length
+      ? h('div', { class: 'hero-personas' },
+        h('span', { class: 'hp-lead' }, `Al cobrar (${diaCobro}) a cada uno le toca:`),
+        h('span', { class: 'hp-lista' }, prox0.personas.map((y) => h('span', { class: 'hp-persona' },
+          avatar(y.nombre),
+          h('span', { class: 'hp-datos' }, h('span', { class: 'hp-nombre' }, nombreCorto(y.nombre)), h('strong', {}, soles(y.queda)),
+            y.apartado > 0 ? h('small', {}, `ya sin ${soles(y.apartado)} de tarjeta`) : null)))))
+      : h('p', { class: 'hero-personal' }, h('span', { class: 'avatares' }, responsables().map((nombre) => avatar(nombre))),
+        h('span', {}, h('strong', {}, soles(Math.abs(p.saldoPersonal))), ' para cada uno'));
     hero.append(
       h('div', { class: 'hero-principal' + (falta ? ' en-falta' : '') },
-        h('p', { class: 'hero-etq' }, falta ? [icono('alerta'), ` Falta en ${mesNombre}`] : `Saldo de ${mesNombre}`),
+        h('p', { class: 'hero-etq' }, falta ? [icono('alerta'), ` ${esHoy ? 'Te va a faltar' : 'Faltó'} en ${mesNombre}`] : `${esHoy ? 'Te va a sobrar' : 'Sobra'} en ${mesNombre}`),
         h('p', { class: 'hero-monto', 'data-rico': '', 'data-contar': String(Math.abs(p.saldo)) }, soles(0)),
-        h('p', { class: 'hero-personal' }, h('span', { class: 'avatares' }, responsables().map((nombre) => avatar(nombre))),
-          h('span', {}, h('strong', {}, soles(Math.abs(p.saldoPersonal))), bolsas ? ' c/u al cobrar a fin de mes' : ' c/u'))),
-      anillo(pct));
+        personal),
+      anillo(pct, 'en gastos'));
   } else {
     hero.append(h('div', { class: 'hero-principal' },
       h('p', { class: 'hero-etq' }, 'Saldo del mes'),
       h('p', { class: 'hero-vacio' }, `${nombreMesClave(mes) || 'Este mes'} todavía no está en el presupuesto.`)));
   }
   if (esHoy) hero.append(h('a', { class: 'hero-pagar', href: '#tarjetas' },
-    h('span', { class: 'hero-pagar-cab' }, 'Por pagar', icono('adelante')),
+    h('span', { class: 'hero-pagar-cab' }, 'Por pagar de tarjetas', icono('adelante')),
     h('strong', { class: 'hero-pagar-monto', 'data-rico': '', 'data-contar': String(d.totalPorPagar || 0) }, soles(0)),
     conDeuda.length ? barraPartes(conDeuda.map((t) => ({ etiqueta: nombreCortoTC(t), valor: t.pendiente, clase: `tc-${t.id}` }))) : null,
     conDeuda.length > 1 ? h('ul', { class: 'hero-leyenda compacta' }, conDeuda.slice(0, 3).map((t) => h('li', {},
       chipTC(t.id, 'mini'), h('span', {}, nombreCortoTC(t)), h('b', {}, pctTexto(t.pendiente, d.totalPorPagar))))) : null,
-    h('span', { class: 'hero-pagar-pie' }, icono('calendario'),
-      proxima ? `Próximo: ${fechaCorta(fechaPagoTC(proxima))} · ${nombreCortoTC(proxima)}` : 'Sin vencimientos pendientes')));
+    (() => {
+      const atrasada = proxima && /atrasado/.test(estadoVence(proxima.proximoVence, proxima.pendiente, pagoDeTC(proxima)).texto);
+      return h('span', { class: 'hero-pagar-pie' + (atrasada ? ' atrasada' : '') }, icono(atrasada ? 'alerta' : 'calendario'),
+        !proxima ? 'No hay nada pendiente'
+          : atrasada ? `Atrasada: ${nombreCortoTC(proxima)} · vence ${fechaCorta(proxima.proximoVence)}`
+            : `Sigue: ${nombreCortoTC(proxima)} · ${fechaCorta(fechaPagoTC(proxima))}`);
+    })()));
   if (p && !esHoy && p.ingresos > 0) {
     // Otro mes: en vez de lo que falta pagar hoy, cómo se repartió (o se repartirá) el ingreso de ese mes.
     const gastos = Math.max(p.gastos || 0, 0);
@@ -3425,29 +3443,27 @@ async function vistaInicio() {
           h('i', { class: `punto ${x.clase}`, 'aria-hidden': 'true' }), h('span', {}, x.etiqueta),
           h('b', {}, `${Math.round((x.valor / base) * 100)}%`))))),
       h('ul', { class: 'hero-datos' },
-        dato('sube', 'Ingresos', soles(p.ingresos)),
-        dato('baja', 'Gastos', soles(p.gastos)),
-        dato('billetera', 'Ahorros', soles(p.ahorros || 0)),
-        dato('check', 'Saldo libre', soles(libre))));
+        dato('sube', 'Entra', soles(p.ingresos)),
+        dato('baja', 'Se va en gastos', soles(p.gastos)),
+        dato('billetera', 'Ahorro', soles(p.ahorros || 0)),
+        dato('check', 'Sobra', soles(libre))));
   }
   if (p && esHoy) {
     const libre = Math.max(p.saldo, 0);
     hero.append(h('ul', { class: 'hero-datos' },
-      dato('sube', 'Ingresos', soles(p.ingresos)),
-      dato('baja', 'Gastos', soles(p.gastos)),
+      dato('sube', 'Entra este mes', soles(p.ingresos), h('small', { class: 'hero-dato-extra' }, 'los sueldos')),
+      dato('baja', 'Se va en gastos', soles(p.gastos), h('small', { class: 'hero-dato-extra' }, 'según tu presupuesto')),
       bolsas ? (() => {
         const { mio, otros } = enManoPorPersona(bolsas);
-        if (!mio) return dato('billetera', 'En mano hoy', soles(enMano(bolsas)));
-        const prox = bolsas.proximos?.[0];
-        const suyo = prox?.personas?.find((y) => nombreCorto(y.nombre) === mio.nombre);
-        return dato('billetera', 'Tu plata', soles(mio.monto),
-          // Las dos líneas chicas van juntas en un solo bloque (una debajo de la otra; antes se encimaban).
-          (otros.length || suyo) ? h('span', { class: 'hero-dato-extra hero-dato-lineas' },
-            otros.length ? h('small', {}, otros.map((x) => `${x.nombre}: ${soles(x.monto)}`).join(' · ')) : null,
-            suyo ? h('small', { class: suyo.queda < 0 ? 'mal' : '' }, `Tarjeta ${mesMinuscula(prox.mes).slice(0, 3)}: ${suyo.queda < 0 ? '−' : ''}${soles(Math.abs(suyo.queda))}`) : null) : null);
+        if (!mio) return dato('billetera', 'Plata en mano', soles(enMano(bolsas)));
+        // Lo que tiene cada uno hoy (de meses ya cobrados). Lo del próximo cobro va arriba, junto al saldo.
+        return dato('billetera', 'Tu plata hoy', soles(mio.monto),
+          otros.length ? h('small', { class: 'hero-dato-extra' }, otros.map((x) => `${x.nombre} tiene ${soles(x.monto)}`).join(' · ')) : null);
       })() : dato('billetera', 'Libre por día', soles(diasQuedan > 0 ? libre / diasQuedan : libre)),
-      dato('calendario', 'Fin de mes', diasQuedan === 0 ? 'Hoy' : `En ${diasQuedan} día${diasQuedan === 1 ? '' : 's'}`,
-        h('i', { class: 'mes-barra', title: `Día ${hoy.getDate()} de ${ultimoDia}` }, h('b', { 'data-w': `${Math.round((hoy.getDate() / ultimoDia) * 100)}%` })))));
+      dato('calendario', 'Día de cobro', diasQuedan === 0 ? 'Hoy' : diasQuedan === 1 ? 'Mañana' : `En ${diasQuedan} días`,
+        h('span', { class: 'hero-dato-extra hero-dato-cobro' },
+          h('small', {}, (() => { const t = `${new Date(hoy.getFullYear(), hoy.getMonth(), ultimoDia).toLocaleDateString('es-PE', { weekday: 'long' })} ${diaCobro2()}`; return t.charAt(0).toUpperCase() + t.slice(1); })()),
+          h('i', { class: 'mes-barra', title: `Día ${hoy.getDate()} de ${ultimoDia}` }, h('b', { 'data-w': `${Math.round((hoy.getDate() / ultimoDia) * 100)}%` }))))));
   }
   raiz.append(hero);
   if (esHoy && motorLector() && emailSesion()) raiz.append(avisoPendientes(r?.datos?.pendientes));
@@ -6316,8 +6332,9 @@ async function vistaTarjetas() {
   const billetera = h('div', { class: 'billetera', style: `--n:${enPila.length}` }, enPila.map((t, i) => {
     const el = tarjetaVisual(t);
     el.style.setProperty('--i', String(i));
-    const arriba = el.querySelector('.plastico-top');
-    arriba.insertBefore(h('strong', { class: 'pila-monto' }, soles(t.pendiente || 0)), arriba.lastChild);
+    // v162: la franja que se ve de cada tarjeta es igual en todas (antes Sip y Ripley no mostraban su nombre).
+    el.append(h('span', { class: 'pila-franja', 'aria-hidden': 'true' },
+      h('span', { class: 'franja-nombre' }, nombreCortoTC(t)), h('strong', { class: 'franja-monto' }, soles(t.pendiente || 0))));
     return el;
   }));
   // A un lado la billetera; al otro, el resumen y el calendario de pagos.
