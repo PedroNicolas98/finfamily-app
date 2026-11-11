@@ -2330,6 +2330,84 @@ async function abrirCuadre() {
 }
 const directoPend = (p) => ['PLIN', 'YAPE', 'EFECTIVO', 'LEMON'].includes(String(p.medioSugerido || '').toUpperCase());
 
+// ---------------------------------------------------------------------------
+// Avisos por WhatsApp (v129, motor 1.17): cada uno conecta su WhatsApp con CallMeBot (gratis, uso personal).
+// Los mismos avisos que llegan por correo llegan también por WhatsApp.
+// ---------------------------------------------------------------------------
+function motorWhatsapp() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 17); }
+const PAGINA_CALLMEBOT = 'https://www.callmebot.com/blog/free-api-whatsapp-messages/';
+const MENSAJE_CALLMEBOT = 'I allow callmebot to send me messages';
+
+function abrirConectarWhatsapp(alTerminar) {
+  const v = ventanita('conectar-avisos wsp-dlg', 'Avisos por WhatsApp');
+  v.caja.classList.add('conectar-caja', 'entra');
+  setTimeout(() => v.caja.classList.remove('entra'), 900);
+  const inTel = h('input', { type: 'tel', autocomplete: 'tel', placeholder: '+51 987 654 321', value: '+51 ', 'aria-label': 'Tu número de WhatsApp' });
+  const inClave = h('input', { type: 'text', autocomplete: 'off', inputmode: 'numeric', placeholder: 'Ej. 1234567', 'aria-label': 'Clave (apikey)' });
+  const msg = h('p', { class: 'mensaje error', hidden: true });
+  const btn = h('button', { type: 'button', class: 'boton primario' }, 'Conectar');
+  const enlace = (texto, url) => h('a', { class: 'boton chico', href: url, target: '_blank', rel: 'noopener' }, texto, icono('adelante'));
+  const paso = (n, titulo, ayuda, ...controles) => h('li', { class: 'conectar-paso activo', style: `--i: ${n}` },
+    h('span', { class: 'conectar-num' }, String(n)),
+    h('div', { class: 'conectar-txt' }, h('strong', {}, titulo), h('small', { class: 'suave' }, ayuda), h('div', { class: 'conectar-ctrl' }, controles)));
+  btn.onclick = async () => {
+    msg.hidden = true;
+    if (inTel.value.replace(/\D/g, '').length < 9) { msg.textContent = 'Escribe tu número con el código del país.'; msg.hidden = false; inTel.focus(); return; }
+    if (!inClave.value.trim()) { msg.textContent = 'Pega la clave que te mandó el bot.'; msg.hidden = false; inClave.focus(); return; }
+    ocuparBoton(btn, 'Probando…');
+    try {
+      const r = await llamarApi('guardarWhatsapp', { telefono: inTel.value, apikey: inClave.value.trim() }, { email: emailSesion() });
+      guardarCache('whatsapp', r);
+      avisar('¡WhatsApp conectado! Revisa el mensaje de bienvenida.', 'ok');
+      v.cerrar();
+      alTerminar?.(r);
+    } catch (e) {
+      liberarBoton(btn, 'Conectar');
+      msg.textContent = mensajeError(e, 'No se pudo conectar. Revisa el número y la clave.'); msg.hidden = false;
+    }
+  };
+  v.caja.append(
+    h('span', { class: 'conectar-ico' }, icono('novedad')),
+    h('p', { class: 'cierre-etq' }, 'Avisos por WhatsApp'),
+    h('p', { class: 'suave' }, 'Los mismos avisos del correo, en tu WhatsApp. Una sola vez, desde tu celular.'),
+    h('ol', { class: 'conectar-pasos' },
+      paso(1, 'Agrega el número de CallMeBot', 'Está en su página. Si dice que está lleno, vuelve en unos días.', enlace('Ver el número', PAGINA_CALLMEBOT)),
+      paso(2, 'Mándale este mensaje por WhatsApp', 'Te responde con tu clave (apikey) en unos segundos.', chipCopiar(MENSAJE_CALLMEBOT)),
+      paso(3, 'Pega tu número y la clave', 'Te llegará un mensaje de bienvenida para comprobar.',
+        h('div', { class: 'wsp-campos' }, inTel, inClave))),
+    h('p', { class: 'suave conectar-pie' }, 'CallMeBot es un servicio gratuito de terceros: tus avisos pasan por él para llegar a tu WhatsApp.'),
+    msg,
+    h('div', { class: 'acciones modal-acciones' }, btn, h('button', { type: 'button', class: 'boton', onclick: v.cerrar }, 'Cancelar')));
+  v.abrir();
+}
+
+// Fila de Ajustes › Avisos.
+function filaWhatsapp() {
+  const control = h('span', { class: 'wsp-control' });
+  const fila = filaConfig('WhatsApp', 'Recibe los avisos también en tu WhatsApp.', control);
+  const pintarCon = (d) => {
+    if (!d) { control.replaceChildren(h('span', { class: 'suave' }, '…')); return; }
+    if (!d.conectado) {
+      control.replaceChildren(h('button', { type: 'button', class: 'boton chico primario', onclick: () => abrirConectarWhatsapp(pintarCon) }, 'Conectar'));
+      return;
+    }
+    const probar = h('button', { type: 'button', class: 'boton chico', onclick: async () => {
+      ocuparBoton(probar, 'Enviando…');
+      try { const r = await llamarApi('probarWhatsapp', {}, { email: emailSesion() }); avisar(r?.enviado ? 'Mensaje de prueba enviado' : `No salió: ${r?.motivo || 'revisa la clave'}`, r?.enviado ? 'ok' : 'error'); }
+      catch (e) { avisar(mensajeError(e, 'No se pudo enviar.'), 'error'); }
+      liberarBoton(probar, 'Probar');
+    } }, 'Probar');
+    const quitar = h('button', { type: 'button', class: 'boton chico enlace', onclick: async () => {
+      try { const r = await llamarApi('guardarWhatsapp', { quitar: true }, { email: emailSesion() }); guardarCache('whatsapp', r); pintarCon(r); avisar('WhatsApp desconectado', 'ok'); }
+      catch (e) { avisar(mensajeError(e, 'No se pudo quitar.'), 'error'); }
+    } }, 'Quitar');
+    control.replaceChildren(h('span', { class: 'pill ok', title: 'Conectado' }, d.telefono || 'Conectado'), probar, quitar);
+  };
+  pintarCon(leerCache('whatsapp')?.datos || null);
+  cargarRapido('whatsapp', {}, 'whatsapp').then((r) => pintarCon(r?.datos)).catch(() => fila.remove());
+  return fila;
+}
+
 function actualizarCacheFijo(mes, f) {
   const c = leerCache('presupuesto:' + mes);
   const linea = c?.datos?.filas?.find((x) => x.fila === f.fila);
@@ -3720,6 +3798,7 @@ function panelAvisos(correo, mesPasado) {
         h('div', { class: 'campo campo-select' }, h('div', { class: 'campo-soles' }, h('span', {}, 'S/'), inGrande))),
       filaConfig('Consumos desde Gmail', 'El motor lee los correos de BCP, Interbank, Ripley y Oh! cada 10 minutos y los deja en "Por confirmar" en Inicio.', h('span', { class: 'pill ok' }, 'Activo')),
       motorReenvio() ? filaReenvio() : null,
+      motorWhatsapp() ? filaWhatsapp() : null,
       filaConfig('Cierre de mes', `Cómo terminó ${nombreMesClave(mesPasado) || 'el mes pasado'}.`, h('button', { type: 'button', class: 'boton chico', onclick: () => abrirCierre(mesPasado) }, 'Ver')));
   };
   cargarRapido('ajustesAvisos', {}, 'ajustes-avisos').then((r) => { ajustes = { ...ajustes, ...(r?.datos?.ajustes || r?.datos || {}) }; pintar(); }).catch(() => pintar());
