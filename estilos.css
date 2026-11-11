@@ -5013,3 +5013,40 @@ button.anio-col:hover, .anio-col.elegida { background: color-mix(in srgb, var(--
   .le-columnas:has(> .le-col + .le-col) { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); align-items: start; }
   .le-columnas .elige-conceptos { margin-top: 4px; }
 }
+/* ---------- v180: meta de ahorro del año ---------- */
+.anio-meta { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: var(--radio-chico); background: var(--sup-2); animation: subir 480ms var(--suave) 160ms both; }
+.anio-meta[hidden] { display: none; }
+.anio-meta:has(> .anio-meta-poner) { flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 8px 10px; }
+.anio-meta-poner { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border: 1.5px dashed color-mix(in srgb, var(--accion) 60%, transparent); border-radius: 99px; background: transparent; color: var(--accion); font: inherit; font-size: 0.92rem; font-weight: 700; cursor: pointer; transition: background 180ms ease, transform 180ms ease; }
+.anio-meta-poner:hover { background: color-mix(in srgb, var(--accion) 10%, transparent); transform: translateY(-1px); }
+.anio-meta-poner .icono, .anio-meta-poner svg, .anio-meta-etq .icono, .anio-meta-etq svg { width: 18px; height: 18px; }
+.anio-meta-pista { font-size: 0.875rem; color: var(--tinta-2); }
+.anio-meta-cab { display: flex; align-items: center; gap: 10px; }
+.anio-meta-etq { display: inline-flex; align-items: center; gap: 7px; font-size: 0.95rem; color: var(--tinta-2); font-weight: 650; }
+.anio-meta-etq strong { color: var(--tinta); font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.anio-meta-editar { margin-left: auto; width: 32px; height: 32px; }
+.anio-meta-chip { display: inline-flex; padding: 2px 9px; border-radius: 99px; font-size: 0.85rem; font-weight: 750; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.anio-meta-chip.bien { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+.anio-meta-chip.mal { background: color-mix(in srgb, var(--mal) 16%, transparent); color: var(--mal); }
+.anio-meta-barra { position: relative; height: 10px; border-radius: 99px; background: color-mix(in srgb, var(--tinta) 9%, transparent); }
+.anio-meta-lleno { display: block; height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, #7FB8FF, #4C8FE8); transition: width 1000ms var(--suave); }
+.anio-meta-marca { position: absolute; top: -4px; bottom: -4px; width: 3px; margin-left: -1.5px; border-radius: 2px; background: var(--tinta); opacity: 0.75; }
+.anio-meta-pie { margin: 0; font-size: 0.875rem; color: var(--tinta-2); }
+.anio-meta-pregunta { font-size: 0.95rem; font-weight: 700; color: var(--tinta); }
+.anio-meta-fila { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.anio-meta-fila .campo-soles { flex: 0 1 200px; }
+.anio-meta-entrada.mal-meta { animation: temblar-pin 360ms ease; }
+@media (max-width: 640px) {
+  .anio-meta-pista { flex-basis: 100%; }
+}
+@media (max-width: 640px) {
+  .anio-dlg .cierre-caja { gap: 11px; }
+  .anio-plano { height: 150px; }
+  .anio-meta { padding: 10px 12px; gap: 6px; }
+}
+.anio-meta-etq { white-space: nowrap; }
+@media (max-width: 640px) {
+  .anio-meta-cab { flex-wrap: wrap; row-gap: 4px; }
+  .anio-meta-editar { order: 1; }
+  .anio-meta-chip { order: 2; }
+}

@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v179';
+const VERSION_APP = 'finfamily-v180';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -2905,6 +2905,7 @@ function filaWhatsapp() {
 function motorV120() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 20); }
 function motorV122() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 22); }
 function motorV123() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 23); }
+function motorV124() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 24); }
 
 // ¿Es un pase de plata a la otra persona? ("Yape a PersonaB…", "Plin a PersonaA…"). Devuelve su nombre o ''.
 function otroDePase(texto, quien) {
@@ -4094,13 +4095,94 @@ function abrirAnio(meses, anioInicial) {
   const v = ventanita('anio-dlg', 'Cómo te fue en el año');
   const titulo = h('p', { class: 'cierre-etq anio-titulo' });
   const flecha = (paso, ico, etq) => h('button', { type: 'button', class: 'boton icono-solo anio-flecha', 'aria-label': etq, title: etq,
-    onclick: () => { const i = anios.indexOf(anio) + paso; if (anios[i]) { anio = anios[i]; elegido = null; cargarAnio(); } } }, icono(ico));
+    onclick: () => { const i = anios.indexOf(anio) + paso; if (anios[i]) { anio = anios[i]; elegido = null; editandoMeta = false; cargarAnio(); } } }, icono(ico));
   const ant = flecha(-1, 'atras', 'Año anterior');
   const sig = flecha(1, 'adelante', 'Año siguiente');
   const totales = h('ul', { class: 'anio-totales' });
   const plano = h('div', { class: 'anio-plano', role: 'group', 'aria-label': 'Mes a mes' });
   const detalle = h('p', { class: 'anio-detalle', 'aria-live': 'polite' });
   const leyenda = h('ul', { class: 'anio-leyenda' });
+  // v180 (motor 1.24): meta de ahorro del año, la misma para los dos. Cuenta lo que va a las líneas de ahorro.
+  let metas = motorV124() && emailSesion() ? (leerCache('meta-anual')?.datos?.metas || null) : null;
+  let editandoMeta = false;
+  let ultimo = { llevas: 0, plan: 0, nTrans: 0, animar: false };
+  const metaCaja = h('div', { class: 'anio-meta', hidden: true });
+  const pintarMeta = () => {
+    if (!metas) { metaCaja.hidden = true; return; }
+    metaCaja.hidden = false;
+    const meta = Number(metas[anio]) || 0;
+    const { llevas, plan, nTrans, nMeses } = ultimo;
+    const sugerido = Math.ceil((llevas + plan) / 100) * 100;
+    if (editandoMeta) {
+      const inp = h('input', { type: 'text', inputmode: 'decimal', class: 'anio-meta-entrada', autocomplete: 'off', value: meta ? String(meta) : '',
+        placeholder: sugerido > 0 ? sugerido.toLocaleString('en-US') : '0', 'aria-label': `Meta de ahorro de ${anio}` });
+      const guardarB = h('button', { type: 'button', class: 'boton primario chico' }, 'Guardar');
+      const enviar = async (monto) => {
+        ocuparBoton(guardarB, 'Guardando…');
+        try {
+          const r = await llamarApi('guardarMetaAnual', { anio, monto }, { email: emailSesion() });
+          metas = r?.metas || {};
+          guardarCache('meta-anual', { metas });
+          editandoMeta = false;
+          ultimo.animar = true;
+          pintarMeta();
+          avisar(monto ? `Meta ${anio}: ${soles(monto)}` : 'Meta quitada', 'ok');
+        } catch (e) { liberarBoton(guardarB, 'Guardar'); avisar(mensajeError(e, 'No se pudo guardar la meta.'), 'error'); }
+      };
+      const guardar = () => {
+        const monto = inp.value.trim() === '' && sugerido > 0 ? sugerido : leerMonto(inp.value);
+        if (!(monto > 0)) { inp.classList.add('mal-meta'); inp.focus(); return; }
+        enviar(monto);
+      };
+      guardarB.onclick = guardar;
+      inp.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') { ev.preventDefault(); guardar(); }
+        if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); editandoMeta = false; pintarMeta(); }
+      });
+      inp.addEventListener('input', () => inp.classList.remove('mal-meta'));
+      metaCaja.replaceChildren(
+        h('label', { class: 'anio-meta-pregunta' }, `¿Cuánto quieren ahorrar en ${anio}?`),
+        h('div', { class: 'anio-meta-fila' },
+          h('div', { class: 'campo-soles' }, h('span', {}, 'S/'), inp), guardarB,
+          h('button', { type: 'button', class: 'boton chico', onclick: () => { editandoMeta = false; pintarMeta(); } }, 'Cancelar'),
+          meta ? h('button', { type: 'button', class: 'boton chico enlace peligro', onclick: () => enviar(0) }, 'Quitar') : null));
+      setTimeout(() => { inp.focus(); inp.select(); }, 30);
+      return;
+    }
+    if (!meta) {
+      metaCaja.replaceChildren(h('button', { type: 'button', class: 'anio-meta-poner', onclick: () => { editandoMeta = true; pintarMeta(); } },
+        icono('meta'), `Ponle meta al ${anio}`),
+        llevas + plan > 0 ? h('span', { class: 'anio-meta-pista' }, `Con lo planeado ahorran ${soles(llevas + plan)} en el año`) : null);
+      return;
+    }
+    // La meta se reparte en los meses del año que están en la hoja (si empezó en octubre, solo esos).
+    const esperado = (meta * nTrans) / (nMeses || 12);
+    const dif = llevas - esperado;
+    const restan = Math.max(0, (nMeses || 12) - nTrans);
+    const falta = Math.max(0, meta - llevas);
+    const proyectado = llevas + plan;
+    const pct = Math.min(100, (llevas / meta) * 100);
+    const enCurso = nTrans > 0 && restan > 0;
+    const chip = llevas >= meta ? h('span', { class: 'anio-meta-chip bien' }, '¡Llegaron!')
+      : enCurso && Math.abs(dif) >= 1 ? h('span', { class: `anio-meta-chip ${dif >= 0 ? 'bien' : 'mal'}` }, `${dif >= 0 ? '▲' : '▼'} ${soles(Math.abs(dif))} ${dif >= 0 ? 'arriba' : 'abajo'}`) : null;
+    const pie = llevas >= meta ? 'meta cumplida'
+      : proyectado >= meta ? `con lo planeado llegan a ${soles(proyectado)}`
+        : restan > 1 ? `para llegar: ${soles(Math.ceil(falta / restan))} al mes en los ${restan} meses que quedan`
+          : restan === 1 ? `para llegar: ${soles(Math.ceil(falta))} en el mes que queda`
+          : `faltaron ${soles(falta)}`;
+    const lleno = h('i', { class: 'anio-meta-lleno', 'data-w': `${pct.toFixed(1)}%` });
+    metaCaja.replaceChildren(
+      h('div', { class: 'anio-meta-cab' },
+        h('span', { class: 'anio-meta-etq' }, icono('meta'), `Meta ${anio}: `, h('strong', {}, soles(meta))),
+        chip,
+        h('button', { type: 'button', class: 'boton icono-solo anio-meta-editar', title: 'Cambiar la meta', 'aria-label': 'Cambiar la meta', onclick: () => { editandoMeta = true; pintarMeta(); } }, icono('lapiz'))),
+      h('div', { class: 'anio-meta-barra', role: 'img', 'aria-label': `Llevan ${soles(llevas)} de ${soles(meta)}` },
+        lleno,
+        enCurso ? h('b', { class: 'anio-meta-marca', style: `left: ${Math.min(100, (esperado / meta) * 100).toFixed(1)}%`, title: `A estas alturas deberían llevar ${soles(esperado)}` }) : null),
+      h('p', { class: 'anio-meta-pie' }, `Llevan ${soles(llevas)} (${Math.floor((llevas / meta) * 100)} %) · ${pie}`));
+    if (ultimo.animar) { ultimo.animar = false; animarVista(metaCaja); } else lleno.style.width = lleno.dataset.w;
+  };
+  if (motorV124() && emailSesion()) cargarRapido('metaAnual', {}, 'meta-anual').then((r) => { metas = r?.datos?.metas || {}; ultimo.animar = true; pintarMeta(); }).catch(() => {});
   const nombreDe = (clave) => (nombreMesClave(clave) || clave).split(' ')[0];
   const textoMes = (clave, t, futuro) => {
     const s = Number(t.saldo) || 0;
@@ -4128,9 +4210,16 @@ function abrirAnio(meses, anioInicial) {
     totales.replaceChildren(tot('Entró', ent, 'sube'), tot('Gastos', gas, 'baja'), tot('Ahorro', aho, 'billetera'),
       tot(sob < 0 ? 'Faltó' : 'Sobró', Math.abs(sob), 'check', sob < 0 ? 'falta' : 'sobra'));
     if (terminado) {
-      if (contado !== anio) { contado = anio; animarVista(totales); }
+      if (contado !== anio) { contado = anio; animarVista(totales); ultimo.animar = true; }
       else totales.querySelectorAll('[data-contar]').forEach((el) => pintarMonto(el, Number(el.dataset.contar)));
     }
+    const anioHoy = hoyMes.slice(0, 4);
+    ultimo = { ...ultimo,
+      llevas: reales.reduce((x, y) => x + Math.max(0, Number(y.t.ahorros) || 0), 0),
+      plan: conDatos.filter((x) => x.futuro).reduce((x, y) => x + Math.max(0, Number(y.t.ahorros) || 0), 0),
+      nMeses: lista.filter((m) => m.clave.startsWith(anio)).length || 12,
+      nTrans: lista.filter((m) => m.clave.startsWith(anio) && cmpMes(m.clave, hoyMes) <= 0).length };
+    if (!editandoMeta) pintarMeta();
     const max = Math.max(1, ...conDatos.map((x) => Math.max(x.t.ingresos, Math.max(0, x.t.gastos || 0) + Math.max(0, x.t.ahorros || 0))));
     const alto = (val) => `${((Math.max(0, val) / max) * 86).toFixed(2)}%`;
     plano.replaceChildren(...filas.map((x) => {
@@ -4209,6 +4298,7 @@ function abrirAnio(meses, anioInicial) {
   v.caja.append(
     h('div', { class: 'anio-cab' }, titulo, h('div', { class: 'anio-flechas' }, ant, sig)),
     totales,
+    metaCaja,
     plano,
     leyenda,
     detalle,
