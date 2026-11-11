@@ -296,6 +296,7 @@ function crearMotor(config) {
           if (m[2] === 'getStateInstance') return resp(200, { stateInstance: 'authorized' });
           if (m[2] === 'getWaSettings') return resp(200, { phone: '51987654321', stateInstance: 'authorized' });
           if (m[2] === 'sendMessage') return resp(200, { idMessage: '3EB0C767D097B7C7C030' });
+          if (m[2] === 'setSettings') return resp(200, { saveSettings: true });
           return resp(404, { message: 'not found' });
         }
         if (String(url).indexOf('https://graph.facebook.com/') === 0) {
@@ -381,13 +382,13 @@ test('version: informa 1.7.1 y la lista de acciones; inicio y config traen el ca
     new HojaFalsa('Configuración', [['Conceptos de Gasto', 'Responsable'], ['Limpieza', 'PersonaB']])]) });
   const r = m.llamar('version', {});
   assert.equal(r.ok, true);
-  assert.equal(r.datos.version, '1.19.0');
+  assert.equal(r.datos.version, '1.20.0');
   for (const a of ['desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'marcarPagado', 'inicio',
     'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos', 'datosTarjetas', 'guardarDatosTarjeta']) {
     assert.ok(r.datos.acciones.includes(a), 'falta la acción ' + a);
   }
-  assert.equal(m.llamar('inicio', {}).datos.version, '1.19.0');
-  assert.equal(m.llamar('config', {}).datos.version, '1.19.0');
+  assert.equal(m.llamar('inicio', {}).datos.version, '1.20.0');
+  assert.equal(m.llamar('config', {}).datos.version, '1.20.0');
 });
 
 test('la lista ACCIONES coincide con las acciones que atiende doPost', () => {
@@ -2020,7 +2021,7 @@ test('config: un ícono guardado para un concepto que ya no existe en Configurac
   assert.deepEqual(m.llamar('config', {}).datos.iconos, { Supermercado: 'carrito' });
   const danado = motorCompleto({ propiedades: { FINFAMILY_ICONOS: '{roto' } });
   assert.deepEqual(danado.llamar('config', {}).datos.iconos, {});
-  assert.equal(danado.llamar('version', {}).datos.version, '1.19.0');
+  assert.equal(danado.llamar('version', {}).datos.version, '1.20.0');
   assert.ok(danado.llamar('version', {}).datos.acciones.includes('guardarIconoConcepto'));
 });
 
@@ -2258,7 +2259,7 @@ test('gasto grande con tarjeta prestada: el correo dice quién gastó; versión 
   const m = motorCompleto();
   m.llamar('registrar', Object.assign({}, GASTO_PRESTADO, { monto: 450, descripcion: 'Saga Falabella' }));
   assert.equal(m.correos[0].subject, 'FinFamily: PersonaA registró S/ 450 en Saga Falabella (TC Interbank)');
-  assert.equal(m.llamar('version', {}).datos.version, '1.19.0');
+  assert.equal(m.llamar('version', {}).datos.version, '1.20.0');
 });
 
 // ===========================================================================
@@ -2538,7 +2539,7 @@ test('bolsas con un solo usuario (N = 1): todo el saldo de los meses anteriores 
 test('versión 1.7.0: la acción bolsas está en la lista y presupuesto no cambió', () => {
   const m = motorBolsas();
   const v = m.llamar('version', {}).datos;
-  assert.equal(v.version, '1.19.0');
+  assert.equal(v.version, '1.20.0');
   assert.ok(v.acciones.includes('bolsas'));
   const p = m.llamar('presupuesto', { mes: '2026-11' }).datos;
   assert.equal(p.totales.saldo, 985.57);
@@ -3421,7 +3422,7 @@ test('1.19.0: guardar Green API comprueba que la instancia está vinculada y nun
   assert.match(sinQr.error, /Get QR/);
   const r = m.llamar('guardarWhatsappGreen', { apiUrl: 'https://7103.api.greenapi.com/', idInstance: '1100000001', apiToken: TOKEN_GREEN_PRUEBA });
   assert.equal(r.ok, true, JSON.stringify(r));
-  assert.deepEqual(r.datos.green, { configurado: true, numero: '+51 ••• ••• 321' });
+  assert.deepEqual(r.datos.green, { configurado: true, numero: '+51 ••• ••• 321', registro: false });
   assert.ok(!JSON.stringify(r).includes(TOKEN_GREEN_PRUEBA));
 });
 
@@ -3437,4 +3438,88 @@ test('1.19.0: conectar por Green API manda la bienvenida y los avisos salen con 
   assert.equal(e.whatsapp, 1);
   assert.equal(m.greenLlamadas.at(-1).cuerpo.message, '*Hoy vence: Luz*\n\nHoy toca pagar:\n\n• Luz: S/ 80');
   assert.equal(m.llamar('probarWhatsapp', {}).datos.enviado, true);
+});
+
+// ---------- 1.20.0: antojos, gastos chicos, cierre del mes y gastos por WhatsApp ----------
+
+test('1.20.0: resumen semanal con gastos chicos', () => {
+  const L = crearMotor({}).contexto;
+  const c = (fecha, monto, descripcion) => ({ fecha, monto, descripcion, concepto: 'Chucherías', responsable: 'PersonaA' });
+  const s = L.resumenSemanal([c('2026-11-03', 5, 'Tambo Lima'), c('2026-11-04', 7.5, 'Tambo Lima'), c('2026-11-05', 12, 'Café'), c('2026-11-06', 80, 'Cena')], '2026-11-09');
+  assert.deepEqual(JSON.parse(JSON.stringify(s.hormiga)), { cantidad: 3, total: 24.5, top: { descripcion: 'Tambo Lima', veces: 2, monto: 12.5 } });
+  const t = L.textoResumenSemanal(s, null, []);
+  assert.ok(t.cuerpo.includes('Gastos chicos (hasta S/ 15): 3 por S/ 24.50. El que más se repite: Tambo Lima (2 veces, S/ 12.50).'), t.cuerpo);
+});
+
+test('1.20.0: tope de antojos avisa al 80 % y al 100 % una vez por semana', () => {
+  const m = motorCompleto({ hoy: '2026-11-11' });
+  const r = m.llamar('guardarAntojos', { conceptos: ['ropa y calzado', 'No existe'], tope: 100 });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual(r.datos.conceptos, ['Ropa y Calzado']);
+  assert.equal(r.datos.semana.desde, '2026-11-09');
+  const g = (id, monto) => m.llamar('registrar', { idCliente: 'antojo-' + id, monto, medio: 'TC_IBK', concepto: 'Ropa y Calzado', descripcion: 'Polo ' + id, fecha: '2026-11-10' });
+  g('0001', 50);
+  assert.equal(m.correos.length, 0);
+  g('0002', 35); // 85 %
+  assert.equal(m.correos.length, 1);
+  assert.match(m.correos[0].subject, /ya van S\/ 85 de S\/ 100/);
+  g('0003', 5); // 90 %: ya avisado
+  assert.equal(m.correos.length, 1);
+  g('0004', 20); // 110 %
+  assert.equal(m.correos.length, 2);
+  assert.match(m.correos[1].subject, /se pasaron del tope/);
+  assert.equal(m.llamar('antojos', {}).datos.semana.gastado, 110);
+});
+
+test('1.20.0: el día de cobro llega una vez el cierre del ciclo que terminó', () => {
+  const m = motorCompleto({ hoy: '2026-11-30' });
+  m.llamar('registrar', { idCliente: 'cierre-0001', monto: 60, medio: 'TC_IBK', concepto: 'Ropa y Calzado', descripcion: 'Zapatos', fecha: '2026-11-15' });
+  const r = m.contexto.revisarCierreMes_('2026-11-30', m.contexto.leerTodosLosConsumos_());
+  assert.equal(r.enviado, true, JSON.stringify(r));
+  assert.match(m.correos.at(-1).subject, /^Así cerró .*: S\/ 60 gastados$/);
+  assert.match(m.correos.at(-1).body, /Ropa y Calzado: S\/ 60/);
+  assert.equal(m.contexto.revisarCierreMes_('2026-11-30', []).motivo, 'ya enviado');
+  assert.equal(m.contexto.revisarCierreMes_('2026-11-29', []).motivo, 'no es día de cobro');
+});
+
+test('1.20.0: gastoDeMensaje entiende "25 tambo", "+12.50 taxi yape" y deja pasar conversación', () => {
+  const L = crearMotor({}).contexto;
+  const p = (t) => JSON.parse(JSON.stringify(L.gastoDeMensaje(t)));
+  assert.deepEqual(p('25 tambo'), { monto: 25, descripcion: 'tambo', medio: '' });
+  assert.deepEqual(p('+12,50 taxi al trabajo yape'), { monto: 12.5, descripcion: 'taxi al trabajo', medio: 'YAPE' });
+  assert.deepEqual(p('S/ 8 café'), { monto: 8, descripcion: 'café', medio: '' });
+  assert.equal(L.gastoDeMensaje('hola amor'), null);
+  assert.equal(L.gastoDeMensaje('25'), null);
+});
+
+test('1.20.0: un mensaje en tu chat «Tú» se anota con el tipo y el medio de gastos anteriores y responde', () => {
+  const m = motorCompleto({ hoy: '2026-11-11' });
+  m.llamar('guardarWhatsappGreen', { idInstance: '1100000001', apiToken: TOKEN_GREEN_PRUEBA });
+  m.llamar('guardarWhatsapp', { via: 'green', telefono: '+51 987 654 321' });
+  assert.equal(m.llamar('registroWhatsapp', { activar: true, urlMotor: 'https://otro.com/x' }).ok, false);
+  const act = m.llamar('registroWhatsapp', { activar: true, urlMotor: 'https://script.google.com/macros/s/ABC123/exec' });
+  assert.equal(act.ok, true, JSON.stringify(act));
+  const ajuste = m.greenLlamadas.find((x) => x.metodo === 'setSettings').cuerpo;
+  assert.match(ajuste.webhookUrl, /^https:\/\/script\.google\.com\/macros\/s\/ABC123\/exec\?wh=\w{8,}$/);
+  const secreto = ajuste.webhookUrl.split('wh=')[1];
+  // Un gasto anterior le enseña el tipo y la tarjeta.
+  m.llamar('registrar', { idCliente: 'wa-previo-01', monto: 30, medio: 'TC_IBK', concepto: 'Ropa y Calzado', descripcion: 'Tambo Larco', fecha: '2026-11-10' });
+  const enviar = (wh, cuerpo) => JSON.parse(m.contexto.doPost({ parameter: { wh }, postData: { contents: JSON.stringify(cuerpo) } }).getContent());
+  const msg = (id, texto, extra = {}) => Object.assign({ typeWebhook: 'outgoingMessageReceived', idMessage: id, instanceData: { wid: '51987654321@c.us' },
+    senderData: { chatId: '51987654321@c.us', sender: '51987654321@c.us' }, messageData: { typeMessage: 'textMessage', textMessageData: { textMessage: texto } } }, extra);
+  assert.equal(enviar('malo', msg('A1', '25 tambo')).ignorado, 'secreto');
+  const r = enviar(secreto, msg('A2', '25 tambo'));
+  assert.equal(r.guardado, true, JSON.stringify(r));
+  const fila = hojaDe(m, 'TC IBK').valores.find((f) => f[4] === 'Tambo' && f[5] === 25);
+  assert.ok(fila, 'quedó en la hoja de la tarjeta de costumbre');
+  assert.equal(fila[3], 'Ropa y Calzado');
+  assert.match(m.greenLlamadas.at(-1).cuerpo.message, /^✅ Anotado: S\/ 25 · Tambo · Ropa y Calzado/);
+  // Repetido (reintento de Green API): no se anota dos veces.
+  assert.equal(enviar(secreto, msg('A2', '25 tambo')).ignorado, 'repetido');
+  // Sin historial ni tipo en el texto: pregunta.
+  const q = enviar(secreto, msg('A3', '40 ferreteria'));
+  assert.equal(q.pendiente, 'concepto');
+  assert.match(m.greenLlamadas.at(-1).cuerpo.message, /No sé de qué tipo es «ferreteria»/);
+  // Conversación con otra persona: se ignora.
+  assert.equal(enviar(secreto, msg('A4', '25 tambo', { senderData: { chatId: '51900000000@c.us' } })).ignorado, 'otro chat');
 });

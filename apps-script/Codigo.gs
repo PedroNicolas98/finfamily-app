@@ -26,7 +26,7 @@
  *   FINFAMILY_ICONOS               ícono elegido para cada tipo de gasto (motor 1.5.1).
  */
 
-var VERSION = '1.19.0';
+var VERSION = '1.20.0';
 var ZONA_HORARIA = 'America/Lima';
 var DIAS_AVISO = 3;
 var SEGUNDOS_CACHE_TOKEN = 300;
@@ -45,6 +45,11 @@ var PROPIEDAD_LINEAS = 'FINFAMILY_LINEAS';
 var PROPIEDAD_ICONOS = 'FINFAMILY_ICONOS';
 var PROPIEDAD_CUENTAS = 'FINFAMILY_CUENTAS';           // motor 1.14.0: préstamos y devoluciones entre ustedes
 var PROPIEDAD_WHATSAPP = 'FINFAMILY_WHATSAPP';         // motor 1.17.0: {correo: {telefono, apikey, desde}} (privado)
+var PROPIEDAD_ANTOJOS = 'FINFAMILY_ANTOJOS';           // motor 1.20.0: {conceptos, tope} por semana
+var PROPIEDAD_ANTOJOS_AVISOS = 'FINFAMILY_ANTOJOS_AVISOS'; // avisos ya mandados ('<lunes>|80', '<lunes>|100')
+var PROPIEDAD_CIERRE_MES = 'FINFAMILY_CIERRE_MES';     // último mes cuyo cierre se mandó
+var PROPIEDAD_WA_WEBHOOK = 'FINFAMILY_WA_WEBHOOK';     // {secreto, activo}: anotar gastos por WhatsApp
+var PROPIEDAD_WA_VISTOS = 'FINFAMILY_WA_VISTOS';       // últimos mensajes de WhatsApp ya procesados
 var PROPIEDAD_WA_GREEN = 'FINFAMILY_WA_GREEN';         // motor 1.19.0: {apiUrl, idInstance, token} de Green API (privado)
 var PROPIEDAD_WA_META = 'FINFAMILY_WA_META';           // motor 1.18.0: {token, phoneId, plantilla, idioma, version} (privado)
 var PROPIEDAD_CUADRES = 'FINFAMILY_CUADRES';           // motor 1.16.0: último cuadre de cada cuenta
@@ -60,7 +65,7 @@ var DIAS_CORREOS = 3; // cuántos días hacia atrás busca el lector
 
 /** Acciones que entiende este motor (la acción 'version' las devuelve). */
 var ACCIONES = ['inicio', 'tarjetas', 'presupuesto', 'config', 'registrar', 'marcarPagado', 'marcarFijo',
-  'editarGasto', 'borrarGasto', 'personas', 'desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'abrirSesion', 'cerrarSesion', 'reenvio', 'pasarACuotas', 'fijosAuto', 'guardarFijoAuto', 'cuentas', 'anotarCuenta', 'borrarCuenta', 'guardarMeta', 'cuadres', 'guardarCuadre', 'whatsapp', 'guardarWhatsapp', 'probarWhatsapp', 'guardarWhatsappMeta', 'guardarWhatsappGreen',
+  'editarGasto', 'borrarGasto', 'personas', 'desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'abrirSesion', 'cerrarSesion', 'reenvio', 'pasarACuotas', 'fijosAuto', 'guardarFijoAuto', 'cuentas', 'anotarCuenta', 'borrarCuenta', 'guardarMeta', 'cuadres', 'guardarCuadre', 'whatsapp', 'guardarWhatsapp', 'probarWhatsapp', 'guardarWhatsappMeta', 'guardarWhatsappGreen', 'antojos', 'guardarAntojos', 'registroWhatsapp',
   'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos',
   'datosTarjetas', 'guardarDatosTarjeta',
   'agregarTarjeta', 'editarTarjeta', 'quitarTarjeta', 'restaurarTarjeta',
@@ -117,6 +122,9 @@ function finfamilyAutorizar() {
 }
 
 function doPost(e) {
+  if (e && e.parameter && e.parameter.wh) {
+    try { return responderJSON_(recibirWebhookWhatsapp_(e)); } catch (errWh) { console.warn('FinFamily WhatsApp entrante: ' + errWh); return responderJSON_({ ok: true }); }
+  }
   try {
     var cuerpo = leerCuerpo_(e);
     // Con llave de sesión del motor (1.9.8) no hace falta el pase de Google; sin ella, el pase de Google.
@@ -155,6 +163,9 @@ function doPost(e) {
       case 'probarWhatsapp': resultado = accionProbarWhatsapp_(usuario); break;
       case 'guardarWhatsappMeta': resultado = accionGuardarWhatsappMeta_(usuario, datos); break;
       case 'guardarWhatsappGreen': resultado = accionGuardarWhatsappGreen_(usuario, datos); break;
+      case 'antojos': resultado = accionAntojos_(usuario, datos); break;
+      case 'guardarAntojos': resultado = accionGuardarAntojos_(usuario, datos); break;
+      case 'registroWhatsapp': resultado = accionRegistroWhatsapp_(usuario, datos); break;
       case 'pendientes': resultado = accionPendientes_(usuario, datos); break;
       case 'confirmarPendiente': resultado = accionConfirmarPendiente_(usuario, datos); break;
       case 'descartarPendiente': resultado = accionDescartarPendiente_(usuario, datos); break;
@@ -749,7 +760,7 @@ function nombreUsuarioDeTitular_(titular) {
 function accionRegistrar_(usuario, datos) {
   var responsable = resolverResponsable_(usuario, datos.responsable);
   var r = registrarGasto_(datos, responsable);
-  if (r.guardado) { avisarGastoGrande_(r.gasto); avisarSobrante_(r.gasto); }
+  if (r.guardado) { avisarGastoGrande_(r.gasto); avisarSobrante_(r.gasto); revisarAntojosSiToca_(r.gasto && r.gasto.concepto); }
   delete r.gasto;
   return r;
 }
@@ -1576,6 +1587,230 @@ function accionBorrarCuenta_(usuario, datos) {
   return accionCuentas_(usuario);
 }
 
+// ---------------------------------------------------------------------------
+// Tope semanal de antojos (motor 1.20.0)
+// ---------------------------------------------------------------------------
+
+function leerAntojos_() {
+  var a = antojosDesde(propiedad_(PROPIEDAD_ANTOJOS));
+  if (!a.conceptos.length) a.conceptos = ANTOJOS_DEFECTO.slice();
+  return a;
+}
+
+function accionAntojos_(usuario) {
+  var a = leerAntojos_();
+  var consumos = leerTodosLosConsumos_();
+  var hoy = hoyServidor_();
+  var promedio = promedioAntojos(consumos, a.conceptos, hoy);
+  return { conceptos: a.conceptos, tope: a.tope, configurado: a.tope > 0, semana: antojosDeSemana(consumos, a.conceptos, hoy),
+    promedioSemanal: promedio, promedioMensual: redondear_(promedio * 52 / 12) };
+}
+
+/** {conceptos, tope}: tope 0 = apagado. Los conceptos deben estar en Configuración. */
+function accionGuardarAntojos_(usuario, datos) {
+  var tope = typeof datos.tope === 'number' ? datos.tope : parsearMonto(String(datos.tope || '0'));
+  if (tope === null || !isFinite(tope) || tope < 0 || tope > 100000) throw errorApp_('datos_invalidos', 'El tope no es válido.');
+  var conf = leerConfiguracion_().conceptos;
+  var lista = (Array.isArray(datos.conceptos) ? datos.conceptos : []).map(function (c) {
+    var n = normalizar(c);
+    for (var i = 0; i < conf.length; i++) if (normalizar(conf[i]) === n) return conf[i];
+    return '';
+  }).filter(Boolean);
+  if (tope > 0 && !lista.length) throw errorApp_('datos_invalidos', 'Elige al menos un tipo de gasto.');
+  PropertiesService.getScriptProperties().setProperty(PROPIEDAD_ANTOJOS, JSON.stringify({ conceptos: lista, tope: Math.round(tope * 100) / 100 }));
+  return accionAntojos_(usuario);
+}
+
+/** Avisa al 80 % y al 100 % del tope de la semana (una vez cada uno). Nunca lanza. */
+function revisarAntojos_(hoy, consumosOpcional) {
+  try {
+    var a = leerAntojos_();
+    if (!(a.tope > 0)) return { motivo: 'sin tope' };
+    if (!leerAjustesAvisos_().presupuesto) return { motivo: 'avisos apagados' };
+    var s = antojosDeSemana(consumosOpcional || leerTodosLosConsumos_(), a.conceptos, hoy);
+    var pct = s.gastado / a.tope;
+    var nivel = pct >= 1 ? '100' : pct >= 0.8 ? '80' : '';
+    if (!nivel) return { motivo: 'todavía no' };
+    var vistos = String(propiedad_(PROPIEDAD_ANTOJOS_AVISOS) || '').split(',').filter(Boolean);
+    if (vistos.indexOf(s.desde + '|' + nivel) !== -1 || (nivel === '80' && vistos.indexOf(s.desde + '|100') !== -1)) return { motivo: 'ya avisado' };
+    var r = enviarCorreoAUsuarios_(textoAlertaAntojos(nivel, s, a.tope), 'antojos');
+    if (r.enviado) {
+      vistos.push(s.desde + '|' + nivel);
+      PropertiesService.getScriptProperties().setProperty(PROPIEDAD_ANTOJOS_AVISOS, vistos.slice(-12).join(','));
+    }
+    return { enviado: r.enviado, nivel: nivel };
+  } catch (err) {
+    console.warn('FinFamily antojos: ' + err);
+    return { motivo: 'error' };
+  }
+}
+
+/** Después de anotar un gasto: si es de un concepto de antojos, revisa el tope. */
+function revisarAntojosSiToca_(concepto) {
+  try {
+    var a = leerAntojos_();
+    if (!(a.tope > 0) || !esAntojo_({ concepto: concepto }, a.conceptos)) return;
+    revisarAntojos_(hoyServidor_());
+  } catch (err) { /* nunca hace fallar el registro */ }
+}
+
+// ---------------------------------------------------------------------------
+// Cierre del mes (motor 1.20.0): el día de cobro (último día del mes) manda cómo cerró el ciclo anterior.
+// ---------------------------------------------------------------------------
+
+function revisarCierreMes_(hoy, consumos) {
+  var d = parsearFecha(hoy);
+  var ultimo = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  if (d.getDate() !== ultimo) return { motivo: 'no es día de cobro' };
+  var mes = mesDelCiclo(sumarDias_(hoy, -1));
+  if (propiedad_(PROPIEDAD_CIERRE_MES) === mes) return { motivo: 'ya enviado' };
+  var ciclo = cicloDelMes(mes);
+  var total = 0, cantidad = 0, por = {};
+  (consumos || []).forEach(function (c) {
+    if (!c.fecha || c.fecha < ciclo.desde || c.fecha > ciclo.hasta) return;
+    total += Number(c.monto) || 0; cantidad++;
+    por[c.concepto || 'Otros'] = (por[c.concepto || 'Otros'] || 0) + (Number(c.monto) || 0);
+  });
+  var p = null;
+  try { p = leerPresupuestoDelMes_(mes); } catch (err) { p = null; }
+  var texto = textoCierreMes(p ? p.etiquetaMes : mes, ciclo, redondear_(total), cantidad, p && p.totales ? p.totales.saldo : null,
+    ordenadoPorMonto_(por, 'concepto').slice(0, 3));
+  var r = enviarCorreoAUsuarios_(texto, 'cierre del mes');
+  if (r.enviado) PropertiesService.getScriptProperties().setProperty(PROPIEDAD_CIERRE_MES, mes);
+  return r;
+}
+
+// ---------------------------------------------------------------------------
+// Anotar gastos escribiendo por WhatsApp (motor 1.20.0). Green API manda cada mensaje al motor (?wh=<secreto>).
+// En tu chat «Tú»: "25 tambo". Otra persona conectada te escribe: "+25 tambo". El motor busca el tipo de gasto
+// y el medio en gastos anteriores con esa descripción; si no sabe, responde pidiendo el tipo.
+// ---------------------------------------------------------------------------
+
+/** {activar, urlMotor}: configura (o quita) el webhook de Green API hacia este motor. */
+function accionRegistroWhatsapp_(usuario, datos) {
+  var g = leerWaGreen_();
+  if (!g) throw errorApp_('datos_invalidos', 'Primero conecta WhatsApp con Green API.');
+  var props = PropertiesService.getScriptProperties();
+  if (datos.activar !== true) {
+    llamarGreen_(g, 'setSettings', { webhookUrl: '', incomingWebhook: 'no', outgoingMessageWebhook: 'no' });
+    props.deleteProperty(PROPIEDAD_WA_WEBHOOK);
+    return { activo: false };
+  }
+  var url = String(datos.urlMotor || '');
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_\-]+\/exec$/.test(url)) throw errorApp_('datos_invalidos', 'La dirección del motor no es válida.');
+  var secreto = Utilities.getUuid().replace(/-/g, '');
+  var r = llamarGreen_(g, 'setSettings', { webhookUrl: url + '?wh=' + secreto, incomingWebhook: 'yes', outgoingMessageWebhook: 'yes', outgoingAPIMessageWebhook: 'no' });
+  if (!r.ok) throw errorApp_('datos_invalidos', 'Green API no aceptó el cambio: ' + r.motivo + '.');
+  props.setProperty(PROPIEDAD_WA_WEBHOOK, JSON.stringify({ secreto: secreto, activo: true, desde: hoyServidor_() }));
+  return { activo: true };
+}
+
+function usuarioDeTelefono_(numero) {
+  var dig = String(numero || '').replace(/\D/g, '');
+  if (!dig) return null;
+  var todos = leerWhatsapp_();
+  var usuarios = leerUsuarios_();
+  var correos = Object.keys(todos);
+  for (var i = 0; i < correos.length; i++) {
+    if (String(todos[correos[i]].telefono || '').replace(/\D/g, '') === dig && usuarios[correos[i]]) return { email: correos[i], nombre: usuarios[correos[i]].nombre, telefono: todos[correos[i]].telefono };
+  }
+  return null;
+}
+
+/** El último gasto con una descripción parecida: {concepto, medio}. */
+function gastoParecido_(descripcion, responsable) {
+  var buscado = normalizar(descripcion).split(' ')[0];
+  if (!buscado || buscado.length < 3) return null;
+  var catalogo = leerCatalogo_();
+  var medios = mediosDesde(catalogo);
+  var mejor = null;
+  leerTodosLosConsumos_().forEach(function (c) {
+    var d = normalizar(c.descripcion);
+    if (!d || d.indexOf(buscado) === -1 || !c.concepto) return;
+    var puntaje = (d.indexOf(buscado) === 0 ? 2 : 1) + (normalizar(c.responsable) === normalizar(responsable) ? 1 : 0);
+    if (!mejor || puntaje > mejor.puntaje || (puntaje === mejor.puntaje && String(c.fecha) > String(mejor.c.fecha))) mejor = { c: c, puntaje: puntaje };
+  });
+  if (!mejor) return null;
+  var c = mejor.c, medio = '';
+  if (c.tarjeta && c.tarjeta !== 'HORMIGA') {
+    var t = buscarTarjetaCatalogo(catalogo, c.tarjeta);
+    medio = t ? t.medio : '';
+  } else {
+    medios.forEach(function (m) { if (!medio && normalizar(m.etiqueta) === normalizar(c.medio)) medio = m.id; });
+  }
+  return { concepto: c.concepto, medio: medio || 'EFECTIVO', tarjeta: c.tarjeta && c.tarjeta !== 'HORMIGA' ? c.tarjeta : '' };
+}
+
+function conceptoEnTexto_(texto) {
+  var t = ' ' + normalizar(texto) + ' ';
+  var conf = leerConfiguracion_().conceptos;
+  for (var i = 0; i < conf.length; i++) {
+    var n = normalizar(conf[i]);
+    if (n && (t.indexOf(' ' + n + ' ') !== -1 || t.indexOf(' ' + n.split(' ')[0] + ' ') !== -1 && n.split(' ')[0].length >= 5)) return conf[i];
+  }
+  return '';
+}
+
+function recibirWebhookWhatsapp_(e) {
+  var cfg = {};
+  try { cfg = JSON.parse(propiedad_(PROPIEDAD_WA_WEBHOOK) || '{}') || {}; } catch (err) { cfg = {}; }
+  if (!cfg.activo || !cfg.secreto || String(e.parameter.wh) !== cfg.secreto) return { ok: true, ignorado: 'secreto' };
+  var w = {};
+  try { w = JSON.parse((e.postData && e.postData.contents) || '{}'); } catch (err) { return { ok: true, ignorado: 'formato' }; }
+  var tipo = w.typeWebhook;
+  if (tipo !== 'incomingMessageReceived' && tipo !== 'outgoingMessageReceived') return { ok: true, ignorado: 'tipo' };
+  var id = String(w.idMessage || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 40);
+  if (!id) return { ok: true, ignorado: 'sin id' };
+  var md = w.messageData || {};
+  var texto = md.typeMessage === 'textMessage' ? (md.textMessageData || {}).textMessage
+    : md.typeMessage === 'extendedTextMessage' ? (md.extendedTextMessageData || {}).text : '';
+  texto = String(texto || '').trim();
+  var chat = String((w.senderData || {}).chatId || '');
+  var propio = String((w.instanceData || {}).wid || '');
+  var persona = null;
+  if (tipo === 'outgoingMessageReceived') {
+    if (!propio || chat !== propio) return { ok: true, ignorado: 'otro chat' }; // solo lo que escribes en tu chat «Tú»
+    persona = usuarioDeTelefono_(propio);
+  } else {
+    if (texto.charAt(0) !== '+') return { ok: true, ignorado: 'sin +' };   // conversación normal: no es un gasto
+    persona = usuarioDeTelefono_((w.senderData || {}).sender || chat);
+  }
+  if (!persona) return { ok: true, ignorado: 'persona' };
+  var gasto = gastoDeMensaje(texto);
+  if (!gasto) return { ok: true, ignorado: 'no es gasto' };
+  // No procesar dos veces el mismo mensaje (Green API puede reintentar).
+  var vistos = String(propiedad_(PROPIEDAD_WA_VISTOS) || '').split(',').filter(Boolean);
+  if (vistos.indexOf(id) !== -1) return { ok: true, ignorado: 'repetido' };
+  PropertiesService.getScriptProperties().setProperty(PROPIEDAD_WA_VISTOS, vistos.concat([id]).slice(-60).join(','));
+
+  var parecido = gastoParecido_(gasto.descripcion, persona.nombre);
+  var concepto = conceptoEnTexto_(gasto.descripcion) || (parecido ? parecido.concepto : '');
+  if (!concepto) {
+    mandarGreen_(persona.telefono, '🤔 No sé de qué tipo es «' + gasto.descripcion + '». Escríbelo con el tipo, por ejemplo: ' +
+      (tipo === 'incomingMessageReceived' ? '+' : '') + gasto.monto + ' ' + gasto.descripcion + ' chucherías');
+    return { ok: true, pendiente: 'concepto' };
+  }
+  var medio = gasto.medio || (parecido ? parecido.medio : 'EFECTIVO');
+  var directo = ['YAPE', 'PLIN', 'EFECTIVO'].indexOf(medio) !== -1;
+  var datosGasto = { idCliente: 'whatsapp-' + id, monto: gasto.monto, medio: medio, concepto: concepto,
+    descripcion: gasto.descripcion.charAt(0).toUpperCase() + gasto.descripcion.slice(1), nota: 'Anotado por WhatsApp', fecha: hoyServidor_() };
+  if (directo) datosGasto.origen = 'P:' + persona.nombre;
+  if (!gasto.medio && parecido && parecido.tarjeta) datosGasto.tarjeta = parecido.tarjeta;
+  var r;
+  try { r = registrarGasto_(datosGasto, persona.nombre); } catch (err) {
+    mandarGreen_(persona.telefono, '⚠️ No pude anotar «' + gasto.descripcion + '»: ' + (err && err.message ? err.message : err));
+    return { ok: true, error: true };
+  }
+  if (r.posibleDuplicado) {
+    mandarGreen_(persona.telefono, '⚠️ «' + gasto.descripcion + '» de ' + formatoSoles_(gasto.monto) + ' parece repetido (ya hay uno igual). Si es otro, anótalo en la app.');
+    return { ok: true, duplicado: true };
+  }
+  if (r.guardado) { avisarGastoGrande_(r.gasto); avisarSobrante_(r.gasto); revisarAntojosSiToca_(concepto); }
+  var medioTxt = (buscarMedio_(medio) || {}).etiqueta || medio;
+  mandarGreen_(persona.telefono, '✅ Anotado: ' + formatoSoles_(gasto.monto) + ' · ' + datosGasto.descripcion + ' · ' + concepto + ' · ' + medioTxt);
+  return { ok: true, guardado: !!r.guardado };
+}
+
 function sumarMesesClave_(clave, n) {
   var p = String(clave).split('-');
   var d = new Date(Number(p[0]), Number(p[1]) - 1 + n, 1);
@@ -1961,6 +2196,11 @@ function estadoWhatsapp_(usuario) {
   salida.meta = meta ? { configurado: true, plantilla: meta.plantilla } : { configurado: false };
   var green = leerWaGreen_();
   salida.green = green ? { configurado: true, numero: green.numero ? telefonoOculto(green.numero) : '' } : { configurado: false };
+  if (green) {
+    var wh = {};
+    try { wh = JSON.parse(propiedad_(PROPIEDAD_WA_WEBHOOK) || '{}') || {}; } catch (err) { wh = {}; }
+    salida.green.registro = wh.activo === true;
+  }
   return salida;
 }
 
@@ -2771,6 +3011,7 @@ function accionConfirmarPendiente_(usuario, datos) {
   cambiarEstadoPendiente_(id, 'Confirmado');
   if (r.guardado) { avisarGastoGrande_(r.gasto); avisarSobrante_(r.gasto); }
   var salida = { confirmado: true, hoja: r.hoja, fila: r.fila };
+  revisarAntojosSiToca_(datos.concepto);
   // La tarjeta se informa solo si la pidió la app o si quedó como prestada (lo demás responde igual que antes).
   var pedida = !(datos.tarjeta === undefined || datos.tarjeta === null || datos.tarjeta === '');
   if (r.tarjeta && (pedida || r.prestada)) { salida.tarjeta = r.tarjeta; salida.prestada = r.prestada === true; }
@@ -2865,6 +3106,10 @@ function revisarAlertas() {
       console.warn('FinFamily alertas (resumen semanal): ' + err);
       resultado.resumenSemanal = { enviado: false, motivo: 'error' };
     }
+  }
+  if (ajustes.presupuesto) resultado.antojos = revisarAntojos_(hoy, consumos);
+  if (ajustes.resumenSemanal) {
+    try { resultado.cierre = revisarCierreMes_(hoy, consumos); } catch (err) { resultado.cierre = { motivo: 'error' }; }
   }
   try { resultado.fijos = revisarFijos_(hoy, ajustes.vencimiento !== false); } catch (err) {
     console.warn('FinFamily alertas (fijos): ' + err);

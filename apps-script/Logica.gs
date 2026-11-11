@@ -1220,6 +1220,106 @@ function cuadresDesde(texto) {
 }
 
 // ---------------------------------------------------------------------------
+// Tope semanal de antojos (motor 1.20.0): unos conceptos (restaurantes, chucherías, delivery…) con un tope
+// por semana (de lunes a domingo). Avisa al 80 % y al 100 %, una vez cada uno por semana.
+// ---------------------------------------------------------------------------
+
+var ANTOJOS_DEFECTO = ['Restaurantes y Salidas', 'Chucherías', 'Delivery'];
+
+function antojosDesde(texto) {
+  var obj = {};
+  try { obj = typeof texto === 'string' ? JSON.parse(texto || '{}') : (texto || {}); } catch (err) { obj = {}; }
+  var conceptos = (Array.isArray(obj.conceptos) ? obj.conceptos : []).map(function (c) { return String(c || '').replace(/\s+/g, ' ').trim().slice(0, 60); })
+    .filter(Boolean).slice(0, 12);
+  var tope = Math.round(Number(obj.tope) * 100) / 100;
+  return { conceptos: conceptos, tope: tope > 0 ? tope : 0 };
+}
+
+/** Lunes y domingo de la semana de esa fecha. */
+function semanaDe(hoyISO) {
+  var d = parsearFecha(hoyISO);
+  var dia = (d.getDay() + 6) % 7;
+  var lunes = sumarDias_(fechaISO(d), -dia);
+  return { desde: lunes, hasta: sumarDias_(lunes, 6) };
+}
+
+function esAntojo_(c, conceptos) {
+  var n = normalizar(c.concepto);
+  return conceptos.some(function (x) { return normalizar(x) === n; });
+}
+
+/** Lo gastado en antojos en la semana de hoy (de lunes a hoy). */
+function antojosDeSemana(consumos, conceptos, hoyISO) {
+  var s = semanaDe(hoyISO);
+  var total = 0, por = {};
+  (consumos || []).forEach(function (c) {
+    if (!c.fecha || c.fecha < s.desde || c.fecha > hoyISO || !esAntojo_(c, conceptos)) return;
+    total += Number(c.monto) || 0;
+    por[c.concepto] = (por[c.concepto] || 0) + (Number(c.monto) || 0);
+  });
+  return { desde: s.desde, hasta: s.hasta, gastado: redondear_(total),
+    porConcepto: ordenadoPorMonto_(por, 'concepto'), diasQuedan: Math.max(0, diasEntre_(hoyISO, s.hasta)) };
+}
+
+/** Promedio semanal de antojos de las 4 semanas completas anteriores. */
+function promedioAntojos(consumos, conceptos, hoyISO) {
+  var s = semanaDe(hoyISO);
+  var desde = sumarDias_(s.desde, -28), hasta = sumarDias_(s.desde, -1);
+  var total = 0;
+  (consumos || []).forEach(function (c) {
+    if (!c.fecha || c.fecha < desde || c.fecha > hasta || !esAntojo_(c, conceptos)) return;
+    total += Number(c.monto) || 0;
+  });
+  return redondear_(total / 4);
+}
+
+function textoAlertaAntojos(nivel, semana, tope) {
+  var pasado = nivel === '100';
+  var lineas = (semana.porConcepto || []).map(function (x) { return '• ' + x.concepto + ': ' + formatoSoles_(x.monto); });
+  return {
+    asunto: pasado ? 'Antojos: se pasaron del tope de la semana (' + formatoSoles_(semana.gastado) + ' de ' + formatoSoles_(tope) + ')'
+      : 'Antojos: ya van ' + formatoSoles_(semana.gastado) + ' de ' + formatoSoles_(tope) + ' esta semana',
+    cuerpo: (pasado ? 'Esta semana ya se pasaron del tope de antojos.' : 'Esta semana ya llevan el ' + Math.floor((semana.gastado / tope) * 100) + ' % del tope de antojos.') +
+      '\n\n' + lineas.join('\n') + '\n\n' +
+      (pasado ? 'Lo que gasten de más sale de lo que les sobra del mes.' : 'Quedan ' + formatoSoles_(Math.max(0, tope - semana.gastado)) + ' hasta el domingo.')
+  };
+}
+
+/** Correo/WhatsApp del día de cobro: cómo cerró el ciclo que terminó ayer. */
+function textoCierreMes(etiquetaMes, ciclo, gastado, consumos, saldo, top) {
+  var cuerpo = ['Así cerró ' + etiquetaMes + ' (del ' + fechaCorta_(ciclo.desde) + ' al ' + fechaCorta_(ciclo.hasta) + '):', ''];
+  cuerpo.push('Gastaron ' + formatoSoles_(gastado) + ' en ' + consumos + ' gasto' + (consumos === 1 ? '' : 's') + '.');
+  if (top && top.length) {
+    cuerpo.push('', 'En qué se fue más:');
+    top.forEach(function (c) { cuerpo.push('• ' + c.concepto + ': ' + formatoSoles_(c.monto)); });
+  }
+  if (saldo !== null && saldo !== undefined && isFinite(saldo)) {
+    cuerpo.push('', saldo >= 0 ? 'Según el presupuesto quedó libre ' + formatoSoles_(saldo) + '.' : 'Según el presupuesto faltaron ' + formatoSoles_(-saldo) + '.');
+  }
+  cuerpo.push('', 'Hoy empieza el nuevo mes: ¡a cuidarlo!');
+  return { asunto: 'Así cerró ' + etiquetaMes + ': ' + formatoSoles_(gastado) + ' gastados', cuerpo: cuerpo.join('\n') };
+}
+
+// ---------------------------------------------------------------------------
+// Anotar gastos escribiendo por WhatsApp (motor 1.20.0)
+// ---------------------------------------------------------------------------
+
+/** "25 tambo", "+12.50 taxi al trabajo yape" -> {monto, descripcion, medio?}; null si no es un gasto. */
+function gastoDeMensaje(texto) {
+  var t = String(texto || '').replace(/\s+/g, ' ').trim();
+  var m = t.match(/^\+?\s*(?:s\/\.?\s*)?(\d{1,6}(?:[.,]\d{1,2})?)\s+(.{2,80})$/i);
+  if (!m) return null;
+  var monto = Number(m[1].replace(',', '.'));
+  if (!(monto > 0)) return null;
+  var palabras = m[2].trim().split(' ');
+  var medios = { yape: 'YAPE', plin: 'PLIN', efectivo: 'EFECTIVO', cash: 'EFECTIVO', lemon: 'LEMON' };
+  var medio = '';
+  var ultima = normalizar(palabras[palabras.length - 1]);
+  if (palabras.length > 1 && medios[ultima]) { medio = medios[ultima]; palabras.pop(); }
+  return { monto: Math.round(monto * 100) / 100, descripcion: palabras.join(' ').slice(0, 80), medio: medio };
+}
+
+// ---------------------------------------------------------------------------
 // Metas de ahorro con fecha (motor 1.15.0): a cada línea de ahorro se le pone un objetivo y el mes límite;
 // se calcula cuánto falta, cuánto apartar al mes y si con lo que se pone este mes se llega.
 // ---------------------------------------------------------------------------
@@ -2271,10 +2371,18 @@ function resumenSemanal(consumos, hoyISO) {
   var hasta = sumarDias_(lunesActual, -1);
   var total = 0, cantidad = 0;
   var personas = {}, conceptos = {};
+  var chicos = { cantidad: 0, total: 0, porDesc: {} };
   (consumos || []).forEach(function (c) {
     if (!c.fecha || c.fecha < desde || c.fecha > hasta) return;
     total += c.monto;
     cantidad++;
+    if (c.monto > 0 && c.monto <= TOPE_HORMIGA) {
+      chicos.cantidad++; chicos.total += c.monto;
+      var d = String(c.descripcion || c.concepto || 'Otro').replace(/\s+/g, ' ').trim().split(' ').slice(0, 2).join(' ');
+      var kd = normalizar(d);
+      if (!chicos.porDesc[kd]) chicos.porDesc[kd] = { descripcion: d, veces: 0, monto: 0 };
+      chicos.porDesc[kd].veces++; chicos.porDesc[kd].monto += c.monto;
+    }
     var p = c.responsable || 'Sin responsable';
     personas[p] = (personas[p] || 0) + c.monto;
     var k = c.concepto || 'Sin concepto';
@@ -2283,9 +2391,18 @@ function resumenSemanal(consumos, hoyISO) {
   return {
     desde: desde, hasta: hasta, total: redondear_(total), consumos: cantidad,
     porPersona: ordenadoPorMonto_(personas, 'nombre').map(function (p) { return { nombre: p.nombre, total: p.monto }; }),
-    conceptos: ordenadoPorMonto_(conceptos, 'concepto').slice(0, 3)
+    conceptos: ordenadoPorMonto_(conceptos, 'concepto').slice(0, 3),
+    hormiga: {
+      cantidad: chicos.cantidad, total: redondear_(chicos.total),
+      top: Object.keys(chicos.porDesc).map(function (k) { return chicos.porDesc[k]; })
+        .sort(function (a, b) { return (b.veces - a.veces) || (b.monto - a.monto); })
+        .map(function (x) { return { descripcion: x.descripcion, veces: x.veces, monto: redondear_(x.monto) }; })[0] || null
+    }
   };
 }
+
+// Gastos chicos (motor 1.20.0): hasta este monto cuentan como "hormiga" en el resumen semanal.
+var TOPE_HORMIGA = 15;
 
 /**
  * Correo del resumen semanal.
@@ -2308,6 +2425,11 @@ function textoResumenSemanal(semana, presupuesto, vencimientos) {
       cuerpo.push('', 'En qué se fue más:');
       s.conceptos.forEach(function (c) { cuerpo.push('• ' + c.concepto + ': ' + formatoSoles_(c.monto)); });
     }
+  }
+  var hg = s.hormiga;
+  if (hg && hg.cantidad >= 3) {
+    cuerpo.push('', 'Gastos chicos (hasta ' + formatoSoles_(TOPE_HORMIGA) + '): ' + hg.cantidad + ' por ' + formatoSoles_(hg.total) +
+      (hg.top && hg.top.veces > 1 ? '. El que más se repite: ' + hg.top.descripcion + ' (' + hg.top.veces + ' veces, ' + formatoSoles_(hg.top.monto) + ')' : '') + '.');
   }
   if (presupuesto && presupuesto.planeado > 0) {
     var queda = redondear_(presupuesto.planeado - presupuesto.gastado);
