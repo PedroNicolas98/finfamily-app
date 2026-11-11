@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v168';
+const VERSION_APP = 'finfamily-v169';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -2348,7 +2348,9 @@ function abrirMeta({ concepto, disponible, aporteMes, mes, actual }, alGuardar) 
   let fecha = actual?.fecha || sumarMes(mes, 6);
   const atajos = [3, 6, 12, 24].map((n) => ({ n, clave: sumarMes(mes, n) }));
   const chips = h('div', { class: 'meta-plazos' });
-  const inMes = h('input', { type: 'month', min: mes, value: fecha, 'aria-label': 'Mes de la meta' });
+  const clavesMes = Array.from({ length: 60 }, (_, k) => sumarMes(mes, k + 1));
+  if (fecha && !clavesMes.includes(fecha)) clavesMes.unshift(fecha);
+  const inMes = h('select', { 'aria-label': 'Mes de la meta' }, clavesMes.map((k) => h('option', { value: k, selected: k === fecha }, nombreMesClave(k) || k)));
   const resumen = h('div', { class: 'meta-calculo', 'aria-live': 'polite' });
   const msg = h('p', { class: 'mensaje error', hidden: true });
   const btn = h('button', { type: 'button', class: 'boton primario' }, 'Guardar meta');
@@ -4988,6 +4990,141 @@ function elegirModo(id) {
     elegirApariencia('ff:modo', id);
   }
   document.querySelectorAll('[data-modo-cfg]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.modoCfg === id)));
+}
+
+// v169: listas desplegables con el diseño de la app (nunca la lista del navegador). Cada <select> queda escondido
+// (sigue guardando el valor y avisando con 'change') y en su lugar va un botón que abre un menú propio.
+const SEL_VALOR = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+const SEL_INDICE = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'selectedIndex');
+const conPopover = typeof HTMLElement !== 'undefined' && Object.prototype.hasOwnProperty.call(HTMLElement.prototype, 'popover');
+let selAbierto = null;
+function selectPropio(sel) {
+  if (!sel || sel.dataset.propio || sel.multiple || sel.size > 1) return;
+  sel.dataset.propio = '1';
+  const texto = h('span', { class: 'sel-texto' });
+  const boton = h('button', { type: 'button', class: 'sel-boton', 'aria-haspopup': 'listbox', 'aria-expanded': 'false' }, texto, h('span', { class: 'sel-flecha', 'aria-hidden': 'true' }, icono('abajo')));
+  const lista = h('div', { class: 'sel-lista', role: 'listbox', tabindex: '-1' });
+  if (conPopover) lista.setAttribute('popover', 'manual');
+  const caja = h('span', { class: 'sel-propio' });
+  sel.replaceWith(caja);
+  caja.append(sel, boton);
+  sel.classList.add('sel-nativo');
+  sel.tabIndex = -1;
+  sel.setAttribute('aria-hidden', 'true');
+  const etiqueta = sel.getAttribute('aria-label') || (sel.id && document.querySelector(`label[for="${sel.id}"]`)?.textContent) || '';
+  if (etiqueta) boton.setAttribute('aria-label', etiqueta);
+  const sincronizar = () => {
+    const o = sel.options[SEL_INDICE.get.call(sel)];
+    texto.textContent = o ? o.textContent : '';
+    boton.disabled = sel.disabled;
+    if (sel.getAttribute('aria-invalid') === 'true') boton.setAttribute('aria-invalid', 'true'); else boton.removeAttribute('aria-invalid');
+    if (o && sel.getAttribute('aria-label')) boton.setAttribute('aria-label', `${sel.getAttribute('aria-label')}: ${o.textContent}`);
+  };
+  Object.defineProperty(sel, 'value', { configurable: true, get() { return SEL_VALOR.get.call(sel); }, set(v) { SEL_VALOR.set.call(sel, v); sincronizar(); } });
+  Object.defineProperty(sel, 'selectedIndex', { configurable: true, get() { return SEL_INDICE.get.call(sel); }, set(v) { SEL_INDICE.set.call(sel, v); sincronizar(); } });
+  new MutationObserver(sincronizar).observe(sel, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled', 'selected', 'aria-invalid', 'label'] });
+  sel.addEventListener('change', sincronizar);
+  sel.addEventListener('focus', () => boton.focus());
+  let filas = [];
+  let activo = -1;
+  const marcar = (i) => {
+    activo = i;
+    filas.forEach((f, k) => f.classList.toggle('activo', k === i));
+    filas[i]?.scrollIntoView({ block: 'nearest' });
+  };
+  const elegir = (i) => {
+    const antes = SEL_INDICE.get.call(sel);
+    cerrar();
+    boton.focus();
+    if (i < 0 || i === antes || sel.options[i]?.disabled) return;
+    SEL_INDICE.set.call(sel, i);
+    sincronizar();
+    sel.dispatchEvent(new Event('input', { bubbles: true }));
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  const colocar = () => {
+    const r = boton.getBoundingClientRect();
+    const abajo = innerHeight - r.bottom - 12, arriba = r.top - 12;
+    const alto = Math.min(320, Math.max(abajo, arriba));
+    lista.style.minWidth = `${Math.round(r.width)}px`;
+    lista.style.maxHeight = `${Math.round(alto)}px`;
+    lista.style.left = `${Math.round(Math.min(r.left, innerWidth - Math.max(r.width, lista.offsetWidth) - 8))}px`;
+    const h2 = Math.min(lista.scrollHeight, alto);
+    lista.style.top = `${Math.round(abajo >= h2 || abajo >= arriba ? r.bottom + 6 : r.top - h2 - 6)}px`;
+  };
+  const fuera = (ev) => { if (!lista.contains(ev.target) && !boton.contains(ev.target)) cerrar(); };
+  const alMover = (ev) => { if (!lista.contains(ev.target)) cerrar(); };
+  function cerrar() {
+    if (selAbierto !== cerrar) return;
+    selAbierto = null;
+    boton.setAttribute('aria-expanded', 'false');
+    caja.classList.remove('abierto');
+    document.removeEventListener('pointerdown', fuera, true);
+    removeEventListener('scroll', alMover, true);
+    removeEventListener('resize', cerrar);
+    try { if (conPopover) lista.hidePopover(); } catch { /* ya cerrado */ }
+    lista.remove();
+  }
+  const abrir = () => {
+    if (boton.disabled) return;
+    if (selAbierto) selAbierto();
+    filas = [];
+    const nodos = [];
+    const fila = (o) => {
+      const i = filas.length;
+      const f = h('div', { class: 'sel-op' + (o.selected ? ' elegido' : ''), role: 'option', 'aria-selected': String(o.selected), 'aria-disabled': o.disabled ? 'true' : null },
+        h('span', {}, o.textContent), o.selected ? h('span', { class: 'sel-check', 'aria-hidden': 'true' }, icono('check')) : null);
+      f.addEventListener('pointerdown', (ev) => ev.preventDefault());
+      f.addEventListener('click', () => elegir([...sel.options].indexOf(o)));
+      f.addEventListener('pointermove', () => { if (activo !== i) marcar(i); });
+      filas.push(f);
+      return f;
+    };
+    for (const n of sel.children) {
+      if (n.tagName === 'OPTGROUP') { nodos.push(h('div', { class: 'sel-grupo', role: 'presentation' }, n.label)); [...n.children].forEach((o) => nodos.push(fila(o))); }
+      else if (n.tagName === 'OPTION' && !n.hidden) nodos.push(fila(n));
+    }
+    lista.replaceChildren(...nodos);
+    (boton.closest('dialog[open]') || document.body).append(lista);
+    if (conPopover) { try { lista.showPopover(); } catch { /* sin popover */ } }
+    colocar();
+    selAbierto = cerrar;
+    boton.setAttribute('aria-expanded', 'true');
+    caja.classList.add('abierto');
+    const i = filas.findIndex((f) => f.classList.contains('elegido'));
+    marcar(i >= 0 ? i : 0);
+    document.addEventListener('pointerdown', fuera, true);
+    addEventListener('scroll', alMover, true);
+    addEventListener('resize', cerrar);
+  };
+  boton.addEventListener('click', () => (selAbierto === cerrar ? cerrar() : abrir()));
+  let buscado = '', reloj = 0;
+  boton.addEventListener('keydown', (ev) => {
+    const abierto = selAbierto === cerrar;
+    if (!abierto && ['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(ev.key)) { ev.preventDefault(); abrir(); return; }
+    if (!abierto) return;
+    if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); cerrar(); }
+    else if (ev.key === 'Tab') cerrar();
+    else if (ev.key === 'ArrowDown') { ev.preventDefault(); marcar(Math.min(filas.length - 1, activo + 1)); }
+    else if (ev.key === 'ArrowUp') { ev.preventDefault(); marcar(Math.max(0, activo - 1)); }
+    else if (ev.key === 'Home' || ev.key === 'End') { ev.preventDefault(); marcar(ev.key === 'Home' ? 0 : filas.length - 1); }
+    else if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); filas[activo]?.click(); }
+    else if (ev.key.length === 1) {
+      clearTimeout(reloj); buscado += normalizar(ev.key); reloj = setTimeout(() => { buscado = ''; }, 700);
+      const k = filas.findIndex((f) => normalizar(f.textContent).startsWith(buscado));
+      if (k >= 0) marcar(k);
+    }
+  });
+  sincronizar();
+}
+function selectsPropios(raiz) {
+  if (!raiz || raiz.nodeType !== 1) return;
+  if (raiz.tagName === 'SELECT') selectPropio(raiz);
+  else raiz.querySelectorAll?.('select:not([data-propio])').forEach(selectPropio);
+}
+if (typeof MutationObserver !== 'undefined') {
+  new MutationObserver((cambios) => { for (const m of cambios) m.addedNodes.forEach(selectsPropios); })
+    .observe(document.documentElement, { childList: true, subtree: true });
 }
 
 function interruptor(activo, etiqueta, alCambiar) {

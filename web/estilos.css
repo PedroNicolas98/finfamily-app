@@ -4725,3 +4725,42 @@ body .seccion-ahorros .aho-nombre { white-space: normal; display: -webkit-box; -
 @media (min-width: 1280px) and (max-height: 780px) {
   body .pantalla.presupuesto .meses-barras .mb-plano { height: 76px; margin-top: 12px; }
 }
+/* ---------- v169: controles propios (nada con el estilo del navegador) ---------- */
+.sel-propio { position: relative; display: block; width: 100%; min-width: 0; }
+.sel-propio > select.sel-nativo { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; pointer-events: none; margin: 0; }
+.sel-boton { width: 100%; min-height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border: 1px solid var(--borde-fuerte); border-radius: var(--radio-chico); background: var(--sup); color: inherit; font: inherit; text-align: left; cursor: pointer; transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease; }
+.sel-boton:hover:not(:disabled) { border-color: var(--accion); }
+.sel-boton:focus-visible, .sel-propio.abierto .sel-boton { outline: none; border-color: var(--accion); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accion) 22%, transparent); }
+.sel-boton:disabled { opacity: 0.55; cursor: default; }
+.sel-boton[aria-invalid="true"] { border-color: var(--mal); }
+.sel-texto { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sel-flecha { display: grid; place-items: center; color: var(--tinta-3); transition: transform 200ms var(--suave); }
+.sel-flecha .icono, .sel-flecha .icono svg { width: 16px; height: 16px; }
+.sel-propio.abierto .sel-flecha { transform: rotate(180deg); color: var(--accion); }
+.campo-select .sel-boton { min-height: 40px; font-size: 0.88rem; }
+.hoja-modal .sel-boton { min-height: 40px; }
+.sel-lista { position: fixed; inset: auto; margin: 0; z-index: 1000; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; padding: 6px; border: 1px solid var(--borde-fuerte); border-radius: 14px; background: var(--sup); color: var(--tinta); box-shadow: 0 18px 40px -12px rgba(8, 14, 30, 0.45), 0 2px 6px rgba(8, 14, 30, 0.12); animation: sel-entra 160ms var(--suave) both; max-width: min(420px, calc(100vw - 16px)); }
+.sel-lista:popover-open { display: block; }
+@keyframes sel-entra { from { opacity: 0; transform: translateY(-4px) scale(0.98); } }
+.sel-op { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 12px; border-radius: 9px; cursor: pointer; font-size: 0.92rem; }
+.sel-op.activo { background: color-mix(in srgb, var(--accion) 14%, transparent); }
+.sel-op.elegido { font-weight: 700; color: var(--accion); }
+.sel-op[aria-disabled="true"] { opacity: 0.45; cursor: default; }
+.sel-check { display: grid; place-items: center; }
+.sel-check .icono, .sel-check .icono svg { width: 16px; height: 16px; }
+.sel-grupo { padding: 10px 12px 4px; font-size: 0.75rem; font-weight: 750; letter-spacing: 0.06em; text-transform: uppercase; color: var(--tinta-3); }
+@media (prefers-reduced-motion: reduce) { .sel-lista { animation: none; } .sel-flecha { transition: none; } }
+/* Casillas: todas con el mismo diseño de las de consumos */
+input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none; width: 22px; height: 22px; border-radius: 7px; margin: 0;
+  border: 1.5px solid var(--borde-fuerte); background: var(--sup); display: inline-grid; place-items: center; flex-shrink: 0; cursor: pointer; vertical-align: middle;
+  transition: background var(--dur, 180ms) ease, border-color var(--dur, 180ms) ease, transform 120ms ease;
+}
+input[type="checkbox"]::after { content: ''; width: 10px; height: 5px; border: solid var(--sobre-accion, #fff); border-width: 0 0 2px 2px; transform: rotate(-45deg) scale(0); margin-top: -2px; transition: transform 160ms var(--suave); }
+input[type="checkbox"]:checked { background: var(--accion); border-color: var(--accion); }
+input[type="checkbox"]:checked::after { transform: rotate(-45deg) scale(1); }
+input[type="checkbox"]:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accion) 25%, transparent); }
+input[type="checkbox"]:active { transform: scale(0.9); }
+input[type="checkbox"]:disabled { opacity: 0.35; cursor: default; }
+/* El menú de las listas siempre opaco (en el tema oscuro --sup es semitransparente) */
+.sel-lista { background-color: var(--fondo, #0F1626); background-image: linear-gradient(var(--sup), var(--sup)); -webkit-backdrop-filter: none; backdrop-filter: none; }
