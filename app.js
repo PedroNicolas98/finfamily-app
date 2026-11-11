@@ -2289,7 +2289,11 @@ async function abrirCuadre() {
   const hormiga = consumosDe(tarjetas, (t) => t.id === 'HORMIGA').filter((c) => !c.fecha || c.fecha <= hoyISO());
   let modo = tcs.length ? 'tc' : 'debito';
   let tcElegida = tcs.find((t) => (t.estados || []).some((e) => e.pendiente > 0))?.id || tcs[0]?.id;
-  let mediosDeb = (cuadres['debito|' + yo]?.medios?.length ? cuadres['debito|' + yo].medios : MEDIOS_DEBITO.map((m) => m.id));
+  // Medios de "Mi débito": Yape, Plin, efectivo y mis tarjetas de débito (motor 1.21). Se buscan por su nombre en la hoja.
+  const misDebitos = (leerCache('config')?.datos?.medios || []).filter((m) => m.tipo === 'debito' && mismoNombre(m.titular || '', yo)).map((m) => ({ id: m.id, etiqueta: m.etiqueta.split(' · ')[0], texto: m.etiqueta }));
+  const mediosCuadre = [...MEDIOS_DEBITO, ...misDebitos];
+  const textoMedio = (id) => mediosCuadre.find((m) => m.id === id)?.texto || id;
+  let mediosDeb = (cuadres['debito|' + yo]?.medios?.length ? cuadres['debito|' + yo].medios : mediosCuadre.map((m) => m.id));
   const v = ventanita('cuadre-dlg', 'Cuadrar con el banco');
   const cuerpo = h('div', { class: 'cuadre-cuerpo' });
   const pestanas = h('div', { class: 'cuadre-pestanas', role: 'tablist' });
@@ -2298,7 +2302,7 @@ async function abrirCuadre() {
     h('div', { class: 'acciones modal-acciones' }, h('button', { type: 'button', class: 'boton primario', onclick: v.cerrar }, 'Listo')));
 
   const estadoTC = (t) => [...(t.estados || [])].filter((e) => e.vence).sort((x, y) => (y.pendiente > 0) - (x.pendiente > 0) || String(x.vence).localeCompare(String(y.vence)))[0] || (t.estados || [])[0];
-  const anotadoCon = (medios, soloMio) => hormiga.filter((c) => medios.some((m) => normalizar(c.medio || '').startsWith(normalizar(m)))
+  const anotadoCon = (medios, soloMio) => hormiga.filter((c) => medios.some((m) => normalizar(c.medio || '').startsWith(normalizar(textoMedio(m))))
     && (!soloMio || mismoNombre(c.responsable, yo))).reduce((s, c) => s + (Number(c.monto) || 0), 0);
   const listaAyuda = (titulo, items) => items.length ? h('div', { class: 'cuadre-ayuda' }, h('p', { class: 'etq' }, titulo),
     h('ul', {}, items.map((x) => h('li', { class: x.justo ? 'justo' : '' }, h('span', {}, x.texto), h('strong', {}, soles(x.monto)), x.justo ? h('em', {}, '¡justo la diferencia!') : null)))) : null;
@@ -2352,7 +2356,7 @@ async function abrirCuadre() {
     const punto = cuadres[clave];
     const banco = leerMonto(inMonto.value);
     const hay = inMonto.value.trim() !== '' && banco !== null;
-    const chipsMedios = lemon ? null : h('div', { class: 'opciones cuadre-medios' }, MEDIOS_DEBITO.map((m) => h('button', { type: 'button', class: 'opcion chica', 'aria-pressed': String(medios.includes(m.id)),
+    const chipsMedios = lemon ? null : h('div', { class: 'opciones cuadre-medios' }, mediosCuadre.map((m) => h('button', { type: 'button', class: 'opcion chica', 'aria-pressed': String(medios.includes(m.id)),
       onclick: () => { mediosDeb = medios.includes(m.id) ? medios.filter((x) => x !== m.id) : [...medios, m.id]; pintar(); } }, m.etiqueta)));
     if (!punto) {
       return [
@@ -3952,7 +3956,9 @@ async function abrirPendientes() {
   const quienDe = (p) => p._quien || (p._quien = p.responsable || DUENIO_TC[idDe(p)] || yo);
   const comercioDe = (p) => limpiarComercio(p.comercio || '') || p.comercio || 'Consumo';
   const montoDe = (p) => (enDolares(p) ? `US$ ${Number(p.monto).toFixed(2)}` : soles(p.monto));
-  const listos = () => cola.filter((p) => sugeridoDe(p) && !enDolares(p));
+  const debitoDe = (p) => (/^TD_/.test(String(p.medioSugerido || '')) ? (leerCache('config')?.datos?.medios || []).find((m) => m.id === p.medioSugerido) || { id: p.medioSugerido, etiqueta: 'Débito' } : null);
+  const faltaOrigen = (p) => motorBolsas() && !!debitoDe(p) && p._origen === undefined; // débito: se pregunta cada vez
+  const listos = () => cola.filter((p) => sugeridoDe(p) && !enDolares(p) && !faltaOrigen(p));
   const sacarDeMemoria = (p) => { if (Array.isArray(estado.ultimosPendientes)) estado.ultimosPendientes = estado.ultimosPendientes.filter((x) => x.id !== p.id); borrarCaches(['pendientes']); };
   const devolver = (p, nota) => { p._nota = nota; cola.push(p); if (!cerrado && cola.length === 1) pintar(); else if (!cerrado) refrescarProgreso(); };
 
@@ -4025,17 +4031,20 @@ async function abrirPendientes() {
     if (directo && motorBolsas() && p._origen === undefined) p._origen = 'P'; // Plin o Yape: sale de lo que ya se tiene
     const hora = (p.fechaCorreo || '').slice(11, 16);
     const deBilletera = ['YAPE', 'LEMON'].includes(String(p.banco || '').toUpperCase()); // leído del correo de Yape o Lemon
-    const emisor = directo ? (deBilletera ? (directo === 'LEMON' ? 'Lemon' : 'Yape') : `${directo === 'PLIN' ? 'Plin' : directo === 'YAPE' ? 'Yape' : directo === 'LEMON' ? 'Lemon' : 'Efectivo'} · débito BCP`) : nombreTC(id);
-    const ticket = h('article', { class: `pend voucher compacto tc-${directo ? 'HORMIGA' : id}` },
+    const deb = debitoDe(p);
+    const emisor = deb ? deb.etiqueta : directo ? (deBilletera ? (directo === 'LEMON' ? 'Lemon' : 'Yape') : `${directo === 'PLIN' ? 'Plin' : directo === 'YAPE' ? 'Yape' : directo === 'LEMON' ? 'Lemon' : 'Efectivo'} · débito BCP`) : nombreTC(id);
+    const ticket = h('article', { class: `pend voucher compacto tc-${deb ? 'TD' : directo ? 'HORMIGA' : id}` },
       h('span', { class: 'sello', 'aria-hidden': 'true', hidden: true }, 'Confirmado'),
       h('div', { class: 'vch-fila' },
-        h('span', { class: 'pend-ico' }, catIco(sugerido || 'otro'), chipTC(directo ? 'HORMIGA' : id, 'mini insignia')),
+        h('span', { class: 'pend-ico' }, catIco(sugerido || 'otro'), chipTC(deb ? 'TD' : directo ? 'HORMIGA' : id, 'mini insignia')),
         h('div', { class: 'vch-comercio' }, h('strong', {}, comercioDe(p).toUpperCase()),
           h('span', { class: 'vch-detalle' }, `${emisor}${p.ultimos4 ? ' ···· ' + p.ultimos4 : ''} · ${fechaCorta(p.fecha)}${hora ? ' · ' + hora : ''}`)),
         h('strong', { class: 'pend-monto' }, montoDe(p))));
     if (!sinMovimiento()) ticket.classList.add('entra');
+    let cajaElige = null;
     const confirmar = (c) => {
       if (paso.classList.contains('ocupado')) return;
+      if (faltaOrigen(p)) { p._concepto = c; cajaElige?.classList.remove('tiembla'); void cajaElige?.offsetWidth; cajaElige?.classList.add('tiembla'); return; }
       cola.shift(); enviar(p, c); avanzar(ticket, 'confirmado');
     };
     const nota = p._nota || (dolar ? 'Está en dólares: regístralo a mano con el monto en soles y descarta este.' : '');
@@ -4059,8 +4068,12 @@ async function abrirPendientes() {
       nota ? h('p', { class: 'mensaje pend-nota' }, nota) : null,
       h('p', { class: 'etq pend-pregunta' }, dolar ? 'Tipo de gasto' : 'Toca el tipo de gasto y queda confirmado'),
       chips,
-      motorBolsas() ? (() => {
-        const ops = () => opcionesOrigen(quienDe(p), !!directoDe(p), '', lineaDeBilletera(directoDe(p)) ? directoDe(p) : null);
+      faltaOrigen(p) ? (cajaElige = h('div', { class: 'pend-elige-origen' },
+        h('span', {}, 'Pagaste con débito. ¿De dónde sale?'),
+        h('div', { class: 'pend-pase-botones' },
+          h('button', { type: 'button', class: 'boton chico', onclick: () => { p._origen = ''; pintar(); } }, icono('inicio'), 'Presupuesto'),
+          h('button', { type: 'button', class: 'boton chico', onclick: () => { p._origen = 'P'; pintar(); } }, avatar(quienDe(p), 'mini'), `Sobrante de ${nombreCorto(quienDe(p))}`)))) : motorBolsas() ? (() => {
+        const ops = () => opcionesOrigen(quienDe(p), !!directoDe(p) || !!deb, '', lineaDeBilletera(directoDe(p)) ? directoDe(p) : null);
         const actual = () => ops().find((o) => (o.valor.startsWith('P:') ? 'P' : o.valor) === (p._origen || '')) || ops()[0];
         const b = h('button', { type: 'button', class: 'pend-origen', title: 'Toca para cambiar de dónde sale', onclick: () => {
           const lista = ops();
@@ -4355,6 +4368,70 @@ function panelPersonasAdmin() {
   return caja;
 }
 
+// ---------------------------------------------------------------------------
+// Tarjetas de débito (motor 1.21): la plata de la cuenta de cada uno. Al pagar con una, la app pregunta si sale
+// del presupuesto (fondo común) o del sobrante. Se anotan en Gastos Hormiga.
+// ---------------------------------------------------------------------------
+function motorDebitos() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 21); }
+const BANCOS_DEBITO = ['BCP', 'Interbank', 'Sip', 'BBVA', 'Scotiabank', 'Banco de la Nación'];
+function panelDebitos() {
+  const cuerpo = h('div', { class: 'config-lista' });
+  const caja = panel('revelar config-debitos', 'Tarjetas de débito', h('button', { type: 'button', class: 'boton chico', onclick: () => dialogoDebito(null, pintar) }, '+ Agregar'), cuerpo);
+  function pintar(lista) {
+    const activas = (lista || []).filter((d) => d.activa !== false);
+    cuerpo.replaceChildren(...(activas.length ? activas.map((d) => h('div', { class: 'config-fila tc' },
+      h('span', { class: 'chip-tc mini tc-TD', 'aria-hidden': 'true' }),
+      h('div', { class: 'config-texto' }, h('strong', {}, `Débito ${d.banco}`), h('span', { class: 'suave' }, d.titular ? nombreCorto(d.titular) : 'De la casa')),
+      h('button', { type: 'button', class: 'boton chico', onclick: () => dialogoDebito(d, pintar) }, 'Editar')))
+      : [h('p', { class: 'suave' }, 'Agrega las tarjetas de débito para elegirlas al registrar un gasto.')]));
+  }
+  const enCache = leerCache('config')?.datos?.debitos;
+  if (enCache) pintar(enCache); else cuerpo.append(h('p', { class: 'suave' }, 'Cargando…'));
+  cargarRapido('config', {}, 'config').then((r) => pintar(r?.datos?.debitos || [])).catch(() => { if (!enCache) cuerpo.replaceChildren(h('p', { class: 'suave' }, 'No se pudo cargar. Intenta en un momento.')); });
+  return caja;
+}
+function dialogoDebito(d, alTerminar) {
+  const v = ventanita('meta-dlg debito-dlg', d ? 'Editar tarjeta de débito' : 'Nueva tarjeta de débito');
+  const personas = responsables();
+  let banco = d?.banco || '';
+  let titular = d?.titular || (usuarioActual()?.nombre || '');
+  const inBanco = h('input', { type: 'text', maxlength: '20', autocomplete: 'off', placeholder: 'Banco', value: banco, 'aria-label': 'Banco' });
+  const chipsBanco = h('div', { class: 'opciones antojos-chips' });
+  const chipsTitular = h('div', { class: 'opciones' });
+  const msg = h('p', { class: 'mensaje error', hidden: true });
+  const zona = h('div', { class: 'zona-confirmar' });
+  const pintar = () => {
+    chipsBanco.replaceChildren(...BANCOS_DEBITO.map((b) => h('button', { type: 'button', class: 'opcion chica', 'aria-pressed': String(normalizar(b) === normalizar(banco)), onclick: () => { banco = b; inBanco.value = b; pintar(); } }, b)));
+    chipsTitular.replaceChildren(...personas.map((p) => h('button', { type: 'button', class: 'opcion quien', 'aria-pressed': String(mismoNombre(p, titular)), onclick: () => { titular = p; pintar(); } }, avatar(p, 'mini'), h('span', { class: 'opcion-texto' }, nombreCorto(p)))));
+  };
+  inBanco.addEventListener('input', () => { banco = inBanco.value; pintar(); });
+  const enviar = async (datos, btn, texto) => {
+    msg.hidden = true;
+    ocuparBoton(btn, 'Guardando…');
+    try {
+      const r = await llamarApi('guardarDebito', datos, { email: emailSesion() });
+      await cargar('config', {}, 'config').catch(() => null);
+      v.cerrar(); alTerminar?.(r?.debitos || []);
+      avisar(datos.quitar ? 'Tarjeta de débito quitada' : `Débito ${datos.banco} listo`, 'ok');
+    } catch (e) { liberarBoton(btn, texto); msg.textContent = mensajeError(e, 'No se pudo guardar.'); msg.hidden = false; }
+  };
+  const btn = h('button', { type: 'button', class: 'boton primario' }, d ? 'Guardar' : 'Agregar');
+  btn.onclick = () => {
+    if (inBanco.value.trim().length < 2) { msg.textContent = 'Escribe o elige el banco.'; msg.hidden = false; inBanco.focus(); return; }
+    enviar({ id: d?.id, banco: inBanco.value.trim(), titular }, btn, d ? 'Guardar' : 'Agregar');
+  };
+  const btnQuitar = d ? h('button', { type: 'button', class: 'boton enlace peligro', onclick: () => confirmarEnLinea(zona, 'Deja de salir al registrar gastos. Lo ya anotado queda igual. ¿Quitar?', 'Quitar', () => enviar({ id: d.id, quitar: true }, btnQuitar, 'Quitar esta tarjeta')) }, 'Quitar esta tarjeta') : null;
+  v.caja.append(
+    h('span', { class: 'conectar-ico' }, icono('tarjetas')),
+    h('p', { class: 'cierre-etq' }, d ? `Débito ${d.banco}` : 'Tarjeta de débito'),
+    h('div', { class: 'campo' }, h('label', {}, 'Banco'), chipsBanco, inBanco),
+    personas.length ? h('div', { class: 'campo' }, h('label', {}, 'De quién es'), chipsTitular) : null,
+    msg, zona,
+    h('div', { class: 'acciones modal-acciones' }, btn, h('button', { type: 'button', class: 'boton', onclick: v.cerrar }, 'Cancelar'), btnQuitar));
+  pintar();
+  v.abrir();
+}
+
 // Agregar o editar una tarjeta del catálogo: nombre, titular, fechas, color y los datos impresos.
 function dialogoTarjeta(t) {
   const nueva = !t;
@@ -4494,7 +4571,7 @@ const SECCIONES_CONFIG = [
   ['general', 'General', ['Tu cuenta', 'Apariencia', 'Privacidad']],
   ['presupuesto', 'Presupuesto', ['Presupuesto']],
   ['gastos', 'Gastos', ['Tipos de gasto', 'Registro de gastos']],
-  ['tarjetas', 'Tarjetas', ['Tus tarjetas']],
+  ['tarjetas', 'Tarjetas', ['Tus tarjetas', 'Tarjetas de débito']],
   ['personas', 'Personas', ['Personas']],
   ['avisos', 'Avisos', ['Avisos']],
   ['datos', 'Datos y app', ['Datos y conexión', 'La app']],
@@ -4664,7 +4741,7 @@ function dialogoLinea(seccion, alGuardar) {
 const MENU_CONFIG = [
   ['cuenta', 'Tu cuenta', 'personas', ['Tu cuenta']],
   ['apariencia', 'Apariencia', 'sol', ['Apariencia']],
-  ['tarjetas', 'Tarjetas', 'tarjetas', ['Tus tarjetas']],
+  ['tarjetas', 'Tarjetas', 'tarjetas', ['Tus tarjetas', 'Tarjetas de débito']],
   ['gastos', 'Tipos de gasto', 'lista', ['Tipos de gasto']],
   ['presupuesto', 'Presupuesto', 'presupuesto', ['Presupuesto']],
   ['personas', 'Personas', 'personas', ['Personas']],
@@ -5042,6 +5119,7 @@ async function vistaConfiguracion(seccion) {
     ? panel('revelar config-tarjetas', 'Tus tarjetas', h('button', { type: 'button', class: 'boton chico', onclick: () => dialogoTarjeta(null) }, '+ Agregar'), h('p', { class: 'suave' }, 'Cargando…'))
     : panel('revelar config-tarjetas', 'Tus tarjetas', null, h('p', { class: 'suave' }, 'Cargando…'));
   rejilla.append(panelTC);
+  if (motorDebitos() && motorAdmin()) rejilla.append(panelDebitos());
   obtenerTarjetas().then((r) => {
     const lista = (r.datos.tarjetas || []).filter((t) => t.id !== 'HORMIGA');
     const cat = catalogoTC();
@@ -5322,7 +5400,9 @@ async function vistaRegistrar() {
   const plegar = () => cajaMonto?.classList.add('plegado');
 
   const quien = () => (f.responsable ? { nombre: f.responsable } : usuario);
-  const colorMedio = (m) => (m.tipo === 'tarjeta' ? (idCicloDeMedio(m, quien()) || 'HORMIGA') : (COLOR_MEDIO[m.id] || 'HORMIGA'));
+  const colorMedio = (m) => (m.tipo === 'tarjeta' ? (idCicloDeMedio(m, quien()) || 'HORMIGA') : m.tipo === 'debito' ? 'TD' : (COLOR_MEDIO[m.id] || 'HORMIGA'));
+  // Tarjetas de débito (motor 1.21): se muestran las de quien gastó (y la que ya esté elegida).
+  const debitoAjeno = (m) => m.tipo === 'debito' && !!m.titular && !mismoNombre(m.titular, quien().nombre || '') && f.medio !== m.id;
   const tarjetasDe = (m) => catalogoTC().filter((t) => t.medio === m.id);
   // Tarjeta con la que se paga: la elegida a mano o, si no, la de quien gastó.
   const tarjetaDe = (m) => (f.tarjeta && tarjetasDe(m).some((t) => t.id === f.tarjeta) ? f.tarjeta : idCicloDeMedio(m, quien()));
@@ -5333,7 +5413,7 @@ async function vistaRegistrar() {
     else opcionesMedio.push({ m, t: null });
   }
   const elegida = (o) => f.medio === o.m.id && (!o.t || tarjetaDe(o.m) === o.t.id);
-  const pintarMedios = () => botonesMedio.forEach((b, i) => b.setAttribute('aria-pressed', String(elegida(opcionesMedio[i]))));
+  const pintarMedios = () => botonesMedio.forEach((b, i) => { b.setAttribute('aria-pressed', String(elegida(opcionesMedio[i]))); b.hidden = debitoAjeno(opcionesMedio[i].m); });
   const botonesMedio = opcionesMedio.map((o) => {
     const m = o.m;
     const c = o.t ? o.t.id : colorMedio(m);
@@ -5350,8 +5430,9 @@ async function vistaRegistrar() {
         limpiarError(campoMedio);
         try { alElegirMedio(); } catch { /* aún no está listo */ }
       } }, h('span', { class: `chip-tc mini tc-${c}`, 'aria-hidden': 'true' }),
-      o.t ? `${m.etiqueta} · ${nombreTitular(o.t) || o.t.nombre}` : (medioCompartido(m) ? `${m.etiqueta} · ${DUENIO_TC[colorMedio(m)] || ''}`.trim() : m.etiqueta));
+      o.t ? `${m.etiqueta} · ${nombreTitular(o.t) || o.t.nombre}` : m.tipo === 'debito' ? m.etiqueta.split(' · ')[0] : (medioCompartido(m) ? `${m.etiqueta} · ${DUENIO_TC[colorMedio(m)] || ''}`.trim() : m.etiqueta));
   });
+  botonesMedio.forEach((b, i) => { b.hidden = debitoAjeno(opcionesMedio[i].m); });
   function medioCompartido(m) { return catalogoTC().filter((t) => t.medio === m.id).length > 1; }
 
   const inDesc = h('input', { id: 'descripcion', type: 'text', maxlength: '120', autocomplete: 'off',
@@ -5481,6 +5562,8 @@ async function vistaRegistrar() {
     if (!campoOrigen) return;
     const medioAhora = medios.find((x) => x.id === f.medio);
     const directo = !!medioAhora && medioAhora.tipo !== 'tarjeta';
+    const faltaElegir = medioAhora?.tipo === 'debito' && !f.origenManual; // con débito se pregunta cada vez
+    campoOrigen.classList.toggle('pide', faltaElegir);
     const mesPago = medioAhora && !directo ? (calcularCiclo(tarjetaDe(medioAhora), f.fecha, ciclos).pago || f.fecha || '').slice(0, 7) : '';
     const billetera = lineaDeBilletera(f.medio) ? f.medio : null;
     // Solo cuatro tipos de origen (v115): Fondo común (o la billetera, p. ej. Pasajes con Lemon), cada persona
@@ -5509,7 +5592,7 @@ async function vistaRegistrar() {
     cajaOrigen.replaceChildren(...ops.map((o) => {
       const clave = claveDe(o);
       const corto = o.disponible !== null && o.disponible !== undefined && monto > 0 && monto > o.disponible;
-      return h('button', { type: 'button', class: 'opcion origen', 'aria-pressed': String((f.origen || '') === clave), onclick: () => { f.origen = clave; f.origenManual = true; pintarOrigen(); } },
+      return h('button', { type: 'button', class: 'opcion origen', 'aria-pressed': String(!faltaElegir && (f.origen || '') === clave), onclick: () => { f.origen = clave; f.origenManual = true; limpiarError(campoOrigen); pintarOrigen(); } },
         h('span', { class: 'origen-ico' }, o.persona ? avatar(o.persona, 'mini') : icono(o.ico)),
         h('span', { class: 'origen-texto' }, h('span', {}, o.etiqueta),
           o.disponible === null || o.disponible === undefined ? (o.nota ? h('small', {}, o.nota) : null)
@@ -5531,7 +5614,8 @@ async function vistaRegistrar() {
     notaOrigen.classList.toggle('no-alcanza', noAlcanzaAhora);
     pintarSemaforo();
     try { pintarResumen(); } catch { /* aún no está listo */ }
-    notaOrigen.textContent = conSobrante
+    notaOrigen.textContent = faltaElegir ? 'Pagaste con débito: elige si sale del presupuesto (Fondo común) o del sobrante de alguien.'
+      : conSobrante
       ? (quedaria >= 0 ? `Te alcanza: te quedarían ${soles(quedaria)}${deDonde}.` : `No te alcanza: te faltarían ${soles(-quedaria)}${deDonde}.`)
       : !medioAhora ? '' : billetera && !f.origen
         ? `${nombreBilletera(billetera)} tiene el presupuesto de ${lineaDeBilletera(billetera)}: sale de ahí, no de tu sobrante.`
@@ -5885,6 +5969,7 @@ async function vistaRegistrar() {
     const fallos = [];
     if (!monto) fallos.push([cajaMonto, 'Escribe cuánto fue.']);
     if (!f.medio) fallos.push([campoMedio, 'Elige con qué pagaste.']);
+    else if (campoOrigen && medios.find((x) => x.id === f.medio)?.tipo === 'debito' && !f.origenManual) fallos.push([campoOrigen, 'Elige de dónde sale.']);
     if (!f.concepto) fallos.push([campoConcepto, 'Elige un concepto.']);
     if (!deISO(f.fecha)) fallos.push([campoFecha, 'Revisa la fecha.']);
     else if (f.fecha > manana) fallos.push([campoFecha, 'La fecha no puede ser futura.']);
