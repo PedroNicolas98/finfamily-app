@@ -347,13 +347,13 @@ test('version: informa 1.7.1 y la lista de acciones; inicio y config traen el ca
     new HojaFalsa('Configuración', [['Conceptos de Gasto', 'Responsable'], ['Limpieza', 'PersonaB']])]) });
   const r = m.llamar('version', {});
   assert.equal(r.ok, true);
-  assert.equal(r.datos.version, '1.12.0');
+  assert.equal(r.datos.version, '1.13.0');
   for (const a of ['desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'marcarPagado', 'inicio',
     'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos', 'datosTarjetas', 'guardarDatosTarjeta']) {
     assert.ok(r.datos.acciones.includes(a), 'falta la acción ' + a);
   }
-  assert.equal(m.llamar('inicio', {}).datos.version, '1.12.0');
-  assert.equal(m.llamar('config', {}).datos.version, '1.12.0');
+  assert.equal(m.llamar('inicio', {}).datos.version, '1.13.0');
+  assert.equal(m.llamar('config', {}).datos.version, '1.13.0');
 });
 
 test('la lista ACCIONES coincide con las acciones que atiende doPost', () => {
@@ -1986,7 +1986,7 @@ test('config: un ícono guardado para un concepto que ya no existe en Configurac
   assert.deepEqual(m.llamar('config', {}).datos.iconos, { Supermercado: 'carrito' });
   const danado = motorCompleto({ propiedades: { FINFAMILY_ICONOS: '{roto' } });
   assert.deepEqual(danado.llamar('config', {}).datos.iconos, {});
-  assert.equal(danado.llamar('version', {}).datos.version, '1.12.0');
+  assert.equal(danado.llamar('version', {}).datos.version, '1.13.0');
   assert.ok(danado.llamar('version', {}).datos.acciones.includes('guardarIconoConcepto'));
 });
 
@@ -2224,7 +2224,7 @@ test('gasto grande con tarjeta prestada: el correo dice quién gastó; versión 
   const m = motorCompleto();
   m.llamar('registrar', Object.assign({}, GASTO_PRESTADO, { monto: 450, descripcion: 'Saga Falabella' }));
   assert.equal(m.correos[0].subject, 'FinFamily: PersonaA registró S/ 450 en Saga Falabella (TC Interbank)');
-  assert.equal(m.llamar('version', {}).datos.version, '1.12.0');
+  assert.equal(m.llamar('version', {}).datos.version, '1.13.0');
 });
 
 // ===========================================================================
@@ -2504,7 +2504,7 @@ test('bolsas con un solo usuario (N = 1): todo el saldo de los meses anteriores 
 test('versión 1.7.0: la acción bolsas está en la lista y presupuesto no cambió', () => {
   const m = motorBolsas();
   const v = m.llamar('version', {}).datos;
-  assert.equal(v.version, '1.12.0');
+  assert.equal(v.version, '1.13.0');
   assert.ok(v.acciones.includes('bolsas'));
   const p = m.llamar('presupuesto', { mes: '2026-11' }).datos;
   assert.equal(p.totales.saldo, 985.57);
@@ -3111,4 +3111,62 @@ test('1.12.0: pasarACuotas no acepta gastos pagados, de Gastos Hormiga ni filas 
   assert.equal(hormiga.ok, false);
   assert.match(hormiga.error, /tarjetas de crédito/);
   assert.equal(ibk.valores.slice(2).filter((f) => f[4]).length, 1, 'no se agregó nada');
+});
+
+// ---------- 1.13.0: gastos fijos automáticos ----------
+
+test('1.13.0: guardarFijoAuto guarda el día solo para líneas de gasto del presupuesto y se puede quitar', () => {
+  const m = crearMotor({ hojas: [hojaPresupuesto()], hoy: '2026-11-06' });
+  const r = m.llamar('guardarFijoAuto', { concepto: 'internet', dia: 5, auto: true });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual(r.datos.fijos, [{ concepto: 'Internet', dia: 5, auto: true }]);
+  assert.equal(m.llamar('guardarFijoAuto', { concepto: 'Ahorro Casa', dia: 5 }).ok, false, 'un ahorro no es un gasto fijo');
+  assert.equal(m.llamar('guardarFijoAuto', { concepto: 'Luz', dia: 40 }).ok, false);
+  m.llamar('guardarFijoAuto', { concepto: 'Luz', dia: 31 });
+  assert.deepEqual(m.llamar('fijosAuto', {}).datos.fijos.map((f) => [f.concepto, f.dia, f.auto]), [['Internet', 5, true], ['Luz', 31, false]]);
+  m.llamar('guardarFijoAuto', { concepto: 'Internet', dia: 0 });
+  assert.deepEqual(m.llamar('fijosAuto', {}).datos.fijos.map((f) => f.concepto), ['Luz']);
+});
+
+test('1.13.0: el débito automático se marca pagado solo una vez; los demás mandan correo el día que vencen', () => {
+  const pres = hojaPresupuesto();
+  const m = crearMotor({ hojas: [pres], hoy: '2026-11-06' });
+  m.llamar('guardarFijoAuto', { concepto: 'Internet', dia: 5, auto: true });
+  m.llamar('guardarFijoAuto', { concepto: 'Luz', dia: 6 });
+  m.llamar('guardarFijoAuto', { concepto: 'Alquiler', dia: 20, auto: true });
+  const r = m.contexto.revisarFijos_('2026-11-06', true);
+  assert.equal(r.marcados, 1, JSON.stringify(r));
+  assert.equal(r.porRecordar, 1);
+  // El 5 y el 6 de noviembre se pagan con el presupuesto de octubre (ciclo del 30 oct al 29 nov).
+  const oct = m.llamar('presupuesto', { mes: '2026-10' }).datos.filas;
+  const internet = oct.find((f) => f.concepto === 'Internet');
+  assert.deepEqual([internet.pagado, internet.pagadoNota], [true, 'Pagado el 05/11/2026 · automático']);
+  assert.equal(oct.find((f) => f.concepto === 'Alquiler').pagado, false, 'su día aún no llega');
+  assert.equal(m.correos.length, 1);
+  assert.equal(m.correos[0].subject, 'Hoy vence: Luz');
+  assert.match(m.correos[0].body, /Luz: S\/ 80/);
+  // Otra corrida el mismo día: nada nuevo.
+  const r2 = m.contexto.revisarFijos_('2026-11-06', true);
+  assert.deepEqual([r2.marcados, r2.porRecordar, m.correos.length], [0, 0, 1]);
+  // Si alguien lo desmarca, no se vuelve a marcar solo ese mes.
+  m.llamar('marcarFijo', { idCliente: ID, mes: '2026-10', fila: 6, concepto: 'Internet', pagado: false });
+  m.contexto.revisarFijos_('2026-11-07', true);
+  assert.equal(m.llamar('presupuesto', { mes: '2026-10' }).datos.filas.find((f) => f.concepto === 'Internet').pagado, false);
+});
+
+test('1.13.0: renombrar o quitar la línea mueve o borra su día', () => {
+  const m = motorCompleto({ hoy: '2026-11-06' });
+  m.llamar('guardarFijoAuto', { concepto: 'Internet', dia: 5, auto: true });
+  const r = m.llamar('renombrarLinea', { mes: '2026-11', fila: 6, concepto: 'Internet', nombre: 'Internet y cable' });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual(m.llamar('fijosAuto', {}).datos.fijos, [{ concepto: 'Internet y cable', dia: 5, auto: true }]);
+});
+
+test('1.13.0: fechaDelFijo y fijosVencidos', () => {
+  const m = crearMotor({});
+  const L = m.contexto;
+  assert.equal(L.fechaDelFijo(31, '2026-11'), '2026-11-30');
+  assert.equal(L.fechaDelFijo(31, '2027-02'), '2027-02-28');
+  const v = L.fijosVencidos({ luz: { concepto: 'Luz', dia: 30, auto: false }, agua: { concepto: 'Agua', dia: 2, auto: true } }, '2026-11-30');
+  assert.deepEqual(JSON.parse(JSON.stringify(v)).map((x) => [x.concepto, x.fecha, x.mes]), [['Agua', '2026-11-02', '2026-10'], ['Luz', '2026-11-30', '2026-11']]);
 });

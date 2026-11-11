@@ -26,7 +26,7 @@
  *   FINFAMILY_ICONOS               ícono elegido para cada tipo de gasto (motor 1.5.1).
  */
 
-var VERSION = '1.12.0';
+var VERSION = '1.13.0';
 var ZONA_HORARIA = 'America/Lima';
 var DIAS_AVISO = 3;
 var SEGUNDOS_CACHE_TOKEN = 300;
@@ -43,6 +43,8 @@ var PROPIEDAD_CALENDARIO = 'FINFAMILY_CALENDARIO';
 var PROPIEDAD_CATALOGO = 'FINFAMILY_CATALOGO';
 var PROPIEDAD_LINEAS = 'FINFAMILY_LINEAS';
 var PROPIEDAD_ICONOS = 'FINFAMILY_ICONOS';
+var PROPIEDAD_FIJOS = 'FINFAMILY_FIJOS';               // motor 1.13.0: día y si se paga solo, por línea fija
+var PROPIEDAD_FIJOS_HECHOS = 'FINFAMILY_FIJOS_HECHOS'; // lo ya marcado o avisado, por línea y mes
 var FUNCION_AVISOS = 'avisosDeVencimiento';
 var FUNCION_LECTOR = 'leerCorreosDeBancos';
 var FUNCION_ALERTAS = 'revisarAlertas';
@@ -52,7 +54,7 @@ var DIAS_CORREOS = 3; // cuántos días hacia atrás busca el lector
 
 /** Acciones que entiende este motor (la acción 'version' las devuelve). */
 var ACCIONES = ['inicio', 'tarjetas', 'presupuesto', 'config', 'registrar', 'marcarPagado', 'marcarFijo',
-  'editarGasto', 'borrarGasto', 'personas', 'desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'abrirSesion', 'cerrarSesion', 'reenvio', 'pasarACuotas',
+  'editarGasto', 'borrarGasto', 'personas', 'desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'abrirSesion', 'cerrarSesion', 'reenvio', 'pasarACuotas', 'fijosAuto', 'guardarFijoAuto',
   'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos',
   'datosTarjetas', 'guardarDatosTarjeta',
   'agregarTarjeta', 'editarTarjeta', 'quitarTarjeta', 'restaurarTarjeta',
@@ -134,6 +136,8 @@ function doPost(e) {
       case 'cerrarSesion': resultado = accionCerrarSesion_(usuario, cuerpo); break;
       case 'reenvio': resultado = accionReenvio_(usuario, datos); break;
       case 'pasarACuotas': resultado = accionPasarACuotas_(usuario, datos); break;
+      case 'fijosAuto': resultado = accionFijosAuto_(usuario, datos); break;
+      case 'guardarFijoAuto': resultado = accionGuardarFijoAuto_(usuario, datos); break;
       case 'pendientes': resultado = accionPendientes_(usuario, datos); break;
       case 'confirmarPendiente': resultado = accionConfirmarPendiente_(usuario, datos); break;
       case 'descartarPendiente': resultado = accionDescartarPendiente_(usuario, datos); break;
@@ -1387,6 +1391,101 @@ function accionPasarACuotas_(usuario, datos) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Gastos fijos automáticos (motor 1.13.0)
+// ---------------------------------------------------------------------------
+
+function leerFijos_() { return fijosDesde(propiedad_(PROPIEDAD_FIJOS)); }
+function guardarFijos_(config) { PropertiesService.getScriptProperties().setProperty(PROPIEDAD_FIJOS, JSON.stringify(config)); }
+function listaFijos_(config) {
+  return Object.keys(config).map(function (k) { return config[k]; })
+    .sort(function (a, b) { return (a.dia - b.dia) || (a.concepto < b.concepto ? -1 : 1); });
+}
+
+function accionFijosAuto_(usuario) {
+  return { fijos: listaFijos_(leerFijos_()) };
+}
+
+/** {concepto, dia (1-31; 0 = quitar), auto}. La línea debe ser un gasto del presupuesto (no una tarjeta). */
+function accionGuardarFijoAuto_(usuario, datos) {
+  var concepto = String(datos.concepto || '').replace(/\s+/g, ' ').trim();
+  if (!concepto || concepto.length > 80) throw errorApp_('datos_invalidos', 'Falta la línea del presupuesto.');
+  var dia = Math.floor(Number(datos.dia));
+  if (!(dia >= 0 && dia <= 31)) throw errorApp_('datos_invalidos', 'El día debe ser del 1 al 31.');
+  var config = leerFijos_();
+  var clave = claveLinea(concepto);
+  if (dia === 0) {
+    delete config[clave];
+  } else {
+    var p = leerPresupuestoDelMes_(mesDelCiclo(hoyServidor_()));
+    var linea = null;
+    (p ? p.filas : []).forEach(function (f) { if (f.seccion === 'gastos' && !f.esTarjeta && claveLinea(f.concepto) === clave) linea = f; });
+    if (!linea) throw errorApp_('datos_invalidos', 'Esa línea no es un gasto fijo del presupuesto.');
+    if (!config[clave] && Object.keys(config).length >= MAXIMO_FIJOS) throw errorApp_('datos_invalidos', 'Ya hay demasiados gastos fijos con día.');
+    config[clave] = { concepto: linea.concepto, dia: dia, auto: datos.auto === true };
+  }
+  guardarFijos_(config);
+  return { fijos: listaFijos_(config) };
+}
+
+/**
+ * Corre cada mañana con las alertas: marca pagados los fijos de débito automático cuyo día llegó (una sola vez
+ * por línea y mes: si alguien lo desmarca, no se vuelve a marcar) y manda un correo con los demás que vencen hoy.
+ */
+function revisarFijos_(hoy, conCorreo) {
+  var config = leerFijos_();
+  var vencidos = fijosVencidos(config, hoy);
+  if (!vencidos.length) return { marcados: 0, motivo: 'nada para hoy' };
+  var hechos = {};
+  try { hechos = JSON.parse(propiedad_(PROPIEDAD_FIJOS_HECHOS) || '{}') || {}; } catch (err) { hechos = {}; }
+  var hoja = obtenerHoja_(HOJA_PRESUPUESTO);
+  var marcados = [], paraCorreo = [];
+  var candado = tomarCandado_();
+  try {
+    var rango = hoja.getDataRange();
+    var display = rango.getDisplayValues(), valores = rango.getValues(), notas = rango.getNotes();
+    var porMes = {};
+    vencidos.forEach(function (v) {
+      if (!porMes.hasOwnProperty(v.mes)) porMes[v.mes] = leerPresupuesto(display, valores, v.mes, notas);
+      var p = porMes[v.mes];
+      if (!p) return;
+      var linea = null;
+      p.filas.forEach(function (f) { if (f.seccion === 'gastos' && !f.esTarjeta && claveLinea(f.concepto) === v.clave) linea = f; });
+      if (!linea || linea.pagado) return;
+      var marca = v.clave + '|' + v.mes;
+      if (v.auto) {
+        if (hechos['auto|' + marca]) return;
+        var celda = hoja.getRange(linea.fila, p.columna);
+        var texto = 'Pagado el ' + v.fecha.slice(8, 10) + '/' + v.fecha.slice(5, 7) + '/' + v.fecha.slice(0, 4) + ' · automático';
+        celda.setNote(ponerNotaPagado(celda.getNote(), texto));
+        hechos['auto|' + marca] = hoy;
+        marcados.push(linea.concepto);
+      } else if (v.fecha === hoy && !hechos['aviso|' + marca]) {
+        hechos['aviso|' + marca] = hoy;
+        paraCorreo.push({ concepto: linea.concepto, monto: linea.monto });
+      }
+    });
+    if (marcados.length) SpreadsheetApp.flush();
+  } finally {
+    candado.releaseLock();
+  }
+  // Se guardan solo los últimos 4 meses.
+  var limite = sumarMesesClave_(hoy.slice(0, 7), -4);
+  Object.keys(hechos).forEach(function (k) { if (k.slice(-7) < limite) delete hechos[k]; });
+  PropertiesService.getScriptProperties().setProperty(PROPIEDAD_FIJOS_HECHOS, JSON.stringify(hechos));
+  var salida = { marcados: marcados.length, porRecordar: paraCorreo.length };
+  if (paraCorreo.length && conCorreo) {
+    try { salida.correo = enviarCorreoAUsuarios_(textoFijosDeHoy(paraCorreo), 'fijos').enviado; } catch (err) { salida.correo = false; }
+  }
+  return salida;
+}
+
+function sumarMesesClave_(clave, n) {
+  var p = String(clave).split('-');
+  var d = new Date(Number(p[0]), Number(p[1]) - 1 + n, 1);
+  return fechaISO(d).slice(0, 7);
+}
+
 function accionBorrarGasto_(usuario, datos) {
   validarIdCliente_(datos.idCliente);
   var nombreHoja = hojaConsumosCanonica_(datos.hoja);
@@ -2373,6 +2472,10 @@ function revisarAlertas() {
       resultado.resumenSemanal = { enviado: false, motivo: 'error' };
     }
   }
+  try { resultado.fijos = revisarFijos_(hoy, ajustes.vencimiento !== false); } catch (err) {
+    console.warn('FinFamily alertas (fijos): ' + err);
+    resultado.fijos = { motivo: 'error' };
+  }
   if (ajustes.calendario) {
     try { resultado.calendario = sincronizarCalendario(resumen); } catch (err) {
       console.warn('FinFamily alertas (calendario): ' + err);
@@ -3014,6 +3117,13 @@ function accionRenombrarLinea_(usuario, datos) {
     if (Object.prototype.hasOwnProperty.call(mapa, claveLinea(linea.concepto))) {
       guardarMapaLineas_(renombrarLineaEnMapa(mapa, linea.concepto, nombre));
     }
+    var fijos = leerFijos_();
+    if (fijos[claveLinea(linea.concepto)]) {
+      var fijo = fijos[claveLinea(linea.concepto)];
+      delete fijos[claveLinea(linea.concepto)];
+      fijos[claveLinea(nombre)] = { concepto: nombreLineaParaSeccion(nombre, linea.seccion), dia: fijo.dia, auto: fijo.auto };
+      guardarFijos_(fijos);
+    }
     SpreadsheetApp.flush();
     return Object.assign({ renombrada: true, fila: fila, nombre: nombre }, lineasDelMes_(mes));
   } finally {
@@ -3050,6 +3160,8 @@ function accionQuitarLinea_(usuario, datos) {
     hoja.deleteRow(fila);
     var mapa = leerMapaLineas_();
     if (Object.prototype.hasOwnProperty.call(mapa, claveLinea(linea.concepto))) guardarMapaLineas_(quitarLineaDeMapa(mapa, linea.concepto));
+    var fijosQ = leerFijos_();
+    if (fijosQ[claveLinea(linea.concepto)]) { delete fijosQ[claveLinea(linea.concepto)]; guardarFijos_(fijosQ); }
     SpreadsheetApp.flush();
     return Object.assign({ quitada: true, mesesConMonto: mesesConMonto }, lineasDelMes_(mes));
   } finally {

@@ -3756,3 +3756,26 @@ body .formulario.registro-uno .f-cierre .r-guardar .boton.grande { flex: 1; min-
 .freno-acciones .freno-cuotas .icono, .freno-acciones .freno-cuotas .icono svg { width: 16px; height: 16px; }
 .modal-acciones .ed-cuotas { display: inline-flex; align-items: center; gap: 6px; }
 .modal-acciones .ed-cuotas .icono, .modal-acciones .ed-cuotas .icono svg { width: 16px; height: 16px; }
+
+/* ---------- v125: gastos fijos automáticos ---------- */
+.chip-dia-fijo { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--borde);
+  background: var(--sup-2); color: var(--tinta-2); font: inherit; font-size: 0.72rem; font-weight: 600; cursor: pointer; white-space: nowrap;
+  transition: background 200ms ease, border-color 200ms ease, color 200ms ease, transform 160ms ease; }
+.chip-dia-fijo:hover { border-color: var(--accion); color: var(--tinta); }
+.chip-dia-fijo:active { transform: scale(0.95); }
+.chip-dia-fijo.vacio { border-style: dashed; background: transparent; opacity: 0.7; }
+.chip-dia-fijo.auto { border-color: color-mix(in srgb, var(--ok) 55%, transparent); color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, transparent); }
+.chip-dia-fijo .icono, .chip-dia-fijo .icono svg { width: 12px; height: 12px; }
+.hoja-modal.dia-fijo-dlg { width: min(420px, calc(100vw - 24px)); }
+.dia-fijo-caja { gap: 12px; }
+.dia-fijo-grilla { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
+.dia-fijo { min-height: 36px; border-radius: 10px; border: 1px solid var(--borde); background: var(--sup-2); color: var(--tinta); font: inherit; font-weight: 600;
+  font-variant-numeric: tabular-nums; cursor: pointer; transition: background 160ms ease, transform 160ms ease, color 160ms ease; }
+.dia-fijo:hover { border-color: var(--accion); }
+.dia-fijo[aria-pressed="true"] { background: var(--accion); border-color: var(--accion); color: #FFFFFF; transform: scale(1.08); box-shadow: 0 8px 14px -8px var(--accion); }
+.dia-fijo-auto { text-align: left; padding: 10px 12px; border-radius: 12px; background: var(--sup-2); }
+.dia-fijo-resumen { margin: 0; font-size: 0.88rem; min-height: 1.3em; }
+.aviso-fijos:empty { display: none; }
+.aviso-fijos .aviso-fila > span small { display: block; }
+.aviso-fijos .aviso-fila .check-fijo { flex: none; }
+.aviso-fijos .aviso-fila.hecho { opacity: 0; transform: translateX(24px); transition: opacity 400ms ease, transform 400ms var(--suave); }

@@ -1827,6 +1827,128 @@ function mensajeError(e, porDefecto) {
 // Líneas de gasto del presupuesto que se pueden marcar (las de tarjetas se pagan en Tarjetas).
 const fijosDe = (filas) => (filas || []).filter((f) => f.seccion === 'gastos' && f.fila && !f.esTarjeta && f.monto > 0);
 
+// ---------------------------------------------------------------------------
+// Gastos fijos automáticos (v125, motor 1.13): cada fijo tiene su día. Los de débito automático se marcan
+// pagados solos ese día; los demás se recuerdan en Inicio desde 2 días antes hasta que se marquen.
+// ---------------------------------------------------------------------------
+function motorFijosAuto() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 13); }
+const fijosAutoGuardados = () => leerCache('fijos-auto')?.datos?.fijos || [];
+const fijoAutoDe = (concepto) => fijosAutoGuardados().find((x) => normalizar(x.concepto) === normalizar(concepto)) || null;
+function fechaDelFijo(dia, anioMes) {
+  const [a, m] = anioMes.split('-').map(Number);
+  const ultimo = new Date(a, m, 0).getDate();
+  return `${anioMes}-${pad(Math.min(Math.max(1, dia), ultimo))}`;
+}
+
+// Ventanita "¿Qué día se paga?". Resuelve la lista nueva de fijos o null.
+function abrirDiaFijo(f) {
+  return new Promise((resolver) => {
+    const actual = fijoAutoDe(f.concepto);
+    let dia = actual?.dia || 0;
+    let auto = !!actual?.auto;
+    let terminado = false;
+    const dlg = h('dialog', { class: 'hoja-modal dia-fijo-dlg', 'aria-label': `Día de ${f.concepto}` });
+    const salir = (valor) => {
+      if (terminado) return; terminado = true;
+      dlg.classList.add('cerrando');
+      setTimeout(() => { if (dlg.open) dlg.close(); dlg.remove(); }, sinMovimiento() ? 0 : 190);
+      resolver(valor);
+    };
+    dlg.addEventListener('cancel', (ev) => { ev.preventDefault(); salir(null); });
+    dlg.addEventListener('click', (ev) => { if (ev.target === dlg) salir(null); });
+    const msg = h('p', { class: 'mensaje error', hidden: true });
+    const dias = Array.from({ length: 31 }, (_, i) => h('button', { type: 'button', class: 'dia-fijo', 'data-d': String(i + 1),
+      onclick: () => { dia = i + 1; pintar(); } }, String(i + 1)));
+    const resumen = h('p', { class: 'dia-fijo-resumen', 'aria-live': 'polite' });
+    const btnGuardar = h('button', { type: 'button', class: 'boton primario' }, 'Guardar');
+    const enviar = async (diaFinal) => {
+      msg.hidden = true;
+      ocuparBoton(btnGuardar, 'Guardando…');
+      try {
+        const r = await llamarApi('guardarFijoAuto', { concepto: f.concepto, dia: diaFinal, auto }, { email: emailSesion() });
+        guardarCache('fijos-auto', { fijos: r?.fijos || [] });
+        avisar(diaFinal ? (auto ? `${nombreLinea(f.concepto)}: se marca solo el día ${diaFinal}` : `${nombreLinea(f.concepto)}: te aviso el día ${diaFinal}`) : 'Día quitado', 'ok');
+        salir(r?.fijos || []);
+      } catch (e) {
+        liberarBoton(btnGuardar, 'Guardar');
+        msg.textContent = mensajeError(e, 'No se pudo guardar. Intenta de nuevo.'); msg.hidden = false;
+      }
+    };
+    btnGuardar.onclick = () => { if (dia) enviar(dia); };
+    const pintar = () => {
+      dias.forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.d) === dia)));
+      btnGuardar.disabled = !dia;
+      resumen.replaceChildren(!dia ? 'Elige el día del mes en que se paga.'
+        : auto ? h('span', {}, 'El ', h('strong', {}, `día ${dia}`), ' se marca pagado solo.')
+          : h('span', {}, 'Te aviso desde 2 días antes y el ', h('strong', {}, `día ${dia}`), ' por correo.'));
+    };
+    dlg.append(h('div', { class: 'cierre-caja dia-fijo-caja' },
+      h('p', { class: 'cierre-etq' }, `¿Qué día se paga ${nombreLinea(f.concepto)}?`),
+      h('p', { class: 'suave' }, soles(f.monto)),
+      h('div', { class: 'dia-fijo-grilla' }, dias),
+      h('div', { class: 'config-fila dia-fijo-auto' },
+        h('div', { class: 'config-texto' }, h('strong', {}, 'Se paga solo'), h('span', { class: 'suave' }, 'Débito automático: se marca pagado ese día.')),
+        interruptor(auto, 'Se paga solo', (v) => { auto = v; pintar(); })),
+      resumen, msg,
+      h('div', { class: 'acciones modal-acciones' }, btnGuardar,
+        actual ? h('button', { type: 'button', class: 'boton enlace', onclick: () => enviar(0) }, 'Quitar día') : null,
+        h('button', { type: 'button', class: 'boton', onclick: () => salir(null) }, 'Cancelar'))));
+    pintar();
+    document.body.append(dlg);
+    dlg.showModal();
+    animarVista(dlg);
+  });
+}
+
+// Chip del día junto a cada fijo: "día 5", "auto · 5" o "+ día".
+function chipDiaFijo(f) {
+  const b = h('button', { type: 'button', class: 'chip-dia-fijo', title: 'Día en que se paga' });
+  const pintar = () => {
+    const x = fijoAutoDe(f.concepto);
+    b.classList.toggle('vacio', !x);
+    b.classList.toggle('auto', !!x?.auto);
+    b.replaceChildren(...(x ? [x.auto ? icono('recargar') : icono('calendario'), h('span', {}, `día ${x.dia}`)] : [h('span', {}, '+ día')]));
+    b.title = x ? (x.auto ? `Se marca pagado solo el día ${x.dia}` : `Te aviso el día ${x.dia}`) : 'Elegir el día en que se paga';
+  };
+  b.addEventListener('click', async () => { if (await abrirDiaFijo(f)) { pintar(); document.querySelectorAll('.chip-dia-fijo, .aviso-fijos').forEach((c) => c.refrescar?.()); } });
+  b.refrescar = pintar;
+  pintar();
+  return b;
+}
+
+// Inicio: fijos que vencen en 2 días o menos (o ya vencieron este mes) y siguen sin marcar.
+function avisoFijos() {
+  const sitio = h('section', { class: 'avisos-inicio avisos-pres aviso-fijos' });
+  const pintar = async () => {
+    const hoy = hoyISO();
+    const ym = hoy.slice(0, 7);
+    const proximos = fijosAutoGuardados().filter((x) => !x.auto).map((x) => {
+      const fecha = fechaDelFijo(x.dia, ym);
+      return { ...x, fecha, mes: mesDelCiclo(fecha), dias: Math.round((deISO(fecha) - deISO(hoy)) / 86400000) };
+    }).filter((x) => x.dias <= 2);
+    const filas = [];
+    for (const x of proximos) {
+      let pres = leerCache('presupuesto:' + x.mes)?.datos;
+      if (!pres) pres = (await cargarRapido('presupuesto', { mes: x.mes }, 'presupuesto:' + x.mes).catch(() => null))?.datos;
+      const linea = fijosDe(pres?.filas).find((l) => normalizar(l.concepto) === normalizar(x.concepto));
+      if (linea && !linea.pagado) filas.push({ x, linea });
+    }
+    sitio.replaceChildren(...filas.map(({ x, linea }) => {
+      const cuando = x.dias === 0 ? 'vence hoy' : x.dias === 1 ? 'vence mañana' : x.dias === 2 ? 'vence en 2 días' : `venció el ${fechaCorta(x.fecha)}`;
+      const fila = h('div', { class: 'aviso-fila ' + (x.dias < 0 ? 'vencida' : 'justo') },
+        icono('calendario'),
+        h('span', {}, h('strong', {}, `Pagar ${nombreLinea(linea.concepto)}`), h('small', {}, `${cuando} · márcalo al pagar`)),
+        h('strong', { class: 'aviso-monto' }, soles(linea.monto)),
+        botonFijo(linea, x.mes, (r) => { if (r.pagado) { fila.classList.add('hecho'); setTimeout(() => fila.remove(), sinMovimiento() ? 0 : 420); } }));
+      return fila;
+    }));
+  };
+  sitio.refrescar = pintar;
+  pintar();
+  cargarRapido('fijosAuto', {}, 'fijos-auto').then(pintar).catch(() => { /* sin datos: no se avisa */ });
+  return sitio;
+}
+
 function actualizarCacheFijo(mes, f) {
   const c = leerCache('presupuesto:' + mes);
   const linea = c?.datos?.filas?.find((x) => x.fila === f.fila);
@@ -1868,6 +1990,7 @@ function botonFijo(f, mes, alCambiar) {
 function panelFijos(pres, mes, maximo = 6) {
   const fijos = fijosDe(pres?.filas);
   if (!fijos.length) return null;
+  if (motorFijosAuto() && emailSesion()) cargarRapido('fijosAuto', {}, 'fijos-auto').then(() => document.querySelectorAll('.chip-dia-fijo').forEach((c) => c.refrescar?.())).catch(() => null);
   const total = fijos.reduce((s, f) => s + f.monto, 0) || 1;
   const resumen = h('span', { class: 'pill' });
   const avance = h('i');
@@ -1884,6 +2007,7 @@ function panelFijos(pres, mes, maximo = 6) {
     li.append(
       botonFijo(f, mes, (x) => { li.classList.toggle('pagado', !!x.pagado); pintar(); }),
       h('span', { class: 'fijo-nombre', title: f.concepto }, nombreLinea(f.concepto)),
+      motorFijosAuto() ? chipDiaFijo(f) : null,
       h('strong', {}, soles(f.monto)));
     return li;
   }));
@@ -2222,6 +2346,7 @@ async function vistaInicio() {
         h('strong', { class: 'aviso-monto' }, soles(avisoTC.apartado)),
         icono('adelante'))));
   }
+  if (esHoy && motorFijosAuto() && emailSesion()) raiz.append(avisoFijos());
   if (ritmo.length) {
     raiz.append(h('section', { class: 'avisos-inicio avisos-pres aviso-ritmo' }, ritmo.map((x) => h('a', { class: 'aviso-fila justo', href: '#presupuesto' },
       icono('alerta'),

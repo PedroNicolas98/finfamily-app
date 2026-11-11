@@ -1046,6 +1046,67 @@ function mesDelCiclo(fecha) {
   return fechaISO(antes).slice(0, 7);
 }
 
+// ---------------------------------------------------------------------------
+// Gastos fijos automáticos (motor 1.13.0): cada fijo tiene su día; los de débito automático se marcan
+// pagados solos ese día y los demás se recuerdan hasta que se marquen.
+// ---------------------------------------------------------------------------
+
+var MAXIMO_FIJOS = 60;
+
+/** Config guardada saneada: { claveLinea: {concepto, dia (1-31), auto} }. */
+function fijosDesde(texto) {
+  var obj = {};
+  try { obj = typeof texto === 'string' ? JSON.parse(texto || '{}') : (texto || {}); } catch (err) { obj = {}; }
+  var salida = {};
+  var n = 0;
+  Object.keys(obj || {}).forEach(function (k) {
+    var v = obj[k] || {};
+    var concepto = String(v.concepto || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    var dia = Math.floor(Number(v.dia));
+    if (!concepto || !(dia >= 1 && dia <= 31) || n >= MAXIMO_FIJOS) return;
+    salida[claveLinea(concepto)] = { concepto: concepto, dia: dia, auto: v.auto === true };
+    n++;
+  });
+  return salida;
+}
+
+/** Fecha del fijo en ese mes calendario ('2026-11', día 31 -> '2026-11-30'). */
+function fechaDelFijo(dia, anioMes) {
+  var p = String(anioMes || '').split('-');
+  var a = Number(p[0]), m = Number(p[1]);
+  var ultimo = new Date(a, m, 0).getDate();
+  return fechaISO(new Date(a, m - 1, Math.min(Math.max(1, dia), ultimo)));
+}
+
+/**
+ * Fijos cuyo día de este mes calendario ya llegó: [{clave, concepto, fecha, mes, auto}].
+ * mes = el mes del presupuesto que lo paga (el ciclo de cobro de esa fecha).
+ */
+function fijosVencidos(config, hoyISO) {
+  var salida = [];
+  var mesCal = String(hoyISO || '').slice(0, 7);
+  Object.keys(config || {}).forEach(function (k) {
+    var f = config[k];
+    var fecha = fechaDelFijo(f.dia, mesCal);
+    if (fecha > hoyISO) return;
+    salida.push({ clave: k, concepto: f.concepto, fecha: fecha, mes: mesDelCiclo(fecha), auto: f.auto === true });
+  });
+  return salida.sort(function (a, b) { return a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0; });
+}
+
+/** Correo de los fijos que vencen hoy y no están marcados. lista: [{concepto, monto}]. */
+function textoFijosDeHoy(lista) {
+  var total = 0;
+  lista.forEach(function (x) { total += Number(x.monto) || 0; });
+  var nombres = lista.map(function (x) { return x.concepto; });
+  return {
+    asunto: 'Hoy vence: ' + (nombres.length > 2 ? nombres.slice(0, 2).join(', ') + ' y ' + (nombres.length - 2) + ' más' : nombres.join(' y ')),
+    cuerpo: 'Hoy toca pagar:\n\n' + lista.map(function (x) { return '• ' + x.concepto + ': ' + formatoSoles_(x.monto); }).join('\n') +
+      (lista.length > 1 ? '\n\nTotal: ' + formatoSoles_(total) : '') +
+      '\n\nCuando lo pagues, márcalo en "Gastos fijos" de FinFamily y no te lo vuelvo a recordar.'
+  };
+}
+
 function gastoRealDeLinea(linea, consumos, claveMes, mapa, conceptosConfig, rango) {
   var c0 = conceptosDeLinea(mapa, linea.concepto, conceptosConfig);
   var claves = {};
