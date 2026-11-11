@@ -4544,3 +4544,16 @@ body .pantalla.inicio .hero .hero-dato-extra { font-size: 0.875rem; white-space:
   .una-pantalla > .avisos-fila > .avisos-inicio { margin: 0; }
   .una-pantalla > .avisos-fila > .avisos-inicio:empty { display: none; }
 }
+/* Quién gastó: en qué gastó más cada uno (solo en Inicio de computadora y con 1 o 2 personas) */
+.gp-top { display: none; list-style: none; margin: 8px 0 0; padding: 0; }
+@media (min-width: 1024px) {
+  .una-pantalla .gp-lista:not(:has(> .gp-fila:nth-child(3))) .gp-top { display: grid; gap: 6px; }
+  .una-pantalla .gp-lista:not(:has(> .gp-fila:nth-child(3))) .gp-texto > .suave { display: block; }
+  .una-pantalla .gp-lista:not(:has(> .gp-fila:nth-child(3))) .gp-fila { align-items: flex-start; }
+  .gp-top li { display: flex; justify-content: space-between; gap: 10px; font-size: 0.875rem; padding: 4px 0; border-bottom: 1px dashed color-mix(in srgb, var(--tinta) 12%, transparent); }
+  .gp-top li:last-child { border-bottom: 0; }
+  .gp-top li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--tinta-2); }
+  .gp-top li b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .una-pantalla > .inicio-abajo .lista-mov > li[hidden] { display: none; }
+}
+.gp-top li[hidden] { display: none; }
