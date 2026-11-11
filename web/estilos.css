@@ -4316,3 +4316,27 @@ body .grupo-cabecera .derecha .acciones { background: none; border: 0; box-shado
 @media (min-width: 1024px) {
   body:not(.solo-gasto) .registrar .formulario.registro-uno .r-izq > .monto-caja > .campo-monto-caja { flex: none; }
 }
+/* v154: Nuevo gasto en computadora: alto justo de la pantalla (sin scroll) y teclas proporcionadas, no estiradas */
+@media (min-width: 1024px) {
+  body:has(.pantalla.registrar):not(.solo-gasto) { padding-bottom: 0; }
+  body:not(.solo-gasto) .pantalla.registrar { padding-bottom: 10px; }
+  body:not(.solo-gasto) .registrar .formulario.registro-uno { height: auto; min-height: calc(100dvh - 104px); }
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .monto-caja .teclado,
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .monto-caja.plegado .teclado {
+    flex: 0 0 auto; grid-auto-rows: auto; align-content: center; margin-block: auto; gap: 10px;
+  }
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .tecla { aspect-ratio: 6 / 5; min-height: 0; max-height: 78px; height: auto; font-size: 1.45rem; }
+  /* Derecha: los tipos de gasto se ajustan al alto que queda (pueden achicarse un poco si no hay espacio) */
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .r-der .opciones.chicas { grid-auto-rows: minmax(36px, 1fr); min-height: 0; }
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .r-der .opcion.chica { min-height: 36px; }
+}
+@media (min-width: 1024px) and (max-height: 760px) {
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .tecla { max-height: 58px; font-size: 1.25rem; }
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .r-der .opcion.medio,
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .r-der .opcion.origen { min-height: 36px; }
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .r-der .boton.grande { min-height: 46px; }
+}
+@media (min-width: 1024px) {
+  body:not(.solo-gasto) .registrar .formulario.registro-uno { grid-template-columns: minmax(290px, 0.62fr) minmax(0, 1.7fr); }
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .tecla { aspect-ratio: 5 / 4; max-height: 76px; }
+}
