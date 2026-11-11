@@ -1154,6 +1154,29 @@ function mesDelCiclo(fecha) {
 }
 
 // ---------------------------------------------------------------------------
+// Avisos por WhatsApp con CallMeBot (motor 1.17.0)
+// ---------------------------------------------------------------------------
+
+/** '+51 987 654 321' / '51987654321' -> '+51987654321'; '' si no parece un número con código de país. */
+function telefonoWhatsapp(texto) {
+  var d = String(texto || '').replace(/[^\d]/g, '');
+  return d.length >= 9 && d.length <= 15 ? '+' + d : '';
+}
+
+/** '+51987654321' -> '+51 ••• ••• 321' (para mostrarlo sin revelarlo entero). */
+function telefonoOculto(tel) {
+  var t = String(tel || '');
+  return t ? t.slice(0, 3) + ' ••• ••• ' + t.slice(-3) : '';
+}
+
+/** Mensaje de WhatsApp a partir de un correo {asunto, cuerpo}: título en negrita y sin pasar de 1500 caracteres. */
+function textoWhatsapp(texto) {
+  var cuerpo = String((texto && texto.cuerpo) || '').replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim();
+  var t = '*' + String((texto && texto.asunto) || 'FinFamily').trim() + '*' + (cuerpo ? '\n\n' + cuerpo : '');
+  return t.length > 1500 ? t.slice(0, 1497) + '…' : t;
+}
+
+// ---------------------------------------------------------------------------
 // Cuadre de saldos (motor 1.16.0): el último cuadre de cada cuenta (débito, Lemon o el estado de una tarjeta).
 // clave: 'debito|<persona>', 'lemon|<persona>' o 'tc|<idTarjeta>|<vence>'.
 // ---------------------------------------------------------------------------

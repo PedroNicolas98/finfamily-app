@@ -3873,3 +3873,10 @@ body .formulario.registro-uno .f-cierre .r-guardar .boton.grande { flex: 1; min-
 .cuadre-ayuda li em { font-style: normal; font-size: 0.72rem; font-weight: 700; color: var(--ok); width: 100%; }
 .cuadre-cuerpo > .boton { align-self: center; display: inline-flex; align-items: center; gap: 6px; }
 .cuadre-cuerpo > .boton .icono, .cuadre-cuerpo > .boton .icono svg { width: 15px; height: 15px; }
+
+/* ---------- v129: avisos por WhatsApp ---------- */
+.wsp-campos { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.wsp-campos input { font: inherit; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--borde); background: var(--sup); color: var(--tinta); width: 100%; }
+.wsp-campos input:focus { outline: 2px solid color-mix(in srgb, var(--accion) 50%, transparent); outline-offset: 1px; }
+.wsp-control { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.wsp-dlg .conectar-ico { background: color-mix(in srgb, #25D366 16%, transparent); color: #25D366; }

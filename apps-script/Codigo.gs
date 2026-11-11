@@ -26,7 +26,7 @@
  *   FINFAMILY_ICONOS               ícono elegido para cada tipo de gasto (motor 1.5.1).
  */
 
-var VERSION = '1.16.0';
+var VERSION = '1.17.0';
 var ZONA_HORARIA = 'America/Lima';
 var DIAS_AVISO = 3;
 var SEGUNDOS_CACHE_TOKEN = 300;
@@ -44,6 +44,7 @@ var PROPIEDAD_CATALOGO = 'FINFAMILY_CATALOGO';
 var PROPIEDAD_LINEAS = 'FINFAMILY_LINEAS';
 var PROPIEDAD_ICONOS = 'FINFAMILY_ICONOS';
 var PROPIEDAD_CUENTAS = 'FINFAMILY_CUENTAS';           // motor 1.14.0: préstamos y devoluciones entre ustedes
+var PROPIEDAD_WHATSAPP = 'FINFAMILY_WHATSAPP';         // motor 1.17.0: {correo: {telefono, apikey, desde}} (privado)
 var PROPIEDAD_CUADRES = 'FINFAMILY_CUADRES';           // motor 1.16.0: último cuadre de cada cuenta
 var PROPIEDAD_METAS = 'FINFAMILY_METAS';               // motor 1.15.0: objetivo y mes límite por línea de ahorro
 var PROPIEDAD_FIJOS = 'FINFAMILY_FIJOS';               // motor 1.13.0: día y si se paga solo, por línea fija
@@ -57,7 +58,7 @@ var DIAS_CORREOS = 3; // cuántos días hacia atrás busca el lector
 
 /** Acciones que entiende este motor (la acción 'version' las devuelve). */
 var ACCIONES = ['inicio', 'tarjetas', 'presupuesto', 'config', 'registrar', 'marcarPagado', 'marcarFijo',
-  'editarGasto', 'borrarGasto', 'personas', 'desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'abrirSesion', 'cerrarSesion', 'reenvio', 'pasarACuotas', 'fijosAuto', 'guardarFijoAuto', 'cuentas', 'anotarCuenta', 'borrarCuenta', 'guardarMeta', 'cuadres', 'guardarCuadre',
+  'editarGasto', 'borrarGasto', 'personas', 'desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'abrirSesion', 'cerrarSesion', 'reenvio', 'pasarACuotas', 'fijosAuto', 'guardarFijoAuto', 'cuentas', 'anotarCuenta', 'borrarCuenta', 'guardarMeta', 'cuadres', 'guardarCuadre', 'whatsapp', 'guardarWhatsapp', 'probarWhatsapp',
   'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos',
   'datosTarjetas', 'guardarDatosTarjeta',
   'agregarTarjeta', 'editarTarjeta', 'quitarTarjeta', 'restaurarTarjeta',
@@ -147,6 +148,9 @@ function doPost(e) {
       case 'guardarMeta': resultado = accionGuardarMeta_(usuario, datos); break;
       case 'cuadres': resultado = { cuadres: cuadresDesde(propiedad_(PROPIEDAD_CUADRES)) }; break;
       case 'guardarCuadre': resultado = accionGuardarCuadre_(usuario, datos); break;
+      case 'whatsapp': resultado = estadoWhatsapp_(usuario); break;
+      case 'guardarWhatsapp': resultado = accionGuardarWhatsapp_(usuario, datos); break;
+      case 'probarWhatsapp': resultado = accionProbarWhatsapp_(usuario); break;
       case 'pendientes': resultado = accionPendientes_(usuario, datos); break;
       case 'confirmarPendiente': resultado = accionConfirmarPendiente_(usuario, datos); break;
       case 'descartarPendiente': resultado = accionDescartarPendiente_(usuario, datos); break;
@@ -1828,6 +1832,7 @@ function avisosDeVencimiento() {
 
     var texto = textoAvisos(avisos);
     MailApp.sendEmail({ to: correos.join(','), subject: texto.asunto, body: texto.cuerpo, name: 'FinFamily' });
+    avisarWhatsapp_(texto);
 
     // Se anota recién después de enviar: si el envío falla, mañana (o al reintentar) se avisa igual.
     propiedades.setProperty(PROPIEDAD_AVISOS, JSON.stringify({
@@ -1918,6 +1923,80 @@ function accionGuardarDatosTarjeta_(usuario, datos) {
 // ---------------------------------------------------------------------------
 
 /** Correos válidos de USUARIOS. */
+// ---------------------------------------------------------------------------
+// Avisos por WhatsApp con CallMeBot (motor 1.17.0). Cada persona conecta SU WhatsApp con la clave que le da
+// el bot; la clave se guarda solo en las Propiedades del script y nunca vuelve a la app.
+// ---------------------------------------------------------------------------
+
+var URL_CALLMEBOT = 'https://api.callmebot.com/whatsapp.php';
+
+function leerWhatsapp_() {
+  try { return JSON.parse(propiedad_(PROPIEDAD_WHATSAPP) || '{}') || {}; } catch (err) { return {}; }
+}
+
+function estadoWhatsapp_(usuario) {
+  var w = leerWhatsapp_()[usuario.email];
+  return w && w.telefono ? { conectado: true, telefono: telefonoOculto(w.telefono), desde: w.desde || '' } : { conectado: false };
+}
+
+/** {telefono, apikey} conecta; {quitar: true} desconecta. Prueba la clave antes de guardarla. */
+function accionGuardarWhatsapp_(usuario, datos) {
+  var todos = leerWhatsapp_();
+  if (datos.quitar === true) {
+    delete todos[usuario.email];
+    PropertiesService.getScriptProperties().setProperty(PROPIEDAD_WHATSAPP, JSON.stringify(todos));
+    return { conectado: false };
+  }
+  var telefono = telefonoWhatsapp(datos.telefono);
+  if (!telefono) throw errorApp_('datos_invalidos', 'Escribe tu número con el código del país (ej. +51 987 654 321).');
+  var apikey = String(datos.apikey || '').trim();
+  if (!/^[A-Za-z0-9]{4,32}$/.test(apikey)) throw errorApp_('datos_invalidos', 'La clave (apikey) no es válida: cópiala tal cual del mensaje del bot.');
+  var prueba = mandarWhatsapp_(telefono, apikey, '*FinFamily*\n\n¡Listo! Aquí te llegarán los avisos de FinFamily.');
+  if (!prueba.ok) throw errorApp_('datos_invalidos', 'CallMeBot no aceptó el número o la clave' + (prueba.motivo ? ' (' + prueba.motivo + ')' : '') + '. Revisa que sean los del mensaje del bot.');
+  todos[usuario.email] = { telefono: telefono, apikey: apikey, desde: hoyServidor_() };
+  PropertiesService.getScriptProperties().setProperty(PROPIEDAD_WHATSAPP, JSON.stringify(todos));
+  return estadoWhatsapp_(usuario);
+}
+
+function accionProbarWhatsapp_(usuario) {
+  var w = leerWhatsapp_()[usuario.email];
+  if (!w || !w.telefono) throw errorApp_('datos_invalidos', 'Primero conecta tu WhatsApp.');
+  var r = mandarWhatsapp_(w.telefono, w.apikey, '*FinFamily*\n\nMensaje de prueba: tus avisos llegan bien. 👍');
+  return { enviado: r.ok, motivo: r.motivo || '' };
+}
+
+/** Un mensaje por CallMeBot. Nunca lanza: devuelve {ok, motivo}. */
+function mandarWhatsapp_(telefono, apikey, texto) {
+  try {
+    var url = URL_CALLMEBOT + '?phone=' + encodeURIComponent(telefono) + '&text=' + encodeURIComponent(texto) + '&apikey=' + encodeURIComponent(apikey);
+    var resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true });
+    var codigo = resp.getResponseCode();
+    var cuerpo = String(resp.getContentText() || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    var malo = codigo !== 200 || /invalid|error|not\s+(?:valid|allowed|activated|found)|wrong/i.test(cuerpo);
+    return { ok: !malo, motivo: malo ? (cuerpo.slice(0, 80) || 'código ' + codigo) : '' };
+  } catch (err) {
+    return { ok: false, motivo: String(err).slice(0, 80) };
+  }
+}
+
+/** Manda el aviso {asunto, cuerpo} por WhatsApp a quienes lo tengan conectado (todos, o solo esos correos). */
+function avisarWhatsapp_(texto, correos) {
+  var enviados = 0;
+  try {
+    var todos = leerWhatsapp_();
+    var lista = (correos || Object.keys(todos)).filter(function (c) { return todos[c] && todos[c].telefono; });
+    var mensaje = textoWhatsapp(texto);
+    lista.forEach(function (c) {
+      var r = mandarWhatsapp_(todos[c].telefono, todos[c].apikey, mensaje);
+      if (r.ok) enviados++;
+      else console.warn('FinFamily WhatsApp: no se pudo avisar a ' + c.split('@')[0] + ': ' + r.motivo);
+    });
+  } catch (err) {
+    console.warn('FinFamily WhatsApp: ' + err);
+  }
+  return enviados;
+}
+
 function destinatarios_() {
   return Object.keys(leerUsuarios_()).filter(function (c) { return /^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(c); });
 }
@@ -1937,7 +2016,8 @@ function enviarCorreoAUsuarios_(texto, etiquetaLog) {
     return { enviado: false, motivo: 'sin cuota de correo' };
   }
   MailApp.sendEmail({ to: correos.join(','), subject: texto.asunto, body: texto.cuerpo, name: 'FinFamily' });
-  return { enviado: true, destinatarios: correos.length };
+  var porWhatsapp = avisarWhatsapp_(texto);
+  return porWhatsapp ? { enviado: true, destinatarios: correos.length, whatsapp: porWhatsapp } : { enviado: true, destinatarios: correos.length };
 }
 
 /**
@@ -1976,6 +2056,7 @@ function avisarSobrante_(gasto) {
     if (MailApp.getRemainingDailyQuota() < 1) { console.error('FinFamily sobrante: sin cuota de correo.'); return false; }
     var texto = textoSobranteNoAlcanza({ nombre: a.nombre, de: a.de, falta: a.falta, monto: gasto.monto, descripcion: gasto.descripcion });
     MailApp.sendEmail({ to: correo, subject: texto.asunto, body: texto.cuerpo, name: 'FinFamily' });
+    avisarWhatsapp_(texto, [correo]);
     return true;
   } catch (err) {
     console.warn('FinFamily sobrante: no se pudo revisar o avisar: ' + err);
