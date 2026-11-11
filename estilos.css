@@ -5050,3 +5050,10 @@ button.anio-col:hover, .anio-col.elegida { background: color-mix(in srgb, var(--
   .anio-meta-editar { order: 1; }
   .anio-meta-chip { order: 2; }
 }
+/* ---------- v181: cobros aprendidos del correo ---------- */
+.cobros-linea { list-style: none; margin: -2px 0 8px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.cobros-linea[hidden] { display: none; }
+.cobros-linea li { display: flex; align-items: center; gap: 8px; font-size: 0.875rem; color: var(--tinta-2); animation: subir 380ms var(--suave) both; }
+.cobros-linea li .icono, .cobros-linea li svg { width: 16px; height: 16px; color: var(--accion); flex-shrink: 0; }
+.cobros-linea li strong { color: var(--tinta); }
+.cobros-linea li b { margin-left: auto; color: var(--tinta); font-variant-numeric: tabular-nums; }

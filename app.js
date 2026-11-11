@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v180';
+const VERSION_APP = 'finfamily-v181';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -2906,6 +2906,7 @@ function motorV120() { const v = versionMotor(); return v.a > 1 || (v.a === 1 &&
 function motorV122() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 22); }
 function motorV123() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 23); }
 function motorV124() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 24); }
+function motorV125() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 25); }
 
 // ¿Es un pase de plata a la otra persona? ("Yape a PersonaB…", "Plin a PersonaA…"). Devuelve su nombre o ''.
 function otroDePase(texto, quien) {
@@ -4894,7 +4895,7 @@ function panelAvisos(correo, mesPasado) {
     const inGrande = h('input', { type: 'text', inputmode: 'numeric', 'aria-label': 'Monto desde el que avisa', value: ajustes.gastoGrande ? String(ajustes.gastoGrande) : '' , placeholder: 'Apagado' });
     inGrande.addEventListener('change', () => { const n = Number(String(inGrande.value).replace(/[^\d]/g, '')) || 0; ajustes.gastoGrande = n; inGrande.value = n ? String(n) : ''; guardar(); });
     cuerpo.replaceChildren(
-      filaConfig('Correo antes del vencimiento', `Tres días antes de que venza una tarjeta llega un correo a ${correo || 'tu cuenta'}.`,
+      filaConfig('Correo antes del vencimiento', motorV125() ? 'Tres días antes de que venza una tarjeta y dos antes de cada cobro de servicio (Entel, luz…).' : `Tres días antes de que venza una tarjeta llega un correo a ${correo || 'tu cuenta'}.`,
         interruptor(ajustes.vencimiento, 'Correo antes del vencimiento', (v) => { ajustes.vencimiento = v; guardar(); })),
       filaConfig('Vencimientos en el calendario', 'Cada vencimiento aparece en tu Google Calendar con recordatorio 3 días y 1 día antes. Así te avisa el celular.',
         interruptor(ajustes.calendario, 'Vencimientos en el calendario', (v) => { ajustes.calendario = v; guardar(); })),
@@ -4902,6 +4903,8 @@ function panelAvisos(correo, mesPasado) {
         interruptor(ajustes.presupuesto, 'Presupuesto al límite', (v) => { ajustes.presupuesto = v; guardar(); })),
       filaConfig('Resumen de la semana', 'Los lunes: qué se gastó, los gastos chicos y qué vence pronto. El día de cobro: cómo cerró el mes.',
         interruptor(ajustes.resumenSemanal, 'Resumen de la semana', (v) => { ajustes.resumenSemanal = v; guardar(); })),
+      motorV125() ? filaConfig('Si un cobro sube de precio', 'Si Entel, Netflix u otro servicio les cobra más que la vez anterior, les llega un mensajito con la diferencia.',
+        interruptor(ajustes.subidas !== false, 'Si un cobro sube de precio', (v) => { ajustes.subidas = v; guardar(); })) : null,
       motorV122() ? filaConfig('Recordarme anotar', 'Si alguien pasa 3 días sin anotar un gasto, le llega un mensajito solo a esa persona (WhatsApp o correo).',
         interruptor(ajustes.recordatorio !== false, 'Recordarme anotar', (v) => { ajustes.recordatorio = v; guardar(); })) : null,
       h('div', { class: 'config-fila apilada' },
@@ -5377,6 +5380,17 @@ function dialogoLineaEdit(l, mes, alTerminar) {
     pintarPalabras();
     if (palabrasFijo(l.concepto) === null) cargarRapido('fijosAuto', {}, 'fijos-auto').then(() => { palabras = (palabrasFijo(l.concepto) || []).slice(); palabrasAntes = JSON.stringify(palabras); pintarPalabras(); }).catch(() => {});
   }
+  // v181 (motor 1.25): qué día y cuánto se cobra, aprendido de los correos de pago.
+  const cajaCobros = conCorreo && motorV125() ? h('ul', { class: 'cobros-linea' }) : null;
+  const pintarCobros = () => {
+    if (!cajaCobros) return;
+    const lista = (leerCache('fijos-auto')?.datos?.cobros || []).filter((x) => x.clave === normalizar(l.concepto));
+    cajaCobros.replaceChildren(...lista.map((x) => h('li', { title: `Último cobro: ${fechaCorta(x.ultima)}` }, icono('calendario'),
+      h('span', {}, `${x.de} se cobra cerca del `, h('strong', {}, x.dia >= 28 ? 'fin de mes' : `día ${x.dia}`)), h('b', {}, `~${soles(x.monto)}`))));
+    cajaCobros.hidden = !lista.length;
+  };
+  pintarCobros();
+  if (cajaCobros) cargarRapido('fijosAuto', {}, 'fijos-auto').then(pintarCobros).catch(() => {});
   const btn = h('button', { type: 'submit', class: 'boton primario' }, 'Guardar');
   const btnQuitar = h('button', { type: 'button', class: 'boton enlace peligro', onclick: () => {
     const intentar = async (forzar) => {
@@ -5421,7 +5435,8 @@ function dialogoLineaEdit(l, mes, alTerminar) {
           h('div', { class: 'campo campo-chico' }, h('label', { for: 'le-monto' }, `Monto mensual desde ${nombreMesClave(mes) || 'este mes'} (S/)`), inMonto)),
         cajaPalabras ? h('p', { class: 'etq', title: 'Cuando llega el correo del pago (débito automático, «cobro de tu recibo», pago o yapeo del servicio) o un consumo con tarjeta en estas empresas, lo pagado se suma; al llegar a lo planeado, la línea queda pagada sola.' },
           'Se marca pagado solo con el correo de') : null,
-        cajaPalabras),
+        cajaPalabras,
+        cajaCobros),
       cajas ? h('div', { class: 'le-col' }, h('p', { class: 'etq' }, 'Qué tipos de gasto cuentan aquí'), cajas) : null),
     msg, zona,
     h('div', { class: 'acciones modal-acciones' }, btn, h('button', { type: 'button', class: 'boton', onclick: cerrar }, 'Cancelar'), btnQuitar));
