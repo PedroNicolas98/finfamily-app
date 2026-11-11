@@ -1456,8 +1456,12 @@ function fijosDesde(texto) {
     var v = obj[k] || {};
     var concepto = String(v.concepto || '').replace(/\s+/g, ' ').trim().slice(0, 80);
     var dia = Math.floor(Number(v.dia));
-    if (!concepto || !(dia >= 1 && dia <= 31) || n >= MAXIMO_FIJOS) return;
-    salida[claveLinea(concepto)] = { concepto: concepto, dia: dia, auto: v.auto === true };
+    var conDia = dia >= 1 && dia <= 31;
+    var palabras = Array.isArray(v.palabras) ? palabrasValidas(v.palabras) : null; // motor 1.23.0
+    if (!concepto || (!conDia && !palabras) || n >= MAXIMO_FIJOS) return;
+    var f = { concepto: concepto, dia: conDia ? dia : 0, auto: conDia && v.auto === true };
+    if (palabras) f.palabras = palabras;
+    salida[claveLinea(concepto)] = f;
     n++;
   });
   return salida;
@@ -1480,6 +1484,7 @@ function fijosVencidos(config, hoyISO) {
   var mesCal = String(hoyISO || '').slice(0, 7);
   Object.keys(config || {}).forEach(function (k) {
     var f = config[k];
+    if (!(f.dia >= 1)) return; // solo con empresas, sin día
     var fecha = fechaDelFijo(f.dia, mesCal);
     if (fecha > hoyISO) return;
     salida.push({ clave: k, concepto: f.concepto, fecha: fecha, mes: mesDelCiclo(fecha), auto: f.auto === true });
@@ -2401,6 +2406,154 @@ function textoRecordatorioAnotar(r) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Pagos fijos por correo (motor 1.23.0): cuando llega el correo de un pago ya hecho (débito automático,
+// "cobro de tu recibo", pago o yapeo de un servicio) o un consumo con tarjeta en la empresa de una línea fija
+// (Entel, WOW, Luz del Sur, Netflix...), se suma a esa línea; cuando lo pagado llega a lo planeado, se marca
+// pagada sola. Los recibos por pagar ("Total a pagar", "Tu boleta") no cuentan.
+// ---------------------------------------------------------------------------
+
+/** Empresas que se reconocen solas según el nombre de la línea (hasta que el usuario elija las suyas). */
+var PALABRAS_FIJO_DEFECTO = [
+  { patron: /movil|celular|telefon/, palabras: ['entel', 'claro', 'movistar', 'bitel'] },
+  { patron: /internet|wifi|fibra/, palabras: ['wow', 'win internet', 'fiberpro', 'mi fibra'] },
+  { patron: /servicio|luz|agua|\bgas\b/, palabras: ['luz del sur', 'enel', 'sedapal', 'calidda'] },
+  { patron: /suscrip|streaming/, palabras: ['netflix', 'spotify', 'youtube', 'disney', 'prime video', 'hbo', 'google one', 'icloud'] }
+];
+var MAXIMO_PALABRAS_FIJO = 8;
+var UMBRAL_PAGADO_FIJO = 0.9; // con el 90 % de lo planeado ya se da por pagado (los recibos varían un poco)
+
+/** Lista de empresas saneada (arreglo o texto separado por comas): minúsculas, sin tildes, 2-30 letras, sin repetir. */
+function palabrasValidas(lista) {
+  var crudo = Array.isArray(lista) ? lista : String(lista || '').split(/[,;\n]/);
+  var salida = [];
+  crudo.forEach(function (p) {
+    var t = normalizar(p).replace(/[^a-z0-9 &.\-]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (t.length < 2 || t.length > 30 || salida.indexOf(t) !== -1 || salida.length >= MAXIMO_PALABRAS_FIJO) return;
+    salida.push(t);
+  });
+  return salida;
+}
+
+/** Empresas de una línea: las elegidas por el usuario o, si nunca eligió, las de su tipo (por el nombre). */
+function palabrasDeFijo(concepto, config) {
+  var f = (config || {})[claveLinea(concepto)];
+  if (f && Array.isArray(f.palabras)) return f.palabras.slice();
+  var n = claveSinParentesis_(concepto);
+  for (var i = 0; i < PALABRAS_FIJO_DEFECTO.length; i++) {
+    if (PALABRAS_FIJO_DEFECTO[i].patron.test(n)) return PALABRAS_FIJO_DEFECTO[i].palabras.slice();
+  }
+  return [];
+}
+
+var FRASES_PAGO_SERVICIO = /debito automatico|cobro de tu recibo|pago de (tu |su )?servicio|servicio fue yapeado|yapeo de servicio|pago exitoso|pagaste (tu|el) recibo|recibo pagado/;
+var FRASES_NO_PAGO = /recibo digital|tu boleta|total a pagar|monto a pagar|ultimo dia de pago|afiliacion|modificacion de (la )?tarjeta|rechazad|no se pudo|fallid|pendiente de pago/;
+
+/**
+ * Un correo {remitente, asunto, cuerpo, fechaISO} que confirma un pago de servicio ya hecho, en soles:
+ * {monto, fecha (la del correo), texto (normalizado, para buscar la empresa)} o null.
+ */
+function pagoDeServicioDeCorreo(correo) {
+  var c = correo || {};
+  var asunto = String(c.asunto || '');
+  var cuerpo = String(c.cuerpo || '');
+  var texto = normalizar(asunto + ' ' + cuerpo);
+  if (!FRASES_PAGO_SERVICIO.test(texto) || FRASES_NO_PAGO.test(texto)) return null;
+  var dinero = montoDeTexto_(cuerpo) || montoDeTexto_(asunto);
+  if (!dinero || dinero.moneda !== 'PEN') return null;
+  var fecha = fechaISO(parsearFecha(c.fechaISO));
+  if (!fecha) return null;
+  return { monto: dinero.monto, fecha: fecha, texto: normalizar(String(c.remitente || '') + ' ' + asunto + ' ' + cuerpo) };
+}
+
+function contienePalabra_(textoNormalizado, palabra) {
+  var p = String(palabra || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return !!p && new RegExp('(^|[^a-z0-9])' + p + '([^a-z0-9]|$)').test(textoNormalizado);
+}
+
+/**
+ * A qué línea va un pago: la que tiene una de sus empresas en el texto. Si dos líneas se lo disputan, gana la
+ * palabra más larga; si empatan, no se asigna. lineas: [{clave, palabras}]. Devuelve {clave, palabra} o null.
+ */
+function lineaDePago(texto, lineas) {
+  var mejor = null;
+  var empate = false;
+  (lineas || []).forEach(function (l) {
+    (l.palabras || []).forEach(function (p) {
+      if (!contienePalabra_(texto, p)) return;
+      if (!mejor || p.length > mejor.palabra.length) { mejor = { clave: l.clave, palabra: p }; empate = false; }
+      else if (p.length === mejor.palabra.length && l.clave !== mejor.clave) empate = true;
+    });
+  });
+  return mejor && !empate ? mejor : null;
+}
+
+/** Total pagado de una línea sin contar dos veces el mismo pago (mismo monto con 2 días o menos de diferencia). */
+function sumaPagosFijo(lista) {
+  var vistos = [];
+  var total = 0;
+  (lista || []).slice().sort(function (a, b) { return a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0; }).forEach(function (p) {
+    var monto = Number(p.monto) || 0;
+    var repetido = vistos.some(function (v) { return Math.abs(v.monto - monto) < 0.01 && Math.abs(diasEntre_(v.fecha, p.fecha)) <= 2; });
+    if (repetido) return;
+    vistos.push({ monto: monto, fecha: p.fecha });
+    total += monto;
+  });
+  return Math.round(total * 100) / 100;
+}
+
+/** Registro guardado de pagos fijos (texto JSON o null): {ids: {idCorreo: fecha}, meses: {mes: {clave: [pagos]}}}. */
+function pagosFijosDesde(texto) {
+  var g = null;
+  try { g = JSON.parse(texto || 'null'); } catch (err) { g = null; }
+  var salida = { ids: {}, meses: {} };
+  if (!g || typeof g !== 'object') return salida;
+  if (g.ids && typeof g.ids === 'object') Object.keys(g.ids).forEach(function (k) { salida.ids[k] = String(g.ids[k] || ''); });
+  if (g.meses && typeof g.meses === 'object') {
+    Object.keys(g.meses).forEach(function (mes) {
+      if (!/^\d{4}-\d{2}$/.test(mes) || !g.meses[mes] || typeof g.meses[mes] !== 'object') return;
+      salida.meses[mes] = {};
+      Object.keys(g.meses[mes]).forEach(function (clave) {
+        var lista = Array.isArray(g.meses[mes][clave]) ? g.meses[mes][clave] : [];
+        salida.meses[mes][clave] = lista.filter(function (p) { return p && Number(p.monto) > 0 && /^\d{4}-\d{2}-\d{2}$/.test(p.fecha || ''); })
+          .map(function (p) { return { id: String(p.id || ''), fecha: p.fecha, monto: Math.round(Number(p.monto) * 100) / 100, de: String(p.de || '').slice(0, 30) }; });
+      });
+    });
+  }
+  return salida;
+}
+
+/** Deja solo los últimos 3 meses y los correos de los últimos 30 días. */
+function podarPagosFijos(registro, hoy) {
+  var d = parsearFecha(hoy);
+  var limiteMes = d ? fechaISO(new Date(d.getFullYear(), d.getMonth() - 3, 1)).slice(0, 7) : '';
+  var limiteDia = sumarDias_(hoy, -30);
+  Object.keys(registro.meses).forEach(function (m) { if (m < limiteMes) delete registro.meses[m]; });
+  Object.keys(registro.ids).forEach(function (k) { if (!(registro.ids[k] >= limiteDia)) delete registro.ids[k]; });
+  return registro;
+}
+
+/** Para la app: {mes: {clave: {total, de: ['Entel', ...]}}}. */
+function resumenPagosFijos(registro) {
+  var salida = {};
+  Object.keys((registro && registro.meses) || {}).forEach(function (mes) {
+    Object.keys(registro.meses[mes]).forEach(function (clave) {
+      var lista = registro.meses[mes][clave];
+      if (!lista.length) return;
+      var de = [];
+      lista.forEach(function (p) { var n = capitalizar_(p.de); if (n && de.indexOf(n) === -1) de.push(n); });
+      salida[mes] = salida[mes] || {};
+      salida[mes][clave] = { total: sumaPagosFijo(lista), de: de };
+    });
+  });
+  return salida;
+}
+
+/** Nota de la celda cuando se marca sola por el correo. */
+function textoPagadoPorCorreo(fecha) {
+  return 'Pagado el ' + fechaCorta_(fecha) + ' · automático (correo)';
+}
+
 /** Umbrales del presupuesto en que se avisa (porcentaje gastado). */
 var UMBRALES_PRESUPUESTO = [80, 100];
 
@@ -2901,6 +3054,15 @@ if (typeof module !== 'undefined') {
     datosTarjetasDesde: datosTarjetasDesde,
     validarDatosTarjeta: validarDatosTarjeta,
     textoGastoGrande: textoGastoGrande,
+    palabrasValidas: palabrasValidas,
+    palabrasDeFijo: palabrasDeFijo,
+    pagoDeServicioDeCorreo: pagoDeServicioDeCorreo,
+    lineaDePago: lineaDePago,
+    sumaPagosFijo: sumaPagosFijo,
+    pagosFijosDesde: pagosFijosDesde,
+    podarPagosFijos: podarPagosFijos,
+    resumenPagosFijos: resumenPagosFijos,
+    textoPagadoPorCorreo: textoPagadoPorCorreo,
     recordatoriosAnotar: recordatoriosAnotar,
     textoRecordatorioAnotar: textoRecordatorioAnotar,
     alertasPresupuesto: alertasPresupuesto,

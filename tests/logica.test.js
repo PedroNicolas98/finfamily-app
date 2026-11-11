@@ -1320,3 +1320,27 @@ test('recordatoriosAnotar: 3 días sin anotar, solo a quien ya anotó alguna vez
   assert.match(t.cuerpo, /^Hola Ana, hace 3 días que no anotas ningún gasto \(el último fue el 07\/11\/2026\)\./);
   assert.match(t.cuerpo, /https:\/\/pedronicolas98\.github\.io\/finfamily-app\/gasto\.html/);
 });
+
+test('1.23.0: pagos de servicios: qué correo cuenta, a qué línea va y sin contar dos veces', () => {
+  assert.deepEqual(L.palabrasValidas('Luz del Sur, ENEL ,enel, a'), ['luz del sur', 'enel']);
+  assert.deepEqual(L.palabrasDeFijo('Plan móvil (BCP/IBK)', {}), ['entel', 'claro', 'movistar', 'bitel']);
+  assert.deepEqual(L.palabrasDeFijo('Servicios', {}), ['luz del sur', 'enel', 'sedapal', 'calidda']);
+  assert.deepEqual(L.palabrasDeFijo('Alacena (SIP)', {}), []);
+  assert.deepEqual(L.palabrasDeFijo('Internet', { internet: { concepto: 'Internet', dia: 0, palabras: [] } }), [], 'el usuario lo apagó');
+
+  const entel = L.pagoDeServicioDeCorreo({ remitente: 'atencionclientes@entel.example', asunto: 'Hola, Te enviamos el detalle de tu solicitud',
+    cuerpo: 'Se realizó con éxito el cobro de tu recibo a través del Débito Automático Fecha de cobro Cuenta afiliada 13/10/2026 7.01 Importe debitado Número de tarjeta S/ 37.94 4634******0767',
+    fechaISO: '2026-10-13' });
+  assert.equal(entel.monto, 37.94);
+  assert.equal(entel.fecha, '2026-10-13');
+  assert.equal(L.pagoDeServicioDeCorreo({ asunto: 'Tu recibo digital Entel', cuerpo: 'Total a pagar S/ 29.95', fechaISO: '2026-11-05' }), null, 'un recibo por pagar no cuenta');
+  assert.equal(L.pagoDeServicioDeCorreo({ asunto: 'Detalle', cuerpo: '¡La modificación de tarjeta para el Débito Automático se realizó con éxito!', fechaISO: '2026-10-31' }), null);
+  assert.equal(L.pagoDeServicioDeCorreo({ asunto: 'Constancia de pago', cuerpo: 'Tarjeta de crédito Visa Moneda y monto S/ 114.00', fechaISO: '2026-11-08' }), null, 'pagar la tarjeta no es un servicio');
+
+  const lineas = [{ clave: 'plan movil', palabras: ['entel', 'claro'] }, { clave: 'internet', palabras: ['wow', 'claro hogar'] }];
+  assert.deepEqual(L.lineaDePago(entel.texto, lineas), { clave: 'plan movil', palabra: 'entel' });
+  assert.deepEqual(L.lineaDePago('pago claro hogar s/ 80', lineas), { clave: 'internet', palabra: 'claro hogar' }, 'gana la palabra más larga');
+  assert.equal(L.lineaDePago('pago en dentelandia', lineas), null, 'solo palabras completas');
+  assert.equal(L.sumaPagosFijo([{ fecha: '2026-11-13', monto: 37.94 }, { fecha: '2026-11-13', monto: 37.94 }, { fecha: '2026-11-14', monto: 29.95 }]), 67.89);
+  assert.equal(L.textoPagadoPorCorreo('2026-11-13'), 'Pagado el 13/11/2026 · automático (correo)');
+});

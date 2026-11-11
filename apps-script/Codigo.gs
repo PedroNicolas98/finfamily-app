@@ -26,7 +26,7 @@
  *   FINFAMILY_ICONOS               ícono elegido para cada tipo de gasto (motor 1.5.1).
  */
 
-var VERSION = '1.22.0';
+var VERSION = '1.23.0';
 var ZONA_HORARIA = 'America/Lima';
 var DIAS_AVISO = 3;
 var SEGUNDOS_CACHE_TOKEN = 300;
@@ -57,6 +57,7 @@ var PROPIEDAD_CUADRES = 'FINFAMILY_CUADRES';           // motor 1.16.0: último 
 var PROPIEDAD_METAS = 'FINFAMILY_METAS';               // motor 1.15.0: objetivo y mes límite por línea de ahorro
 var PROPIEDAD_FIJOS = 'FINFAMILY_FIJOS';               // motor 1.13.0: día y si se paga solo, por línea fija
 var PROPIEDAD_FIJOS_HECHOS = 'FINFAMILY_FIJOS_HECHOS'; // lo ya marcado o avisado, por línea y mes
+var PROPIEDAD_PAGOS_FIJOS = 'FINFAMILY_PAGOS_FIJOS';   // motor 1.23.0: pagos de servicios leídos del correo, por mes y línea
 var FUNCION_AVISOS = 'avisosDeVencimiento';
 var FUNCION_LECTOR = 'leerCorreosDeBancos';
 var FUNCION_ALERTAS = 'revisarAlertas';
@@ -1524,7 +1525,16 @@ function listaFijos_(config) {
 }
 
 function accionFijosAuto_(usuario) {
-  return { fijos: listaFijos_(leerFijos_()) };
+  var config = leerFijos_();
+  var salida = { fijos: listaFijos_(config) };
+  try {
+    var p = leerPresupuestoDelMes_(mesDelCiclo(hoyServidor_()));
+    var palabras = {};
+    (p ? p.filas : []).forEach(function (f) { if (f.seccion === 'gastos' && !f.esTarjeta) palabras[f.concepto] = palabrasDeFijo(f.concepto, config); });
+    salida.palabras = palabras;
+  } catch (err) { /* sin presupuesto del mes: la app usa lo que tiene */ }
+  salida.pagos = resumenPagosFijos(pagosFijosDesde(propiedad_(PROPIEDAD_PAGOS_FIJOS)));
+  return salida;
 }
 
 /** {concepto, dia (1-31; 0 = quitar), auto}. La línea debe ser un gasto del presupuesto (no una tarjeta). */
@@ -1538,28 +1548,45 @@ function accionGuardarFijoAuto_(usuario, datos) {
     (pT ? pT.filas : []).forEach(function (f) {
       if (f.seccion !== 'gastos' || f.esTarjeta || !(f.monto > 0)) return;
       var k = claveLinea(f.concepto);
-      if (datos.soloSinDia === true && cfg[k]) return;
+      if (datos.soloSinDia === true && cfg[k] && cfg[k].dia >= 1) return;
       if (!cfg[k] && Object.keys(cfg).length >= MAXIMO_FIJOS) return;
-      cfg[k] = { concepto: f.concepto, dia: diaT, auto: datos.auto === true };
+      var antesT = cfg[k];
+      cfg[k] ={ concepto: f.concepto, dia: diaT, auto: datos.auto === true };
+      if (antesT && antesT.palabras) cfg[k].palabras = antesT.palabras;
     });
     guardarFijos_(cfg);
     return { fijos: listaFijos_(cfg) };
   }
   var concepto = String(datos.concepto || '').replace(/\s+/g, ' ').trim();
   if (!concepto || concepto.length > 80) throw errorApp_('datos_invalidos', 'Falta la línea del presupuesto.');
+  if (datos.palabras !== undefined && datos.dia === undefined) { // motor 1.23.0
+    var pP = leerPresupuestoDelMes_(mesDelCiclo(hoyServidor_()));
+    var lineaP = null;
+    (pP ? pP.filas : []).forEach(function (f) { if (f.seccion === 'gastos' && !f.esTarjeta && claveLinea(f.concepto) === claveLinea(concepto)) lineaP = f; });
+    if (!lineaP) throw errorApp_('datos_invalidos', 'Esa línea no es un gasto fijo del presupuesto.');
+    var cfgP = leerFijos_();
+    var kP = claveLinea(concepto);
+    if (!cfgP[kP] && Object.keys(cfgP).length >= MAXIMO_FIJOS) throw errorApp_('datos_invalidos', 'Ya hay demasiados gastos fijos configurados.');
+    cfgP[kP] = Object.assign({ concepto: lineaP.concepto, dia: 0, auto: false }, cfgP[kP] || {}, { palabras: palabrasValidas(datos.palabras) });
+    guardarFijos_(cfgP);
+    return { fijos: listaFijos_(cfgP), palabras: (function () { var o = {}; o[lineaP.concepto] = cfgP[kP].palabras; return o; })() };
+  }
   var dia = Math.floor(Number(datos.dia));
   if (!(dia >= 0 && dia <= 31)) throw errorApp_('datos_invalidos', 'El día debe ser del 1 al 31.');
   var config = leerFijos_();
   var clave = claveLinea(concepto);
   if (dia === 0 && datos.todos !== true) {
-    delete config[clave];
+    if (config[clave] && config[clave].palabras) config[clave] = { concepto: config[clave].concepto, dia: 0, auto: false, palabras: config[clave].palabras };
+    else delete config[clave];
   } else {
     var p = leerPresupuestoDelMes_(mesDelCiclo(hoyServidor_()));
     var linea = null;
     (p ? p.filas : []).forEach(function (f) { if (f.seccion === 'gastos' && !f.esTarjeta && claveLinea(f.concepto) === clave) linea = f; });
     if (!linea) throw errorApp_('datos_invalidos', 'Esa línea no es un gasto fijo del presupuesto.');
     if (!config[clave] && Object.keys(config).length >= MAXIMO_FIJOS) throw errorApp_('datos_invalidos', 'Ya hay demasiados gastos fijos con día.');
+    var antes = config[clave];
     config[clave] = { concepto: linea.concepto, dia: dia, auto: datos.auto === true };
+    if (antes && antes.palabras) config[clave].palabras = antes.palabras;
   }
   guardarFijos_(config);
   return { fijos: listaFijos_(config) };
@@ -2925,7 +2952,105 @@ function corregirFechasDeLaAppUnaVez_() {
   return r;
 }
 
+// ---------------------------------------------------------------------------
+// Pagos fijos por correo (motor 1.23.0)
+// ---------------------------------------------------------------------------
+
+/** Correos de pagos de servicios ya hechos (de cualquier remitente) de los últimos días. */
+function consultaPagosServicio_() {
+  return 'newer_than:' + DIAS_CORREOS + 'd ("débito automático" OR "debito automatico" OR "pago de servicio" OR ' +
+    '"pago de tu servicio" OR "yapeo de servicio" OR "servicio fue yapeado" OR "cobro de tu recibo" OR "pago exitoso")';
+}
+
+/**
+ * Suma a su línea fija los pagos de servicios leídos del correo y los consumos con tarjeta en esas empresas
+ * (extras: [{id, monto, fecha, texto}] del lector). Cuando lo pagado de una línea llega al 90 % de lo planeado,
+ * la marca pagada en el mes del presupuesto que la paga (una sola vez: si alguien la desmarca, no se vuelve a marcar).
+ */
+function revisarPagosDeServicios_(extras) {
+  var hoy = hoyServidor_();
+  var registro = pagosFijosDesde(propiedad_(PROPIEDAD_PAGOS_FIJOS));
+  var nuevos = (extras || []).filter(function (p) { return p && p.id && !registro.ids[p.id]; });
+  var desde = new Date(parsearFecha(hoy).getTime() - DIAS_CORREOS * 86400000);
+  var hilos = [];
+  try { hilos = GmailApp.search(consultaPagosServicio_(), 0, 50); } catch (err) { console.warn('FinFamily pagos fijos: no se pudo buscar en Gmail: ' + err); }
+  hilos.forEach(function (hilo) {
+    try {
+      hilo.getMessages().forEach(function (mensaje) {
+        try {
+          var id = 'm:' + String(mensaje.getId());
+          if (registro.ids[id]) return;
+          var fechaCorreo = mensaje.getDate();
+          if (fechaCorreo && fechaCorreo.getTime && fechaCorreo.getTime() < desde.getTime()) return;
+          var pago = pagoDeServicioDeCorreo({ remitente: mensaje.getFrom(), asunto: mensaje.getSubject(),
+            cuerpo: mensaje.getPlainBody(), fechaISO: fechaISO(fechaCorreo) });
+          if (pago) { pago.id = id; nuevos.push(pago); } else registro.ids[id] = hoy; // no era un pago: no se vuelve a leer
+        } catch (errMensaje) { console.warn('FinFamily pagos fijos: no se pudo leer un correo: ' + errMensaje); }
+      });
+    } catch (errHilo) { console.warn('FinFamily pagos fijos: no se pudo leer un hilo: ' + errHilo); }
+  });
+  var marcados = [];
+  if (nuevos.length) {
+    var config = leerFijos_();
+    var hechos = {};
+    try { hechos = JSON.parse(propiedad_(PROPIEDAD_FIJOS_HECHOS) || '{}') || {}; } catch (err) { hechos = {}; }
+    var hoja = obtenerHoja_(HOJA_PRESUPUESTO);
+    var candado = tomarCandado_();
+    try {
+      var rango = hoja.getDataRange();
+      var display = rango.getDisplayValues(), valores = rango.getValues(), notas = rango.getNotes();
+      var porMes = {};
+      var tocadas = {};
+      nuevos.forEach(function (pago) {
+        registro.ids[pago.id] = pago.fecha;
+        var mes = mesDelCiclo(pago.fecha);
+        if (!porMes.hasOwnProperty(mes)) porMes[mes] = leerPresupuesto(display, valores, mes, notas);
+        var p = porMes[mes];
+        if (!p) return;
+        var lineas = p.filas.filter(function (f) { return f.seccion === 'gastos' && !f.esTarjeta && f.monto > 0; })
+          .map(function (f) { return { clave: claveLinea(f.concepto), palabras: palabrasDeFijo(f.concepto, config) }; });
+        var l = lineaDePago(pago.texto, lineas);
+        if (!l) return;
+        registro.meses[mes] = registro.meses[mes] || {};
+        registro.meses[mes][l.clave] = registro.meses[mes][l.clave] || [];
+        registro.meses[mes][l.clave].push({ id: pago.id, fecha: pago.fecha, monto: pago.monto, de: l.palabra });
+        var k2 = mes + '|' + l.clave;
+        if (!tocadas[k2] || pago.fecha > tocadas[k2].fecha) tocadas[k2] = { mes: mes, clave: l.clave, fecha: pago.fecha };
+      });
+      Object.keys(tocadas).forEach(function (k) {
+        var t = tocadas[k];
+        var p = porMes[t.mes];
+        var linea = null;
+        p.filas.forEach(function (f) { if (f.seccion === 'gastos' && !f.esTarjeta && claveLinea(f.concepto) === t.clave) linea = f; });
+        if (!linea || linea.pagado || hechos['correo|' + t.clave + '|' + t.mes]) return;
+        if (sumaPagosFijo(registro.meses[t.mes][t.clave]) < linea.monto * UMBRAL_PAGADO_FIJO) return;
+        var celda = hoja.getRange(linea.fila, p.columna);
+        celda.setNote(ponerNotaPagado(celda.getNote(), textoPagadoPorCorreo(t.fecha)));
+        hechos['correo|' + t.clave + '|' + t.mes] = hoy;
+        marcados.push(linea.concepto);
+      });
+      if (marcados.length) {
+        SpreadsheetApp.flush();
+        PropertiesService.getScriptProperties().setProperty(PROPIEDAD_FIJOS_HECHOS, JSON.stringify(hechos));
+      }
+    } finally {
+      candado.releaseLock();
+    }
+  }
+  PropertiesService.getScriptProperties().setProperty(PROPIEDAD_PAGOS_FIJOS, JSON.stringify(podarPagosFijos(registro, hoy)));
+  if (marcados.length) console.log('FinFamily pagos fijos: marcado(s) por el correo: ' + marcados.join(', '));
+  return { pagos: nuevos.length, marcados: marcados.length };
+}
+
 function leerCorreosDeBancos() {
+  var extras = [];
+  var r = leerCorreosDeBancosNucleo_(extras);
+  // Motor 1.23.0: fuera del candado del lector (marcar pagado toma el suyo).
+  try { revisarPagosDeServicios_(extras); } catch (err) { console.warn('FinFamily pagos fijos: ' + err); }
+  return r;
+}
+
+function leerCorreosDeBancosNucleo_(extras) {
   // Fuera del candado del lector: registrar, editar y borrar toman el suyo.
   try { pasarDebitosAEfectivoUnaVez_(); } catch (e) { console.warn('FinFamily débitos: no se pudieron pasar a efectivo: ' + e); }
   try { corregirFechasDeLaAppUnaVez_(); } catch (e) { console.warn('FinFamily fechas: no se pudieron corregir: ' + e); }
@@ -3006,6 +3131,8 @@ function leerCorreosDeBancos() {
             ]);
             existentes[id] = true;
             agregados++;
+            if (consumo.moneda === 'PEN' && extras) extras.push({ id: 'c:' + id, monto: consumo.monto, fecha: consumo.fecha,
+              texto: normalizar(String(consumo.comercio || '') + ' ' + String(mensaje.getSubject() || '')) });
           } catch (errMensaje) {
             console.warn('FinFamily lector: no se pudo leer un correo: ' + errMensaje);
           }
@@ -3891,6 +4018,7 @@ function accionRenombrarLinea_(usuario, datos) {
       var fijo = fijos[claveLinea(linea.concepto)];
       delete fijos[claveLinea(linea.concepto)];
       fijos[claveLinea(nombre)] = { concepto: nombreLineaParaSeccion(nombre, linea.seccion), dia: fijo.dia, auto: fijo.auto };
+      if (fijo.palabras) fijos[claveLinea(nombre)].palabras = fijo.palabras;
       guardarFijos_(fijos);
     }
     SpreadsheetApp.flush();

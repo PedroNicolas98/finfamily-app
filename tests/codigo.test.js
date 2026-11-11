@@ -382,13 +382,13 @@ test('version: informa 1.7.1 y la lista de acciones; inicio y config traen el ca
     new HojaFalsa('Configuración', [['Conceptos de Gasto', 'Responsable'], ['Limpieza', 'PersonaB']])]) });
   const r = m.llamar('version', {});
   assert.equal(r.ok, true);
-  assert.equal(r.datos.version, '1.22.0');
+  assert.equal(r.datos.version, '1.23.0');
   for (const a of ['desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'marcarPagado', 'inicio',
     'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos', 'datosTarjetas', 'guardarDatosTarjeta']) {
     assert.ok(r.datos.acciones.includes(a), 'falta la acción ' + a);
   }
-  assert.equal(m.llamar('inicio', {}).datos.version, '1.22.0');
-  assert.equal(m.llamar('config', {}).datos.version, '1.22.0');
+  assert.equal(m.llamar('inicio', {}).datos.version, '1.23.0');
+  assert.equal(m.llamar('config', {}).datos.version, '1.23.0');
 });
 
 test('la lista ACCIONES coincide con las acciones que atiende doPost', () => {
@@ -2049,7 +2049,7 @@ test('config: un ícono guardado para un concepto que ya no existe en Configurac
   assert.deepEqual(m.llamar('config', {}).datos.iconos, { Supermercado: 'carrito' });
   const danado = motorCompleto({ propiedades: { FINFAMILY_ICONOS: '{roto' } });
   assert.deepEqual(danado.llamar('config', {}).datos.iconos, {});
-  assert.equal(danado.llamar('version', {}).datos.version, '1.22.0');
+  assert.equal(danado.llamar('version', {}).datos.version, '1.23.0');
   assert.ok(danado.llamar('version', {}).datos.acciones.includes('guardarIconoConcepto'));
 });
 
@@ -2287,7 +2287,7 @@ test('gasto grande con tarjeta prestada: el correo dice quién gastó; versión 
   const m = motorCompleto();
   m.llamar('registrar', Object.assign({}, GASTO_PRESTADO, { monto: 450, descripcion: 'Saga Falabella' }));
   assert.equal(m.correos[0].subject, 'FinFamily: PersonaA registró S/ 450 en Saga Falabella (TC Interbank)');
-  assert.equal(m.llamar('version', {}).datos.version, '1.22.0');
+  assert.equal(m.llamar('version', {}).datos.version, '1.23.0');
 });
 
 // ===========================================================================
@@ -2567,7 +2567,7 @@ test('bolsas con un solo usuario (N = 1): todo el saldo de los meses anteriores 
 test('versión 1.7.0: la acción bolsas está en la lista y presupuesto no cambió', () => {
   const m = motorBolsas();
   const v = m.llamar('version', {}).datos;
-  assert.equal(v.version, '1.22.0');
+  assert.equal(v.version, '1.23.0');
   assert.ok(v.acciones.includes('bolsas'));
   const p = m.llamar('presupuesto', { mes: '2026-11' }).datos;
   assert.equal(p.totales.saldo, 985.57);
@@ -2659,8 +2659,9 @@ test('1.8.0: la primera pasada trae Yape y Lemon desde el día 1 del mes; los en
   assert.match(m.contexto.consultaGmail_(), /subject:yapeo/);
   const r = m.contexto.leerCorreosDeBancos();
   assert.equal(r.agregados, 2);
-  assert.equal(m.consultasGmail.length, 2);
+  assert.equal(m.consultasGmail.length, 3, 'bancos, la primera pasada de billeteras y los pagos de servicios (1.23.0)');
   assert.match(m.consultasGmail[1], /^newer_than:9d \(from:yape\.pe OR from:lemoncash\.com\.ar/);
+  assert.match(m.consultasGmail[2], /débito automático/);
   assert.ok(m.propiedades.FINFAMILY_BILLETERAS_V3, 'queda anotado que ya se hizo la primera pasada');
 
   const hoja = hojaDe(m, 'Por confirmar');
@@ -2679,9 +2680,10 @@ test('1.8.0: la primera pasada trae Yape y Lemon desde el día 1 del mes; los en
   assert.equal(y.datos.confirmado, true);
   assert.equal(hormiga.valores[2][6], 'Yape');
 
-  // Segunda pasada: ya no busca desde el día 1.
+  // Segunda pasada: ya no busca desde el día 1 (solo bancos y pagos de servicios).
   m.contexto.leerCorreosDeBancos();
-  assert.equal(m.consultasGmail.length, 3);
+  assert.equal(m.consultasGmail.length, 5);
+  assert.ok(!/from:yape\.pe OR from:lemoncash/.test(m.consultasGmail[3]) || /subject:/.test(m.consultasGmail[3]));
 });
 
 test('1.8.0: Lemon aparece como medio directo en config', () => {
@@ -3550,4 +3552,55 @@ test('1.20.0: un mensaje en tu chat «Tú» se anota con el tipo y el medio de g
   assert.match(m.greenLlamadas.at(-1).cuerpo.message, /No sé de qué tipo es «ferreteria»/);
   // Conversación con otra persona: se ignora.
   assert.equal(enviar(secreto, msg('A4', '25 tambo', { senderData: { chatId: '51900000000@c.us' } })).ignorado, 'otro chat');
+});
+
+// ---------- 1.23.0: pagos fijos que se marcan solos con el correo ----------
+
+const CORREO_PAGO = (id, de, asunto, cuerpo, dia) => ({ id, de, asunto, cuerpo, fecha: new Date(2026, 10, dia, 9, 0) });
+
+test('1.23.0: los pagos de servicios del correo suman a su línea y la marcan pagada al llegar a lo planeado (sin contar dos veces)', () => {
+  const hilos = [
+    { mensajes: [CORREO_PAGO('pay-1', 'Notificaciones Pay-me <payments@pagos.example>', 'Se realizó un débito automático en "WOW PERU"',
+      'Hola PERSONA, Te notificamos que se ha procesado un débito automático en el comercio WOW PERU : Pago exitoso S/. 60.00 Fecha 13/11/2026', 13)] },
+    { mensajes: [CORREO_PAGO('wow-1', 'WOW Perú <noreply@wow.example>', 'Hola, te enviamos el detalle',
+      'Se realizó con éxito el cobro de tu recibo a través del Débito Automático Fecha de cobro 13/11/2026 Importe debitado S/ 60.00', 13)] },
+    { mensajes: [CORREO_PAGO('wow-boleta', 'WOW Perú <noreply@wow.example>', 'Tu boleta WOW del mes', 'Total a pagar S/ 40.00 Último día de pago 20/11', 12)] }
+  ];
+  const m = motorCompleto({ hoy: '2026-11-14', hilos });
+  m.contexto.leerCorreosDeBancos();
+  // 13 nov se paga con el presupuesto de octubre (cobro a fin de mes). S/ 60 de S/ 100: todavía no.
+  let oct = m.llamar('presupuesto', { mes: '2026-10' }).datos.filas.find((f) => f.concepto === 'Internet');
+  assert.equal(oct.pagado, false);
+  const f1 = m.llamar('fijosAuto', {}).datos;
+  assert.deepEqual(JSON.parse(JSON.stringify(f1.pagos)), { '2026-10': { internet: { total: 60, de: ['Wow'] } } });
+  assert.deepEqual(JSON.parse(JSON.stringify(f1.palabras.Internet)), ['wow', 'win internet', 'fiberpro', 'mi fibra']);
+
+  // Llega el yapeo de los S/ 40 que faltaban: ahora sí se marca, con su nota.
+  hilos.push({ mensajes: [CORREO_PAGO('yape-wow', 'Correo de servicios <avisos@servicios.example>', 'Tu yapeo de servicio ha sido confirmado',
+    '¡Tu servicio fue yapeado con éxito! Monto total S/ 40.00 Empresa: WOW Servicio: Internet', 14)] });
+  const m2 = motorCompleto({ hoy: '2026-11-14', hilos, propiedades: { FINFAMILY_PAGOS_FIJOS: m.propiedades.FINFAMILY_PAGOS_FIJOS } });
+  m2.contexto.leerCorreosDeBancos();
+  oct = m2.llamar('presupuesto', { mes: '2026-10' }).datos.filas.find((f) => f.concepto === 'Internet');
+  assert.equal(oct.pagado, true);
+  assert.equal(oct.pagadoNota, 'Pagado el 14/11/2026 · automático (correo)');
+  // Otra pasada no repite nada; y si alguien lo desmarca, no se vuelve a marcar.
+  m2.contexto.leerCorreosDeBancos();
+  m2.llamar('marcarFijo', { idCliente: ID, mes: '2026-10', fila: 6, concepto: 'Internet', pagado: false });
+  m2.contexto.leerCorreosDeBancos();
+  assert.equal(m2.llamar('presupuesto', { mes: '2026-10' }).datos.filas.find((f) => f.concepto === 'Internet').pagado, false);
+});
+
+test('1.23.0: guardarFijoAuto con empresas solo cambia las empresas; el día las conserva', () => {
+  const m = motorCompleto({ hoy: '2026-11-14' });
+  const r = m.llamar('guardarFijoAuto', { concepto: 'Internet', palabras: 'Movistar, WOW, wow, x' });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual(JSON.parse(JSON.stringify(m.llamar('fijosAuto', {}).datos.palabras.Internet)), ['movistar', 'wow']);
+  assert.deepEqual(m.llamar('fijosAuto', {}).datos.fijos.map((f) => [f.concepto, f.dia]), [['Internet', 0]]);
+  m.llamar('guardarFijoAuto', { concepto: 'Internet', dia: 5, auto: true });
+  assert.deepEqual(JSON.parse(JSON.stringify(m.llamar('fijosAuto', {}).datos.fijos)), [{ concepto: 'Internet', dia: 5, auto: true, palabras: ['movistar', 'wow'] }]);
+  m.llamar('guardarFijoAuto', { concepto: 'Internet', dia: 0 });
+  assert.deepEqual(JSON.parse(JSON.stringify(m.llamar('fijosAuto', {}).datos.fijos)), [{ concepto: 'Internet', dia: 0, auto: false, palabras: ['movistar', 'wow'] }]);
+  // Sin día no recuerda nada ni se marca solo por fecha.
+  assert.equal(m.contexto.revisarFijos_('2026-11-30', true).motivo, 'nada para hoy');
+  assert.equal(m.llamar('guardarFijoAuto', { concepto: 'Ahorro Casa', palabras: ['x y'] }).ok, false);
 });
