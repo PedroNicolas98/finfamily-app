@@ -1351,6 +1351,8 @@ test('1.25.0: cobros aprendidos (dos recibos de Entel son dos cobros) y subidas 
     '2026-10': { 'plan movil': [{ fecha: '2026-11-12', monto: 38.5, de: 'entel' }] }
   } };
   assert.deepEqual(L.cobrosAprendidos(reg).map((c) => [c.de, c.dia, c.monto, c.veces]), [['entel', 5, 29.95, 1], ['entel', 12, 38.5, 2]]);
+  // 1.25.2: el recibo de S/ 29.95 no se ve desde el 5 de octubre: el 1 de diciembre ya no se espera.
+  assert.deepEqual(L.cobrosAprendidos(reg, '2026-12-01').map((c) => [c.dia, c.monto]), [[12, 38.5]]);
   const antes = reg.meses['2026-09']['plan movil'];
   assert.equal(L.subidaDePrecio(antes, { fecha: '2026-11-12', monto: 38.5 }), null, 'S/ 0.56 es menos del 3 %');
   assert.deepEqual(JSON.parse(JSON.stringify(L.subidaDePrecio(antes, { fecha: '2026-11-12', monto: 45.94 }))), { antes: 37.94, fechaAntes: '2026-10-13', ahora: 45.94, dif: 8 });

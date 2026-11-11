@@ -2523,7 +2523,9 @@ function pagosUnicos(lista) {
  * Cobros aprendidos del registro de pagos: [{clave, de, dia, monto, ultima, veces}], uno por empresa, línea y
  * monto parecido (±15 % o S/ 3). dia y monto son los del último cobro.
  */
-function cobrosAprendidos(registro) {
+function cobrosAprendidos(registro, hoy) {
+  // Motor 1.25.2: con hoy, un cobro que no se ve hace más de 45 días ya no se espera (p. ej. un plan que se cambió).
+  var vigente = hoy ? sumarDias_(hoy, -45) : '';
   var grupos = {};
   var meses = (registro && registro.meses) || {};
   Object.keys(meses).forEach(function (mes) {
@@ -2548,6 +2550,7 @@ function cobrosAprendidos(registro) {
       if (mejor) { mejor.veces++; mejor.ultimo = p; } else racimos.push({ ultimo: p, veces: 1 });
     });
     racimos.forEach(function (r) {
+      if (vigente && r.ultimo.fecha < vigente) return;
       salida.push({ clave: partes[0], de: partes[1], dia: Number(r.ultimo.fecha.slice(8, 10)), monto: r.ultimo.monto, ultima: r.ultimo.fecha, veces: r.veces });
     });
   });

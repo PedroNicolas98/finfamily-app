@@ -26,7 +26,7 @@
  *   FINFAMILY_ICONOS               ícono elegido para cada tipo de gasto (motor 1.5.1).
  */
 
-var VERSION = '1.25.1';
+var VERSION = '1.25.2';
 var ZONA_HORARIA = 'America/Lima';
 var DIAS_AVISO = 3;
 var SEGUNDOS_CACHE_TOKEN = 300;
@@ -1540,7 +1540,7 @@ function accionFijosAuto_(usuario) {
   } catch (err) { /* sin presupuesto del mes: la app usa lo que tiene */ }
   var registro = pagosFijosDesde(propiedad_(PROPIEDAD_PAGOS_FIJOS));
   salida.pagos = resumenPagosFijos(registro);
-  salida.cobros = cobrosAprendidos(registro).map(function (c) { return { clave: c.clave, de: capitalizar_(c.de), dia: c.dia, monto: c.monto, ultima: c.ultima }; });
+  salida.cobros = cobrosAprendidos(registro, hoyServidor_()).map(function (c) { return { clave: c.clave, de: capitalizar_(c.de), dia: c.dia, monto: c.monto, ultima: c.ultima }; });
   return salida;
 }
 
@@ -3102,7 +3102,7 @@ function historialPagosServicioUnaVez_() {
  * cobro y mes. Si ese cobro ya llegó este mes, no avisa.
  */
 function revisarCobrosProximos_(hoy) {
-  var cobros = cobrosAprendidos(pagosFijosDesde(propiedad_(PROPIEDAD_PAGOS_FIJOS)));
+  var cobros = cobrosAprendidos(pagosFijosDesde(propiedad_(PROPIEDAD_PAGOS_FIJOS)), hoy);
   if (!cobros.length) return { motivo: 'sin cobros aprendidos' };
   var objetivo = sumarDias_(hoy, 2);
   var mesCal = objetivo.slice(0, 7);
