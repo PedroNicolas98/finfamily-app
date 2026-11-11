@@ -6,9 +6,13 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v152';
+const VERSION_APP = 'finfamily-v153';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
-if (SOLO_GASTO && matchMedia('(min-width: 900px)').matches) location.replace(new URL('./#registrar', location.href).href);
+// Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
+// sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
+const esComputadora = matchMedia('(min-width: 900px) and (hover: hover) and (pointer: fine)').matches && !/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+const esInstalada = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+if (SOLO_GASTO && esComputadora && !esInstalada && !new URLSearchParams(location.search).has('rapido')) location.replace(new URL('./#registrar', location.href).href);
 
 // Instalación en el equipo (el navegador avisa cuando se puede).
 let eventoInstalar = null;
