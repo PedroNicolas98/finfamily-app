@@ -347,13 +347,13 @@ test('version: informa 1.7.1 y la lista de acciones; inicio y config traen el ca
     new HojaFalsa('Configuración', [['Conceptos de Gasto', 'Responsable'], ['Limpieza', 'PersonaB']])]) });
   const r = m.llamar('version', {});
   assert.equal(r.ok, true);
-  assert.equal(r.datos.version, '1.15.0');
+  assert.equal(r.datos.version, '1.16.0');
   for (const a of ['desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'marcarPagado', 'inicio',
     'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos', 'datosTarjetas', 'guardarDatosTarjeta']) {
     assert.ok(r.datos.acciones.includes(a), 'falta la acción ' + a);
   }
-  assert.equal(m.llamar('inicio', {}).datos.version, '1.15.0');
-  assert.equal(m.llamar('config', {}).datos.version, '1.15.0');
+  assert.equal(m.llamar('inicio', {}).datos.version, '1.16.0');
+  assert.equal(m.llamar('config', {}).datos.version, '1.16.0');
 });
 
 test('la lista ACCIONES coincide con las acciones que atiende doPost', () => {
@@ -1986,7 +1986,7 @@ test('config: un ícono guardado para un concepto que ya no existe en Configurac
   assert.deepEqual(m.llamar('config', {}).datos.iconos, { Supermercado: 'carrito' });
   const danado = motorCompleto({ propiedades: { FINFAMILY_ICONOS: '{roto' } });
   assert.deepEqual(danado.llamar('config', {}).datos.iconos, {});
-  assert.equal(danado.llamar('version', {}).datos.version, '1.15.0');
+  assert.equal(danado.llamar('version', {}).datos.version, '1.16.0');
   assert.ok(danado.llamar('version', {}).datos.acciones.includes('guardarIconoConcepto'));
 });
 
@@ -2224,7 +2224,7 @@ test('gasto grande con tarjeta prestada: el correo dice quién gastó; versión 
   const m = motorCompleto();
   m.llamar('registrar', Object.assign({}, GASTO_PRESTADO, { monto: 450, descripcion: 'Saga Falabella' }));
   assert.equal(m.correos[0].subject, 'FinFamily: PersonaA registró S/ 450 en Saga Falabella (TC Interbank)');
-  assert.equal(m.llamar('version', {}).datos.version, '1.15.0');
+  assert.equal(m.llamar('version', {}).datos.version, '1.16.0');
 });
 
 // ===========================================================================
@@ -2504,7 +2504,7 @@ test('bolsas con un solo usuario (N = 1): todo el saldo de los meses anteriores 
 test('versión 1.7.0: la acción bolsas está en la lista y presupuesto no cambió', () => {
   const m = motorBolsas();
   const v = m.llamar('version', {}).datos;
-  assert.equal(v.version, '1.15.0');
+  assert.equal(v.version, '1.16.0');
   assert.ok(v.acciones.includes('bolsas'));
   const p = m.llamar('presupuesto', { mes: '2026-11' }).datos;
   assert.equal(p.totales.saldo, 985.57);
@@ -3263,4 +3263,20 @@ test('1.15.0: planDeMeta: bien, atrasada, vencida y lista', () => {
   assert.equal(p(1000, '2026-11', 400, 120, '2026-11').estado, 'vencida');
   assert.equal(p(1000, '2026-11', 1000, 0, '2026-11').estado, 'lista');
   assert.equal(p(1000, '2027-02', 0, 0, '2026-11').porMes, 333.34);
+});
+
+
+// ---------- 1.16.0: cuadre de saldos ----------
+
+test('1.16.0: guardarCuadre guarda el último cuadre por cuenta y valida la clave', () => {
+  const m = motorCompleto({ hoy: '2026-11-10' });
+  assert.deepEqual(m.llamar('cuadres', {}).datos.cuadres, {});
+  const r = m.llamar('guardarCuadre', { clave: 'debito|PersonaA', saldo: '1,250.50', base: 300, medios: ['YAPE', 'plin', 'TC_BCP'] });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual(JSON.parse(JSON.stringify(r.datos.cuadres['debito|PersonaA'])), { saldo: 1250.5, base: 300, fecha: '2026-11-10', medios: ['YAPE', 'PLIN'], por: 'PersonaA' });
+  m.llamar('guardarCuadre', { clave: 'tc|IBK_P|2026-12-15', saldo: 480 });
+  m.llamar('guardarCuadre', { clave: 'lemon|PersonaA', saldo: 52, base: 10, medios: ['LEMON'] });
+  assert.deepEqual(Object.keys(m.llamar('cuadres', {}).datos.cuadres).sort(), ['debito|PersonaA', 'lemon|PersonaA', 'tc|IBK_P|2026-12-15']);
+  assert.equal(m.llamar('guardarCuadre', { clave: 'otra|cosa', saldo: 1 }).ok, false);
+  assert.equal(m.llamar('guardarCuadre', { clave: 'debito|PersonaA', saldo: 'abc' }).ok, false);
 });

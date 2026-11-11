@@ -1154,6 +1154,36 @@ function mesDelCiclo(fecha) {
 }
 
 // ---------------------------------------------------------------------------
+// Cuadre de saldos (motor 1.16.0): el último cuadre de cada cuenta (débito, Lemon o el estado de una tarjeta).
+// clave: 'debito|<persona>', 'lemon|<persona>' o 'tc|<idTarjeta>|<vence>'.
+// ---------------------------------------------------------------------------
+
+var MAXIMO_CUADRES = 60;
+var MEDIOS_CUADRE = ['YAPE', 'PLIN', 'EFECTIVO', 'LEMON'];
+
+function claveCuadreValida(clave) {
+  return /^(debito|lemon)\|[^|]{1,60}$/.test(String(clave || '')) || /^tc\|[A-Z0-9_]{1,30}\|\d{4}-\d{2}-\d{2}$/.test(String(clave || ''));
+}
+
+/** Lo guardado saneado: { clave: {saldo, base, fecha, medios, por} }. */
+function cuadresDesde(texto) {
+  var obj = {};
+  try { obj = typeof texto === 'string' ? JSON.parse(texto || '{}') : (texto || {}); } catch (err) { obj = {}; }
+  var salida = {};
+  Object.keys(obj || {}).sort(function (a, b) { return String((obj[b] || {}).fecha).localeCompare(String((obj[a] || {}).fecha)); })
+    .slice(0, MAXIMO_CUADRES).forEach(function (k) {
+      var v = obj[k] || {};
+      if (!claveCuadreValida(k) || !isFinite(Number(v.saldo)) || !/^\d{4}-\d{2}-\d{2}$/.test(String(v.fecha || ''))) return;
+      salida[k] = {
+        saldo: Math.round(Number(v.saldo) * 100) / 100, base: Math.round((Number(v.base) || 0) * 100) / 100, fecha: v.fecha,
+        medios: (Array.isArray(v.medios) ? v.medios : []).map(function (m) { return String(m).toUpperCase(); }).filter(function (m) { return MEDIOS_CUADRE.indexOf(m) !== -1; }),
+        por: String(v.por || '').slice(0, 80)
+      };
+    });
+  return salida;
+}
+
+// ---------------------------------------------------------------------------
 // Metas de ahorro con fecha (motor 1.15.0): a cada línea de ahorro se le pone un objetivo y el mes límite;
 // se calcula cuánto falta, cuánto apartar al mes y si con lo que se pone este mes se llega.
 // ---------------------------------------------------------------------------

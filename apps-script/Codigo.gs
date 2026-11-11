@@ -26,7 +26,7 @@
  *   FINFAMILY_ICONOS               ícono elegido para cada tipo de gasto (motor 1.5.1).
  */
 
-var VERSION = '1.15.0';
+var VERSION = '1.16.0';
 var ZONA_HORARIA = 'America/Lima';
 var DIAS_AVISO = 3;
 var SEGUNDOS_CACHE_TOKEN = 300;
@@ -44,6 +44,7 @@ var PROPIEDAD_CATALOGO = 'FINFAMILY_CATALOGO';
 var PROPIEDAD_LINEAS = 'FINFAMILY_LINEAS';
 var PROPIEDAD_ICONOS = 'FINFAMILY_ICONOS';
 var PROPIEDAD_CUENTAS = 'FINFAMILY_CUENTAS';           // motor 1.14.0: préstamos y devoluciones entre ustedes
+var PROPIEDAD_CUADRES = 'FINFAMILY_CUADRES';           // motor 1.16.0: último cuadre de cada cuenta
 var PROPIEDAD_METAS = 'FINFAMILY_METAS';               // motor 1.15.0: objetivo y mes límite por línea de ahorro
 var PROPIEDAD_FIJOS = 'FINFAMILY_FIJOS';               // motor 1.13.0: día y si se paga solo, por línea fija
 var PROPIEDAD_FIJOS_HECHOS = 'FINFAMILY_FIJOS_HECHOS'; // lo ya marcado o avisado, por línea y mes
@@ -56,7 +57,7 @@ var DIAS_CORREOS = 3; // cuántos días hacia atrás busca el lector
 
 /** Acciones que entiende este motor (la acción 'version' las devuelve). */
 var ACCIONES = ['inicio', 'tarjetas', 'presupuesto', 'config', 'registrar', 'marcarPagado', 'marcarFijo',
-  'editarGasto', 'borrarGasto', 'personas', 'desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'abrirSesion', 'cerrarSesion', 'reenvio', 'pasarACuotas', 'fijosAuto', 'guardarFijoAuto', 'cuentas', 'anotarCuenta', 'borrarCuenta', 'guardarMeta',
+  'editarGasto', 'borrarGasto', 'personas', 'desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'abrirSesion', 'cerrarSesion', 'reenvio', 'pasarACuotas', 'fijosAuto', 'guardarFijoAuto', 'cuentas', 'anotarCuenta', 'borrarCuenta', 'guardarMeta', 'cuadres', 'guardarCuadre',
   'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos',
   'datosTarjetas', 'guardarDatosTarjeta',
   'agregarTarjeta', 'editarTarjeta', 'quitarTarjeta', 'restaurarTarjeta',
@@ -144,6 +145,8 @@ function doPost(e) {
       case 'anotarCuenta': resultado = accionAnotarCuenta_(usuario, datos); break;
       case 'borrarCuenta': resultado = accionBorrarCuenta_(usuario, datos); break;
       case 'guardarMeta': resultado = accionGuardarMeta_(usuario, datos); break;
+      case 'cuadres': resultado = { cuadres: cuadresDesde(propiedad_(PROPIEDAD_CUADRES)) }; break;
+      case 'guardarCuadre': resultado = accionGuardarCuadre_(usuario, datos); break;
       case 'pendientes': resultado = accionPendientes_(usuario, datos); break;
       case 'confirmarPendiente': resultado = accionConfirmarPendiente_(usuario, datos); break;
       case 'descartarPendiente': resultado = accionDescartarPendiente_(usuario, datos); break;
@@ -1612,6 +1615,25 @@ function accionAhorros_(usuario, datos) {
     if (cfg) meta.meta = planDeMeta(cfg.objetivo, cfg.fecha, meta.disponible, meta.delMes, mes);
   });
   return r;
+}
+
+/** {clave, saldo, base?, medios?}: guarda el cuadre de hoy (el saldo que dice el banco). */
+function accionGuardarCuadre_(usuario, datos) {
+  var clave = String(datos.clave || '');
+  if (!claveCuadreValida(clave)) throw errorApp_('datos_invalidos', 'No se sabe qué cuenta cuadrar.');
+  var saldo = typeof datos.saldo === 'number' ? datos.saldo : parsearMonto(String(datos.saldo || ''));
+  if (saldo === null || !isFinite(saldo) || Math.abs(saldo) > 10000000) throw errorApp_('datos_invalidos', 'El saldo no es válido.');
+  var base = Number(datos.base) || 0;
+  var candado = tomarCandado_();
+  try {
+    var c = cuadresDesde(propiedad_(PROPIEDAD_CUADRES));
+    c[clave] = { saldo: saldo, base: base, fecha: hoyServidor_(), medios: Array.isArray(datos.medios) ? datos.medios : [], por: usuario.nombre };
+    c = cuadresDesde(c);
+    PropertiesService.getScriptProperties().setProperty(PROPIEDAD_CUADRES, JSON.stringify(c));
+    return { cuadres: c };
+  } finally {
+    candado.releaseLock();
+  }
 }
 
 function leerMetas_() { return metasDesde(propiedad_(PROPIEDAD_METAS)); }
