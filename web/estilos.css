@@ -3880,3 +3880,7 @@ body .formulario.registro-uno .f-cierre .r-guardar .boton.grande { flex: 1; min-
 .wsp-campos input:focus { outline: 2px solid color-mix(in srgb, var(--accion) 50%, transparent); outline-offset: 1px; }
 .wsp-control { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .wsp-dlg .conectar-ico { background: color-mix(in srgb, #25D366 16%, transparent); color: #25D366; }
+.dia-fijo.fin-mes { grid-column: 1 / -1; min-height: 40px; }
+.fijos-todos { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; }
+.fijos-todos[hidden] { display: none; }
+.fijos-todos .icono, .fijos-todos .icono svg { width: 14px; height: 14px; }

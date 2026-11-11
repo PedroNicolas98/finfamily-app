@@ -122,6 +122,7 @@
         else if (cuerpo.accion === 'version' && P.get('motor')) datos = { version: vMotor };
         else if (cuerpo.accion === 'pasarACuotas') datos = { convertido: true, hoja: d.hoja, cuotas: d.cuotas, montoCuota: Math.round((d.verificar.monto / d.cuotas) * 100) / 100 };
         else if (cuerpo.accion === 'fijosAuto') datos = { fijos: (window.__fijosAuto = window.__fijosAuto || [{ concepto: 'Luz', dia: new Date().getDate(), auto: false }]).slice() };
+        else if (cuerpo.accion === 'guardarFijoAuto' && d.todos) { window.__fijosAuto = window.__fijosAuto || []; ((cache('presupuesto:2026-10') || cache('presupuesto:2026-11') || {}).filas || []).filter(function (f) { return f.seccion === 'gastos' && !f.esTarjeta && f.monto > 0; }).forEach(function (f) { if (!window.__fijosAuto.some(function (x) { return x.concepto === f.concepto; })) window.__fijosAuto.push({ concepto: f.concepto, dia: d.dia, auto: false }); }); datos = { fijos: window.__fijosAuto.slice() }; }
         else if (cuerpo.accion === 'guardarFijoAuto') { window.__fijosAuto = (window.__fijosAuto || []).filter(function (x) { return x.concepto.toLowerCase() !== String(d.concepto).toLowerCase(); }); if (d.dia) window.__fijosAuto.push({ concepto: d.concepto, dia: d.dia, auto: !!d.auto }); datos = { fijos: window.__fijosAuto.slice() }; }
         else if (cuerpo.accion === 'cuentas' || cuerpo.accion === 'anotarCuenta' || cuerpo.accion === 'borrarCuenta') {
           var nom = (cache('config').responsables || ['PersonaA', 'PersonaB']);

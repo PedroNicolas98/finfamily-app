@@ -26,7 +26,7 @@
  *   FINFAMILY_ICONOS               ícono elegido para cada tipo de gasto (motor 1.5.1).
  */
 
-var VERSION = '1.18.0';
+var VERSION = '1.18.1';
 var ZONA_HORARIA = 'America/Lima';
 var DIAS_AVISO = 3;
 var SEGUNDOS_CACHE_TOKEN = 300;
@@ -1423,13 +1423,29 @@ function accionFijosAuto_(usuario) {
 
 /** {concepto, dia (1-31; 0 = quitar), auto}. La línea debe ser un gasto del presupuesto (no una tarjeta). */
 function accionGuardarFijoAuto_(usuario, datos) {
+  // Motor 1.18.1: {todos: true, dia, auto?, soloSinDia?} pone el mismo día a todas las líneas fijas del presupuesto.
+  if (datos.todos === true) {
+    var diaT = Math.floor(Number(datos.dia));
+    if (!(diaT >= 1 && diaT <= 31)) throw errorApp_('datos_invalidos', 'El día debe ser del 1 al 31.');
+    var cfg = leerFijos_();
+    var pT = leerPresupuestoDelMes_(mesDelCiclo(hoyServidor_()));
+    (pT ? pT.filas : []).forEach(function (f) {
+      if (f.seccion !== 'gastos' || f.esTarjeta || !(f.monto > 0)) return;
+      var k = claveLinea(f.concepto);
+      if (datos.soloSinDia === true && cfg[k]) return;
+      if (!cfg[k] && Object.keys(cfg).length >= MAXIMO_FIJOS) return;
+      cfg[k] = { concepto: f.concepto, dia: diaT, auto: datos.auto === true };
+    });
+    guardarFijos_(cfg);
+    return { fijos: listaFijos_(cfg) };
+  }
   var concepto = String(datos.concepto || '').replace(/\s+/g, ' ').trim();
   if (!concepto || concepto.length > 80) throw errorApp_('datos_invalidos', 'Falta la línea del presupuesto.');
   var dia = Math.floor(Number(datos.dia));
   if (!(dia >= 0 && dia <= 31)) throw errorApp_('datos_invalidos', 'El día debe ser del 1 al 31.');
   var config = leerFijos_();
   var clave = claveLinea(concepto);
-  if (dia === 0) {
+  if (dia === 0 && datos.todos !== true) {
     delete config[clave];
   } else {
     var p = leerPresupuestoDelMes_(mesDelCiclo(hoyServidor_()));
