@@ -4665,3 +4665,4 @@ body .pantalla.inicio .hero .hero-dato-extra { font-size: 0.875rem; white-space:
   body .rejilla-config.una[data-seccion="datos"] > .panel { break-inside: avoid; margin: 0 0 16px; width: 100%; display: flex; }
   body .rejilla-config.una[data-seccion="datos"] > .panel:not(.visible):not(.revelar) { display: none; }
 }
+@media (min-width: 1400px) { body .pantalla.movimientos > .bloque.grupo > ul.lista { columns: 3; column-gap: 24px; } }
