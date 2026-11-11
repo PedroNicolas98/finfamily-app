@@ -3817,3 +3817,29 @@ body .formulario.registro-uno .f-cierre .r-guardar .boton.grande { flex: 1; min-
 .cuenta-monto input { border: 0; background: none; font: inherit; font-size: 2rem; font-weight: 800; width: 100%; max-width: 220px; text-align: center; color: var(--tinta); outline: none; font-variant-numeric: tabular-nums; }
 .cuenta-lista-dlg .cuenta-movs { max-height: min(60vh, 420px); overflow: auto; }
 @media (prefers-reduced-motion: reduce) { .cuenta-flecha, .cuentas-ok { animation: none; } }
+
+/* ---------- v127: metas de ahorro con fecha ---------- */
+.meta-nombre { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.chip-meta { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; border: 1px dashed var(--borde-fuerte); background: transparent;
+  color: var(--tinta-2); font: inherit; font-size: 0.72rem; font-weight: 600; cursor: pointer; transition: background 200ms ease, border-color 200ms ease, transform 160ms ease; }
+.chip-meta:hover { border-color: var(--accion); color: var(--tinta); }
+.chip-meta:active { transform: scale(0.95); }
+.chip-meta.con-meta { border-style: solid; border-color: color-mix(in srgb, var(--accion) 50%, transparent); background: var(--marca-suave); color: var(--accion); }
+.chip-meta .icono, .chip-meta .icono svg { width: 12px; height: 12px; }
+.metas .gp-barra.hacia-meta { height: 10px; }
+.meta-avance { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 0.76rem; flex-wrap: wrap; }
+.meta-estado { font-weight: 700; font-size: 0.76rem; padding: 2px 8px; border-radius: 999px; }
+.meta-estado.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.meta-estado.aviso { color: var(--aviso); background: color-mix(in srgb, var(--aviso) 14%, transparent); }
+.meta-estado.mal { color: var(--mal); background: color-mix(in srgb, var(--mal) 12%, transparent); }
+.hoja-modal.meta-dlg { width: min(440px, calc(100vw - 24px)); }
+.meta-dlg .cierre-caja { gap: 10px; }
+.meta-pregunta { margin: 4px 0 0; }
+.meta-plazos { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.meta-plazos .opcion { justify-content: center; }
+.meta-mes { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.82rem; }
+.meta-mes input { font: inherit; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--borde); background: var(--sup-2); color: var(--tinta); color-scheme: light dark; }
+.meta-calculo { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px; border-radius: 14px; background: var(--sup-2); }
+.meta-calculo strong { font-size: 1.4rem; font-variant-numeric: tabular-nums; animation: cuotas-pop 260ms var(--suave); }
+.meta-calculo .meta-barra { width: 100%; height: 8px; border-radius: 99px; background: var(--sup); overflow: hidden; display: block; }
+.meta-calculo .meta-barra > i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--vivo), var(--marca)); transition: width 500ms var(--suave); }
