@@ -885,7 +885,7 @@ test('avisosDelDia con hojas sintéticas y textoAvisos: asunto y cuerpo del corr
 // ===========================================================================
 
 test('ajustesAvisosDesde y validarAjustesAvisos: defectos, mezcla y validación', () => {
-  const defecto = { vencimiento: true, presupuesto: true, gastoGrande: 300, resumenSemanal: true, calendario: true };
+  const defecto = { vencimiento: true, presupuesto: true, gastoGrande: 300, resumenSemanal: true, calendario: true, recordatorio: true };
   assert.deepEqual(L.AJUSTES_AVISOS_DEFECTO, defecto);
   assert.deepEqual(L.ajustesAvisosDesde(null), defecto);
   assert.deepEqual(L.ajustesAvisosDesde('no es json'), defecto);
@@ -1303,4 +1303,20 @@ test('tarjetas de débito (1.21): medios, lector BCP y líneas solo con fondo co
     { fecha: '2026-11-07', concepto: 'Alimentación', monto: 7, origen: 'A:Ahorro Casa' },
   ];
   assert.equal(L.gastoRealDeLinea(linea, consumos, '2026-11', {}, ['Alimentación']), 100);
+});
+
+test('recordatoriosAnotar: 3 días sin anotar, solo a quien ya anotó alguna vez y una vez por racha', () => {
+  const usuarios = { 'a@x.test': { nombre: 'Ana Pérez' }, 'b@x.test': { nombre: 'Beto' }, 'c@x.test': { nombre: 'Caro' } };
+  const consumos = [
+    { responsable: 'Ana', fecha: '2026-11-01' }, { responsable: 'Ana', fecha: '2026-11-07' },
+    { responsable: 'Beto', fecha: '2026-11-09' }, { responsable: 'Beto', fecha: '2026-11-20' } // futuro: no cuenta
+  ];
+  assert.deepEqual(L.recordatoriosAnotar(consumos, usuarios, '2026-11-10', {}),
+    [{ correo: 'a@x.test', nombre: 'Ana', ultima: '2026-11-07', dias: 3 }]);
+  assert.deepEqual(L.recordatoriosAnotar(consumos, usuarios, '2026-11-09', {}), []);
+  assert.deepEqual(L.recordatoriosAnotar(consumos, usuarios, '2026-11-12', { 'a@x.test': '2026-11-07' }).map((r) => r.correo), ['b@x.test']);
+  const t = L.textoRecordatorioAnotar({ nombre: 'Ana', ultima: '2026-11-07', dias: 3 });
+  assert.equal(t.asunto, 'FinFamily: Ana, ¿anotamos tus gastos?');
+  assert.match(t.cuerpo, /^Hola Ana, hace 3 días que no anotas ningún gasto \(el último fue el 07\/11\/2026\)\./);
+  assert.match(t.cuerpo, /https:\/\/pedronicolas98\.github\.io\/finfamily-app\/gasto\.html/);
 });

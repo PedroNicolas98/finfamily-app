@@ -382,13 +382,13 @@ test('version: informa 1.7.1 y la lista de acciones; inicio y config traen el ca
     new HojaFalsa('Configuración', [['Conceptos de Gasto', 'Responsable'], ['Limpieza', 'PersonaB']])]) });
   const r = m.llamar('version', {});
   assert.equal(r.ok, true);
-  assert.equal(r.datos.version, '1.21.1');
+  assert.equal(r.datos.version, '1.22.0');
   for (const a of ['desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'marcarPagado', 'inicio',
     'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos', 'datosTarjetas', 'guardarDatosTarjeta']) {
     assert.ok(r.datos.acciones.includes(a), 'falta la acción ' + a);
   }
-  assert.equal(m.llamar('inicio', {}).datos.version, '1.21.1');
-  assert.equal(m.llamar('config', {}).datos.version, '1.21.1');
+  assert.equal(m.llamar('inicio', {}).datos.version, '1.22.0');
+  assert.equal(m.llamar('config', {}).datos.version, '1.22.0');
 });
 
 test('la lista ACCIONES coincide con las acciones que atiende doPost', () => {
@@ -835,7 +835,7 @@ test('gasto grande: si el correo falla el registro se guarda igual; con gastoGra
 
 test('ajustesAvisos: valores por defecto; guardarAjustesAvisos mezcla y valida', () => {
   const m = motorCompleto();
-  const defecto = { vencimiento: true, presupuesto: true, gastoGrande: 300, resumenSemanal: true, calendario: true };
+  const defecto = { vencimiento: true, presupuesto: true, gastoGrande: 300, resumenSemanal: true, calendario: true, recordatorio: true };
   assert.deepEqual(m.llamar('ajustesAvisos', {}), { ok: true, datos: { ajustes: defecto } });
 
   const r = m.llamar('guardarAjustesAvisos', { gastoGrande: 500, calendario: false });
@@ -1113,7 +1113,8 @@ test('revisarAlertas (presupuesto): avisa al 80 % una vez y al 100 % otra, y lo 
   // (Luz S/ 80, del 31 oct al 29 nov).
   // Con tarjeta de crédito la Luz no descuenta de la línea (ya cuenta en TC BCP): aquí se pagó en efectivo (1.21.1).
   const m = motorCompleto({ hormiga: new HojaFalsa('Gastos Hormiga', [['Responsable', 'Mes', 'Fecha', 'Concepto', 'Descripción', 'Monto', 'Medio de Pago', 'Estado'],
-    ['PersonaA', 'Noviembre', fecha(2026, 11, 3), 'Luz', 'Recibo luz sintético', 75, 'Efectivo', '']]), hoy: '2026-11-06' });
+    ['PersonaA', 'Noviembre', fecha(2026, 11, 3), 'Luz', 'Recibo luz sintético', 75, 'Efectivo', '']]), hoy: '2026-11-06',
+    propiedades: { FINFAMILY_AJUSTES_AVISOS: JSON.stringify({ recordatorio: false }) } });
   const r = m.contexto.revisarAlertas();
   assert.equal(r.presupuesto.enviado, true);
   assert.equal(r.presupuesto.avisos, 1);
@@ -1138,18 +1139,43 @@ test('revisarAlertas (presupuesto): avisa al 80 % una vez y al 100 % otra, y lo 
 
   // Con el ajuste apagado no revisa el presupuesto.
   const apagado = motorCompleto({ bcp: hojaBcpConLuz(), hoy: '2026-11-06',
-    propiedades: { FINFAMILY_AJUSTES_AVISOS: JSON.stringify({ presupuesto: false, calendario: false }) } });
+    propiedades: { FINFAMILY_AJUSTES_AVISOS: JSON.stringify({ presupuesto: false, calendario: false, recordatorio: false }) } });
   const ra = apagado.contexto.revisarAlertas();
   assert.equal(ra.presupuesto, undefined);
   assert.equal(ra.calendario, undefined);
   assert.equal(apagado.correos.length, 0);
 });
 
+// ---------- revisarAlertas: recordatorio de anotar (1.22.0) ----------
+
+test('revisarAlertas (recordatorio): a quien lleva 3 días sin anotar le escribe solo a esa persona, una vez por racha', () => {
+  const hormiga = () => new HojaFalsa('Gastos Hormiga', [['Responsable', 'Mes', 'Fecha', 'Concepto', 'Descripción', 'Monto', 'Medio de Pago', 'Estado'],
+    ['PersonaA', 'Noviembre', fecha(2026, 11, 3), 'Luz', 'Recibo sintético', 20, 'Efectivo', ''],
+    ['PersonaB', 'Noviembre', fecha(2026, 11, 5), 'Luz', 'Recibo sintético', 20, 'Efectivo', '']]);
+  const sinOtros = { FINFAMILY_AJUSTES_AVISOS: JSON.stringify({ presupuesto: false, calendario: false, resumenSemanal: false, vencimiento: false }) };
+  const m = motorCompleto({ hormiga: hormiga(), hoy: '2026-11-06', propiedades: Object.assign({}, sinOtros) });
+  const r = m.contexto.revisarAlertas();
+  assert.equal(r.recordatorio.enviados, 1);
+  const aviso = m.correos.filter((c) => /anotamos/.test(c.subject));
+  assert.equal(aviso.length, 1);
+  assert.equal(aviso[0].to, 'persona-a@example.test', 'solo a quien no anota');
+  assert.equal(aviso[0].subject, 'FinFamily: PersonaA, ¿anotamos tus gastos?');
+  assert.match(aviso[0].body, /hace 3 días que no anotas ningún gasto \(el último fue el 03\/11\/2026\)/);
+  assert.match(aviso[0].body, /gasto\.html/);
+  assert.deepEqual(JSON.parse(m.propiedades.FINFAMILY_RECORDATORIO_ANOTAR), { 'persona-a@example.test': '2026-11-03' });
+  // Al día siguiente no se repite (misma racha).
+  assert.equal(m.contexto.revisarAlertas().recordatorio.motivo, 'nada que recordar');
+  // Apagado: no revisa.
+  const apagado = motorCompleto({ hormiga: hormiga(), hoy: '2026-11-06',
+    propiedades: { FINFAMILY_AJUSTES_AVISOS: JSON.stringify({ presupuesto: false, calendario: false, resumenSemanal: false, recordatorio: false }) } });
+  assert.equal(apagado.contexto.revisarAlertas().recordatorio, undefined);
+});
+
 // ---------- revisarAlertas: resumen semanal ----------
 
 test('revisarAlertas (resumen semanal): los lunes manda la semana anterior, una sola vez', () => {
   const m = motorCompleto({ bcp: hojaBcpConLuz(), hoy: '2026-11-09',
-    propiedades: { FINFAMILY_AJUSTES_AVISOS: JSON.stringify({ presupuesto: false, calendario: false }) } });
+    propiedades: { FINFAMILY_AJUSTES_AVISOS: JSON.stringify({ presupuesto: false, calendario: false, recordatorio: false }) } });
   const r = m.contexto.revisarAlertas();
   assert.equal(r.resumenSemanal.enviado, true);
   assert.equal(m.correos.length, 1);
@@ -2023,7 +2049,7 @@ test('config: un ícono guardado para un concepto que ya no existe en Configurac
   assert.deepEqual(m.llamar('config', {}).datos.iconos, { Supermercado: 'carrito' });
   const danado = motorCompleto({ propiedades: { FINFAMILY_ICONOS: '{roto' } });
   assert.deepEqual(danado.llamar('config', {}).datos.iconos, {});
-  assert.equal(danado.llamar('version', {}).datos.version, '1.21.1');
+  assert.equal(danado.llamar('version', {}).datos.version, '1.22.0');
   assert.ok(danado.llamar('version', {}).datos.acciones.includes('guardarIconoConcepto'));
 });
 
@@ -2261,7 +2287,7 @@ test('gasto grande con tarjeta prestada: el correo dice quién gastó; versión 
   const m = motorCompleto();
   m.llamar('registrar', Object.assign({}, GASTO_PRESTADO, { monto: 450, descripcion: 'Saga Falabella' }));
   assert.equal(m.correos[0].subject, 'FinFamily: PersonaA registró S/ 450 en Saga Falabella (TC Interbank)');
-  assert.equal(m.llamar('version', {}).datos.version, '1.21.1');
+  assert.equal(m.llamar('version', {}).datos.version, '1.22.0');
 });
 
 // ===========================================================================
@@ -2541,7 +2567,7 @@ test('bolsas con un solo usuario (N = 1): todo el saldo de los meses anteriores 
 test('versión 1.7.0: la acción bolsas está en la lista y presupuesto no cambió', () => {
   const m = motorBolsas();
   const v = m.llamar('version', {}).datos;
-  assert.equal(v.version, '1.21.1');
+  assert.equal(v.version, '1.22.0');
   assert.ok(v.acciones.includes('bolsas'));
   const p = m.llamar('presupuesto', { mes: '2026-11' }).datos;
   assert.equal(p.totales.saldo, 985.57);

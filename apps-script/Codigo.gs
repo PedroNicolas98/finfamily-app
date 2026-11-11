@@ -26,7 +26,7 @@
  *   FINFAMILY_ICONOS               ícono elegido para cada tipo de gasto (motor 1.5.1).
  */
 
-var VERSION = '1.21.1';
+var VERSION = '1.22.0';
 var ZONA_HORARIA = 'America/Lima';
 var DIAS_AVISO = 3;
 var SEGUNDOS_CACHE_TOKEN = 300;
@@ -48,6 +48,7 @@ var PROPIEDAD_WHATSAPP = 'FINFAMILY_WHATSAPP';         // motor 1.17.0: {correo:
 var PROPIEDAD_ANTOJOS = 'FINFAMILY_ANTOJOS';           // motor 1.20.0: {conceptos, tope} por semana
 var PROPIEDAD_ANTOJOS_AVISOS = 'FINFAMILY_ANTOJOS_AVISOS'; // avisos ya mandados ('<lunes>|80', '<lunes>|100')
 var PROPIEDAD_CIERRE_MES = 'FINFAMILY_CIERRE_MES';     // último mes cuyo cierre se mandó
+var PROPIEDAD_RECORDATORIO = 'FINFAMILY_RECORDATORIO_ANOTAR'; // {correo: último gasto por el que ya se le recordó}
 var PROPIEDAD_WA_WEBHOOK = 'FINFAMILY_WA_WEBHOOK';     // {secreto, activo}: anotar gastos por WhatsApp
 var PROPIEDAD_WA_VISTOS = 'FINFAMILY_WA_VISTOS';       // últimos mensajes de WhatsApp ya procesados
 var PROPIEDAD_WA_GREEN = 'FINFAMILY_WA_GREEN';         // motor 1.19.0: {apiUrl, idInstance, token} de Green API (privado)
@@ -1746,6 +1747,34 @@ function revisarAntojosSiToca_(concepto) {
   } catch (err) { /* nunca hace fallar el registro */ }
 }
 
+/**
+ * Motor 1.22.0: a quien lleva 3 días sin anotar, un recordatorio solo para esa persona (por WhatsApp si lo
+ * tiene conectado; si no, por correo). Una sola vez por racha. Nunca hace fallar las demás alertas.
+ */
+function revisarRecordatorioAnotar_(hoy, consumos) {
+  try {
+    var avisados = {};
+    try { avisados = JSON.parse(propiedad_(PROPIEDAD_RECORDATORIO) || '{}') || {}; } catch (err) { avisados = {}; }
+    var lista = recordatoriosAnotar(consumos, leerUsuarios_(), hoy, avisados);
+    if (!lista.length) return { motivo: 'nada que recordar' };
+    var enviados = 0;
+    lista.forEach(function (r) {
+      var texto = textoRecordatorioAnotar(r);
+      var ok = avisarWhatsapp_(texto, [r.correo]) > 0;
+      if (!ok && /^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(r.correo) && MailApp.getRemainingDailyQuota() > 0) {
+        MailApp.sendEmail({ to: r.correo, subject: texto.asunto, body: texto.cuerpo, name: 'FinFamily' });
+        ok = true;
+      }
+      if (ok) { avisados[r.correo] = r.ultima; enviados++; }
+    });
+    PropertiesService.getScriptProperties().setProperty(PROPIEDAD_RECORDATORIO, JSON.stringify(avisados));
+    return { enviados: enviados };
+  } catch (err) {
+    console.warn('FinFamily recordatorio: ' + err);
+    return { motivo: 'error' };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Cierre del mes (motor 1.20.0): el día de cobro (último día del mes) manda cómo cerró el ciclo anterior.
 // ---------------------------------------------------------------------------
@@ -3208,6 +3237,7 @@ function revisarAlertas() {
     console.warn('FinFamily alertas (fijos): ' + err);
     resultado.fijos = { motivo: 'error' };
   }
+  if (ajustes.recordatorio !== false) resultado.recordatorio = revisarRecordatorioAnotar_(hoy, consumos);
   if (ajustes.calendario) {
     try { resultado.calendario = sincronizarCalendario(resumen); } catch (err) {
       console.warn('FinFamily alertas (calendario): ' + err);

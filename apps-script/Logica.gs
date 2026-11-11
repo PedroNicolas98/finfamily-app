@@ -2240,7 +2240,7 @@ function pendientesActivos(lista, catalogo) {
 // Ajustes de avisos y datos de tarjetas (motor 1.3)
 // ---------------------------------------------------------------------------
 
-var AJUSTES_AVISOS_DEFECTO = { vencimiento: true, presupuesto: true, gastoGrande: 300, resumenSemanal: true, calendario: true };
+var AJUSTES_AVISOS_DEFECTO = { vencimiento: true, presupuesto: true, gastoGrande: 300, resumenSemanal: true, calendario: true, recordatorio: true };
 var GASTO_GRANDE_MAXIMO = 100000;
 var IDS_TARJETAS_DATOS = ['SIP', 'IBK_P', 'IBK_B', 'BCP', 'RIPLEY']; // valor inicial; manda el catálogo
 
@@ -2256,7 +2256,7 @@ function ajustesAvisosDesde(crudo) {
   var g;
   try { g = JSON.parse(crudo); } catch (err) { return a; }
   if (!g || typeof g !== 'object') return a;
-  ['vencimiento', 'presupuesto', 'resumenSemanal', 'calendario'].forEach(function (k) {
+  ['vencimiento', 'presupuesto', 'resumenSemanal', 'calendario', 'recordatorio'].forEach(function (k) {
     if (typeof g[k] === 'boolean') a[k] = g[k];
   });
   if (typeof g.gastoGrande === 'number' && isFinite(g.gastoGrande) && g.gastoGrande >= 0 && g.gastoGrande <= GASTO_GRANDE_MAXIMO) {
@@ -2272,7 +2272,7 @@ function ajustesAvisosDesde(crudo) {
 function validarAjustesAvisos(datos, actuales) {
   var d = datos || {};
   var a = ajustesAvisosDesde(JSON.stringify(actuales || AJUSTES_AVISOS_DEFECTO));
-  var booleanos = ['vencimiento', 'presupuesto', 'resumenSemanal', 'calendario'];
+  var booleanos = ['vencimiento', 'presupuesto', 'resumenSemanal', 'calendario', 'recordatorio'];
   for (var i = 0; i < booleanos.length; i++) {
     var k = booleanos[i];
     if (d[k] === undefined) continue;
@@ -2355,6 +2355,50 @@ function textoGastoGrande(aviso) {
   if (a.fecha) cuerpo.push('Fecha: ' + fechaCorta_(a.fecha) + '.');
   cuerpo.push('', 'Si fue un error, pueden corregirlo o borrarlo desde la app.');
   return { asunto: 'FinFamily: ' + frase, cuerpo: cuerpo.join('\n') };
+}
+
+// ---------------------------------------------------------------------------
+// Recordatorio de anotar (motor 1.22.0): si alguien lleva 3 días sin anotar nada, se le recuerda una sola vez
+// por cada racha (hasta que vuelva a anotar).
+// ---------------------------------------------------------------------------
+
+var DIAS_RECORDATORIO_ANOTAR = 3;
+var URL_ANOTAR_GASTO = 'https://pedronicolas98.github.io/finfamily-app/gasto.html';
+
+/**
+ * A quién toca recordarle. consumos: [{responsable, fecha}]; usuarios: {correo: {nombre}};
+ * avisados: {correo: fecha del último gasto por el que ya se le avisó}. Solo a quien ya anotó alguna vez.
+ * Devuelve [{correo, nombre, ultima, dias}].
+ */
+function recordatoriosAnotar(consumos, usuarios, hoy, avisados, dias) {
+  var limite = dias || DIAS_RECORDATORIO_ANOTAR;
+  var ultima = {};
+  (consumos || []).forEach(function (c) {
+    if (!c || !c.fecha || c.fecha > hoy) return;
+    var k = normalizar(primerNombre_(c.responsable));
+    if (k && (!ultima[k] || c.fecha > ultima[k])) ultima[k] = c.fecha;
+  });
+  var salida = [];
+  Object.keys(usuarios || {}).forEach(function (correo) {
+    var nombre = primerNombre_((usuarios[correo] || {}).nombre);
+    var u = ultima[normalizar(nombre)];
+    if (!nombre || !u) return;
+    var d = diasEntre_(u, hoy);
+    if (d === null || d < limite) return;
+    if (avisados && avisados[correo] === u) return;
+    salida.push({ correo: correo, nombre: nombre, ultima: u, dias: d });
+  });
+  return salida;
+}
+
+/** {asunto, cuerpo} del recordatorio para una persona {nombre, ultima, dias}. */
+function textoRecordatorioAnotar(r) {
+  return {
+    asunto: 'FinFamily: ' + r.nombre + ', ¿anotamos tus gastos?',
+    cuerpo: ['Hola ' + r.nombre + ', hace ' + r.dias + ' días que no anotas ningún gasto (el último fue el ' + fechaCorta_(r.ultima) + ').',
+      '', 'Si gastaste algo, anótalo al toque aquí:', URL_ANOTAR_GASTO,
+      '', 'Si no gastaste nada, ¡bien ahí! Ignora este mensaje.'].join('\n')
+  };
 }
 
 /** Umbrales del presupuesto en que se avisa (porcentaje gastado). */
@@ -2857,6 +2901,8 @@ if (typeof module !== 'undefined') {
     datosTarjetasDesde: datosTarjetasDesde,
     validarDatosTarjeta: validarDatosTarjeta,
     textoGastoGrande: textoGastoGrande,
+    recordatoriosAnotar: recordatoriosAnotar,
+    textoRecordatorioAnotar: textoRecordatorioAnotar,
     alertasPresupuesto: alertasPresupuesto,
     clavesCubiertas: clavesCubiertas,
     textoAlertasPresupuesto: textoAlertasPresupuesto,

@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v177';
+const VERSION_APP = 'finfamily-v178';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -2895,6 +2895,7 @@ function filaWhatsapp() {
 // v133 (motor 1.20): pases entre ustedes, tope de antojos, antojos → metas y anotar gastos por WhatsApp.
 // ---------------------------------------------------------------------------
 function motorV120() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 20); }
+function motorV122() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 22); }
 
 // ¿Es un pase de plata a la otra persona? ("Yape a PersonaB…", "Plin a PersonaA…"). Devuelve su nombre o ''.
 function otroDePase(texto, quien) {
@@ -3894,10 +3895,14 @@ function gastosDelCiclo(tarjetas, mes) {
 
 async function abrirCierre(mes) {
   const antes = sumarMes(mes, -1);
-  const [rp, rt] = await Promise.all([
+  // v178: el presupuesto que viene (el siguiente al que se está gastando), para ofrecer ajustarlo con lo real.
+  const objetivo = sumarMes(mesDelCiclo(hoyISO()), 1);
+  const [rp, rt, ro] = await Promise.all([
     cargarRapido('presupuesto', { mes }, 'presupuesto:' + mes).catch(() => null),
     cargarRapido('tarjetas', { hoy: hoyISO(), incluirPagados: true }, 'tarjetas-todo').catch(() => null),
+    motorNuevo() && emailSesion() ? cargarRapido('presupuesto', { mes: objetivo }, 'presupuesto:' + objetivo).catch(() => null) : null,
   ]);
+  const hayAjuste = !!ro?.datos?.filas && sugerenciasAjuste(ro.datos.filas, rt?.datos?.tarjetas).length > 0;
   const tot = rp?.datos?.totales;
   // Lo gastado se cuenta por ciclo de cobro (del día de cobro al día antes del siguiente), no por mes calendario.
   const ciclo = cicloDelMes(mes);
@@ -3930,10 +3935,277 @@ async function abrirCierre(mes) {
       h('span', {}, per.nombre.split(' ')[0]), h('i', { class: 'gp-barra' }, h('i', { class: `d${i}`, 'data-w': `${Math.round((per.total / (gastado || 1)) * 100)}%` })), h('strong', {}, soles(per.total))))) : null,
     top.length ? h('ul', { class: 'cierre-top' }, top.map(([c, v], i) => h('li', { style: `--i: ${i}` }, catIco(c), h('span', {}, c),
       h('i', { class: 'gp-barra' }, h('i', { class: 'd0', 'data-w': `${Math.round((v / maxTop) * 100)}%` })), h('strong', {}, soles(v))))) : null,
-    h('div', { class: 'acciones modal-acciones' }, h('button', { type: 'button', class: 'boton primario', onclick: cerrar }, 'Listo'))));
+    h('div', { class: 'acciones modal-acciones' }, h('button', { type: 'button', class: 'boton primario', onclick: cerrar }, 'Listo'),
+      hayAjuste ? h('button', { type: 'button', class: 'boton', onclick: () => { cerrar(); abrirAjuste(objetivo); } }, icono('ajustes'), 'Ajustar presupuesto') : null)));
   document.body.append(dlg);
   dlg.showModal();
   animarVista(dlg);
+}
+
+// ---------- v178: Ajustar el presupuesto con lo que de verdad se gasta ----------
+
+// Lo gastado en una línea del presupuesto: con sus tipos de gasto o, si no tiene, por el nombre. null = no cruza.
+function gastoDeLinea(f, real) {
+  if (f.conceptos && f.conceptos.length) return f.conceptos.reduce((x, k) => x + (real.get(normalizar(k)) || 0), 0);
+  const linea = normalizar(nombreLinea(f.concepto));
+  const clave = [...real.keys()].find((k) => k === linea || (linea.length >= 5 && k.startsWith(linea)) || (k.length >= 5 && linea.startsWith(k)));
+  return clave ? real.get(clave) : null;
+}
+// Qué líneas conviene cambiar según los 2 últimos meses de cobro ya cerrados: sube si se pasaron (al gasto más
+// alto, redondeado a 10); baja si en los dos gastaron menos del 70 % (dejando un 10 % de colchón).
+// Lo pagado con tarjeta de crédito no cuenta aquí (regla v171): ya va en la línea de esa tarjeta.
+function sugerenciasAjuste(filas, tarjetas) {
+  const m1 = mesCerrado();
+  const m2 = sumarMes(m1, -1);
+  const r1 = gastadoEnCiclo(tarjetas, m1);
+  const r2 = gastadoEnCiclo(tarjetas, m2);
+  const hay2 = r2.size > 0;
+  const diez = (n) => Math.ceil(n / 10) * 10;
+  const salida = [];
+  for (const f of filas || []) {
+    const plan = Number(f.monto) || 0;
+    if (f.seccion !== 'gastos' || f.esTarjeta || /^TC\s/i.test(f.concepto || '') || !f.fila || plan < 0) continue;
+    const g1 = gastoDeLinea(f, r1);
+    const g2 = hay2 ? gastoDeLinea(f, r2) : null;
+    if (g1 === null && g2 === null) continue;
+    const mayor = Math.max(g1 || 0, g2 || 0);
+    if (!(mayor > 0)) continue;
+    let nuevo = null;
+    let tipo = null;
+    if (mayor > plan + 0.5) { nuevo = diez(mayor); tipo = 'sube'; }
+    else if (hay2 && (g1 || 0) < plan * 0.7 && (g2 || 0) < plan * 0.7) { nuevo = diez(mayor * 1.1); tipo = 'baja'; }
+    if (nuevo === null || Math.abs(nuevo - plan) < 10) continue;
+    salida.push({ f, plan, nuevo, tipo, g1: g1 || 0, g2: hay2 ? (g2 || 0) : null, m1, m2 });
+  }
+  return salida.sort((a, b) => Math.abs(b.nuevo - b.plan) - Math.abs(a.nuevo - a.plan));
+}
+
+// Ventanita: cada línea con lo que gastaron y el monto nuevo; se marca cuáles cambiar y se guardan en la hoja.
+// Las que suben vienen marcadas; las que bajan, no (bajar plata de una línea es decisión de ustedes).
+async function abrirAjuste(mes) {
+  const [rp, rt] = await Promise.all([
+    cargarRapido('presupuesto', { mes }, 'presupuesto:' + mes).catch(() => null),
+    cargarRapido('tarjetas', { hoy: hoyISO(), incluirPagados: true }, 'tarjetas-todo').catch(() => null),
+  ]);
+  const lista = rp?.datos?.filas ? sugerenciasAjuste(rp.datos.filas, rt?.datos?.tarjetas) : [];
+  if (!lista.length) { avisar('Tu presupuesto ya va de acuerdo con lo que gastan', 'ok'); return; }
+  const tot = rp.datos.totales || null;
+  const corto = (m) => (nombreMesClave(m) || m).split(' ')[0].toLowerCase();
+  const abr = (m) => ABR_MESES[Number(m.slice(5, 7)) - 1] || corto(m);
+  const elegidos = new Set(lista.filter((x) => x.tipo === 'sube'));
+  const v = ventanita('ajuste-dlg', 'Ajustar el presupuesto');
+  const pie = h('p', { class: 'aj-pie' });
+  const btn = h('button', { type: 'button', class: 'boton primario' });
+  const pintarPie = () => {
+    const dif = [...elegidos].reduce((x, y) => x + (y.nuevo - y.plan), 0);
+    btn.textContent = elegidos.size ? `Cambiar ${elegidos.size} ${elegidos.size === 1 ? 'línea' : 'líneas'}` : 'Elige qué cambiar';
+    btn.disabled = !elegidos.size;
+    const saldo = tot && Number.isFinite(Number(tot.saldo)) ? Number(tot.saldo) - dif : null;
+    pie.replaceChildren(...(elegidos.size
+      ? [`Tus gastos ${dif >= 0 ? 'suben' : 'bajan'} `, h('strong', {}, soles(Math.abs(dif))),
+        saldo === null ? '' : saldo < 0 ? [' · faltaría ', h('strong', { class: 'aj-falta' }, soles(-saldo))] : [' · te sobraría ', h('strong', {}, soles(saldo))]].flat()
+      : ['Toca las líneas que quieres cambiar.']));
+  };
+  const filas = lista.map((x, i) => {
+    const nombre = nombreLinea(x.f.concepto);
+    const marca = h('button', { type: 'button', class: 'aj-marca', role: 'checkbox', 'aria-checked': String(elegidos.has(x)), 'aria-label': `Cambiar ${nombre} a ${soles(x.nuevo)}` }, icono('check'));
+    const li = h('li', { class: `aj-fila ${x.tipo}${elegidos.has(x) ? ' elegida' : ''}`, style: `--i: ${i}` },
+      marca,
+      catIco(x.f.conceptos?.[0] || nombre),
+      h('span', { class: 'aj-texto' }, h('strong', { title: x.f.concepto }, nombre),
+        h('small', {}, `Gastaron ${soles(x.g1)} en ${abr(x.m1)}` + (x.g2 !== null ? ` · ${soles(x.g2)} en ${abr(x.m2)}` : ''))),
+      h('span', { class: 'aj-montos' }, h('s', {}, soles(x.plan)), h('strong', {}, `${x.tipo === 'sube' ? '▲' : '▼'} ${soles(x.nuevo)}`)));
+    li.addEventListener('click', () => {
+      if (li.classList.contains('hecha') || btn.classList.contains('ocupado')) return;
+      if (elegidos.has(x)) elegidos.delete(x); else elegidos.add(x);
+      marca.setAttribute('aria-checked', String(elegidos.has(x)));
+      li.classList.toggle('elegida', elegidos.has(x));
+      pintarPie();
+    });
+    x.li = li;
+    return li;
+  });
+  btn.addEventListener('click', async () => {
+    const aGuardar = [...elegidos];
+    if (!aGuardar.length) return;
+    let hechos = 0;
+    ocuparBoton(btn, 'Guardando…');
+    try {
+      for (const x of aGuardar) {
+        btn.textContent = `Guardando ${hechos + 1} de ${aGuardar.length}…`;
+        await llamarApi('editarPresupuesto', { idCliente: uuid(), mes, fila: x.f.fila, concepto: x.f.concepto, montoAnterior: x.f.monto || 0, monto: x.nuevo }, { email: emailSesion() });
+        hechos++;
+        elegidos.delete(x);
+        x.li.classList.add('hecha');
+      }
+      try { await cargar('presupuesto', { mes }, 'presupuesto:' + mes); } catch { /* se verá al refrescar */ }
+      v.cerrar();
+      avisar(`Listo: ${hechos} ${hechos === 1 ? 'línea cambiada' : 'líneas cambiadas'} en ${corto(mes)}`, 'ok');
+      if (location.hash.slice(1) === 'presupuesto') navegar({ silencioso: true });
+    } catch (e) {
+      liberarBoton(btn, 'Intentar de nuevo');
+      pintarPie();
+      avisar(mensajeError(e, hechos ? `Se guardaron ${hechos}; las demás no. Intenta de nuevo.` : 'No se pudo guardar. Intenta de nuevo.'), 'error');
+    }
+  });
+  pintarPie();
+  v.caja.append(
+    h('p', { class: 'cierre-etq' }, 'Ajusta tu presupuesto'),
+    h('p', { class: 'rep-intro', title: 'Cuenta lo pagado con débito, Yape, Plin, Lemon y efectivo. Lo de tarjeta de crédito ya va en la línea de cada tarjeta.' },
+      `Según lo que gastaron en ${corto(lista[0].m1)}${lista.some((x) => x.g2 !== null) ? ' y ' + corto(lista[0].m2) : ''}. Se cambia el presupuesto de `, h('strong', {}, corto(mes)), '.'),
+    h('ul', { class: 'aj-lista' }, filas),
+    pie,
+    h('div', { class: 'acciones modal-acciones' }, btn, h('button', { type: 'button', class: 'boton', onclick: v.cerrar }, 'Ahora no')));
+  v.abrir();
+}
+
+// ---------- v178: Cómo te fue en el año ----------
+
+const ABR_MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+// Monto corto para encima de las barras: 850 · 1.3 mil · 12 mil.
+function milCorto(n) {
+  if (montosOcultos()) return '••••';
+  const v = Math.abs(Math.round(Number(n) || 0));
+  return v >= 1000 ? `${(v / 1000).toFixed(v >= 10000 ? 0 : 1).replace(/\.0$/, '')} mil` : String(v);
+}
+// Mes a mes del año: lo que entró y cómo se repartió (gastos, ahorro y lo que sobró), con los totales del año
+// hasta este mes. Los meses que vienen salen más clarito (es lo planeado). Clic en un mes: lo abre en Presupuesto.
+function abrirAnio(meses, anioInicial) {
+  const lista = (meses || []).filter((m) => /^\d{4}-\d{2}$/.test(m.clave || ''));
+  const anios = [...new Set(lista.map((m) => m.clave.slice(0, 4)))].sort();
+  if (!anios.length) { avisar('Todavía no hay meses en el presupuesto'); return; }
+  const hoyMes = mesActual();
+  let anio = anios.includes(anioInicial) ? anioInicial : anios.includes(hoyMes.slice(0, 4)) ? hoyMes.slice(0, 4) : anios[anios.length - 1];
+  const datos = new Map();
+  const animados = new Set();
+  let contado = '';
+  let elegido = null;
+  let textoBase = [];
+  const conHover = matchMedia('(hover: hover)').matches;
+  const v = ventanita('anio-dlg', 'Cómo te fue en el año');
+  const titulo = h('p', { class: 'cierre-etq anio-titulo' });
+  const flecha = (paso, ico, etq) => h('button', { type: 'button', class: 'boton icono-solo anio-flecha', 'aria-label': etq, title: etq,
+    onclick: () => { const i = anios.indexOf(anio) + paso; if (anios[i]) { anio = anios[i]; elegido = null; cargarAnio(); } } }, icono(ico));
+  const ant = flecha(-1, 'atras', 'Año anterior');
+  const sig = flecha(1, 'adelante', 'Año siguiente');
+  const totales = h('ul', { class: 'anio-totales' });
+  const plano = h('div', { class: 'anio-plano', role: 'group', 'aria-label': 'Mes a mes' });
+  const detalle = h('p', { class: 'anio-detalle', 'aria-live': 'polite' });
+  const leyenda = h('ul', { class: 'anio-leyenda' });
+  const nombreDe = (clave) => (nombreMesClave(clave) || clave).split(' ')[0];
+  const textoMes = (clave, t, futuro) => {
+    const s = Number(t.saldo) || 0;
+    return [h('strong', {}, nombreDe(clave) + (futuro ? ' (plan)' : '')), `: entró ${soles(t.ingresos)} · gastos ${soles(Math.max(0, t.gastos || 0))} · ahorro ${soles(Math.max(0, t.ahorros || 0))} · `,
+      h('strong', { class: s < 0 ? 'anio-falta' : 'anio-sobra' }, `${s < 0 ? 'faltó' : 'sobró'} ${soles(Math.abs(s))}`)];
+  };
+  const ponerDetalle = (partes) => detalle.replaceChildren(...[partes].flat());
+  const pintar = (terminado) => {
+    titulo.textContent = `Cómo te fue en ${anio}`;
+    ant.disabled = anios.indexOf(anio) <= 0;
+    sig.disabled = anios.indexOf(anio) >= anios.length - 1;
+    const filas = ABR_MESES.map((_, i) => {
+      const clave = `${anio}-${String(i + 1).padStart(2, '0')}`;
+      return { clave, i, t: datos.get(clave), existe: lista.some((m) => m.clave === clave), futuro: cmpMes(clave, hoyMes) > 0 };
+    });
+    const conDatos = filas.filter((x) => x.t && x.t.ingresos > 0);
+    const reales = conDatos.filter((x) => !x.futuro);
+    const suma = (k) => reales.reduce((x, y) => x + (Number(y.t[k]) || 0), 0);
+    const ent = suma('ingresos');
+    const gas = suma('gastos');
+    const aho = suma('ahorros');
+    const sob = suma('saldo');
+    const tot = (etq, valor, ico, clase) => h('li', { class: clase || '' }, h('span', { class: 'anio-tot-etq' }, icono(ico), etq),
+      terminado ? h('strong', { 'data-contar': String(valor) }, soles(0)) : h('strong', {}, soles(valor)));
+    totales.replaceChildren(tot('Entró', ent, 'sube'), tot('Gastos', gas, 'baja'), tot('Ahorro', aho, 'billetera'),
+      tot(sob < 0 ? 'Faltó' : 'Sobró', Math.abs(sob), 'check', sob < 0 ? 'falta' : 'sobra'));
+    if (terminado) {
+      if (contado !== anio) { contado = anio; animarVista(totales); }
+      else totales.querySelectorAll('[data-contar]').forEach((el) => pintarMonto(el, Number(el.dataset.contar)));
+    }
+    const max = Math.max(1, ...conDatos.map((x) => Math.max(x.t.ingresos, Math.max(0, x.t.gastos || 0) + Math.max(0, x.t.ahorros || 0))));
+    const alto = (val) => `${((Math.max(0, val) / max) * 86).toFixed(2)}%`;
+    plano.replaceChildren(...filas.map((x) => {
+      const mesTxt = h('span', { class: 'anio-mes' }, h('span', { class: 'am-largo' }, ABR_MESES[x.i]), h('span', { class: 'am-corto', 'aria-hidden': 'true' }, ABR_MESES[x.i][0]),
+        x.clave === hoyMes ? h('em', {}, 'hoy') : null);
+      if (!x.t || !(x.t.ingresos > 0)) {
+        const tipo = !x.existe ? 'fuera' : !x.t ? 'cargando' : 'nodato';
+        return h('div', { class: `anio-col ${tipo}`, title: tipo === 'cargando' ? 'Cargando…' : `${nombreDe(x.clave)}: sin ingresos cargados` },
+          h('span', { class: 'anio-zona' }, h('i', { class: 'anio-vacio' })), mesTxt);
+      }
+      const g = Math.max(0, x.t.gastos || 0);
+      const a = Math.max(0, x.t.ahorros || 0);
+      const s = Number(x.t.saldo) || 0;
+      const nuevo = !animados.has(anio + x.clave);
+      animados.add(anio + x.clave);
+      const col = h('button', { type: 'button', class: `anio-col${x.futuro ? ' plan' : ''}${s < 0 ? ' falta' : ''}${nuevo ? ' nuevo' : ''}${elegido === x.clave ? ' elegida' : ''}`,
+        style: `--i: ${x.i}; --h: ${alto(g + a + Math.max(0, s))}; --tope: ${alto(x.t.ingresos)}`,
+        'aria-label': `${nombreDe(x.clave)}: entró ${soles(x.t.ingresos)}, ${s < 0 ? 'faltó' : 'sobró'} ${soles(Math.abs(s))}` },
+        h('span', { class: 'anio-zona' },
+          h('b', { class: 'anio-valor' }, `${s < 0 ? '−' : ''}${milCorto(s)}`),
+          h('span', { class: 'anio-pila' },
+            s > 0 ? h('i', { class: 'pf-sobra', style: `flex: ${s} 1 0` }) : null,
+            a > 0 ? h('i', { class: 'pf-ahorro', style: `flex: ${a} 1 0` }) : null,
+            g > 0 ? h('i', { class: 'pf-gasto', style: `flex: ${g} 1 0` }) : null),
+          s < 0 ? h('i', { class: 'anio-tope', title: `Entró ${soles(x.t.ingresos)}` }) : null),
+        mesTxt);
+      const mostrar = () => ponerDetalle(textoMes(x.clave, x.t, x.futuro));
+      col.addEventListener('mouseenter', mostrar);
+      col.addEventListener('focus', mostrar);
+      col.addEventListener('mouseleave', () => { if (!elegido) ponerDetalle(textoBase); });
+      col.addEventListener('click', () => {
+        if (conHover || elegido === x.clave) {
+          estado.mesPres = x.clave;
+          v.cerrar();
+          if (location.hash.slice(1) === 'presupuesto') navegar(); else location.hash = '#presupuesto';
+          return;
+        }
+        elegido = x.clave;
+        plano.querySelectorAll('.anio-col').forEach((el) => el.classList.toggle('elegida', el === col));
+        ponerDetalle([...textoMes(x.clave, x.t, x.futuro), h('span', { class: 'anio-pista' }, ' · toca otra vez para abrirlo')]);
+      });
+      return col;
+    }));
+    // Lo que se ve debajo sin pasar el mouse: el mejor mes y, si hubo, el que faltó plata.
+    if (reales.length) {
+      const mejor = reales.reduce((a, b) => ((Number(b.t.saldo) || 0) > (Number(a.t.saldo) || 0) ? b : a));
+      const peor = reales.reduce((a, b) => ((Number(b.t.saldo) || 0) < (Number(a.t.saldo) || 0) ? b : a));
+      textoBase = ['Tu mejor mes: ', h('strong', {}, nombreDe(mejor.clave).toLowerCase()), ` (sobró ${soles(Math.max(0, mejor.t.saldo || 0))})`,
+        ...((Number(peor.t.saldo) || 0) < 0 ? [' · en ', h('strong', {}, nombreDe(peor.clave).toLowerCase()), ' faltaron ', h('strong', { class: 'anio-falta' }, soles(-peor.t.saldo))] : [])];
+    } else textoBase = [terminado ? 'Este año todavía no tiene meses con ingresos cargados.' : 'Cargando…'];
+    if (!elegido) ponerDetalle(textoBase);
+    const hayPlan = conDatos.some((x) => x.futuro);
+    const hayFalta = conDatos.some((x) => (Number(x.t.saldo) || 0) < 0);
+    leyenda.replaceChildren(...[['pf-gasto', 'Gastos'], ['pf-ahorro', 'Ahorro'], ['pf-sobra', 'Sobra'],
+      hayFalta ? ['anio-tope-ley', 'Lo que entró'] : null, hayPlan ? ['anio-plan-ley', 'Lo planeado'] : null].filter(Boolean)
+      .map(([cl, t]) => h('li', {}, h('i', { class: `anio-punto ${cl}`, 'aria-hidden': 'true' }), t)));
+  };
+  const cargarAnio = async () => {
+    const claves = lista.filter((m) => m.clave.startsWith(anio)).map((m) => m.clave);
+    const faltan = [];
+    for (const k of claves) {
+      if (datos.has(k)) continue;
+      const t = leerCache('presupuesto:' + k)?.datos?.totales;
+      if (t) datos.set(k, t); else faltan.push(k);
+    }
+    const este = anio;
+    pintar(!faltan.length || !navigator.onLine);
+    for (let k = 0; k < faltan.length && navigator.onLine; k += 3) {
+      if (!v.dlg.isConnected || este !== anio) return;
+      await Promise.all(faltan.slice(k, k + 3).map((clave) => cargar('presupuesto', { mes: clave }, 'presupuesto:' + clave)
+        .then((x) => datos.set(clave, x?.datos?.totales || { ingresos: 0 })).catch(() => datos.set(clave, { ingresos: 0 }))));
+      if (!v.dlg.isConnected || este !== anio) return;
+      pintar(k + 3 >= faltan.length);
+    }
+  };
+  v.caja.append(
+    h('div', { class: 'anio-cab' }, titulo, h('div', { class: 'anio-flechas' }, ant, sig)),
+    totales,
+    plano,
+    leyenda,
+    detalle,
+    h('div', { class: 'acciones modal-acciones' }, h('button', { type: 'button', class: 'boton primario', onclick: v.cerrar }, 'Listo')));
+  v.abrir();
+  cargarAnio();
 }
 
 // "Al cobrar": qué pasa con el ingreso del mes cuando cobran a fin de mes. Cuánto entra, cómo se reparte
@@ -4531,6 +4803,8 @@ function panelAvisos(correo, mesPasado) {
         interruptor(ajustes.presupuesto, 'Presupuesto al límite', (v) => { ajustes.presupuesto = v; guardar(); })),
       filaConfig('Resumen de la semana', 'Los lunes: qué se gastó, los gastos chicos y qué vence pronto. El día de cobro: cómo cerró el mes.',
         interruptor(ajustes.resumenSemanal, 'Resumen de la semana', (v) => { ajustes.resumenSemanal = v; guardar(); })),
+      motorV122() ? filaConfig('Recordarme anotar', 'Si alguien pasa 3 días sin anotar un gasto, le llega un mensajito solo a esa persona (WhatsApp o correo).',
+        interruptor(ajustes.recordatorio !== false, 'Recordarme anotar', (v) => { ajustes.recordatorio = v; guardar(); })) : null,
       h('div', { class: 'config-fila apilada' },
         h('div', { class: 'config-texto' }, h('strong', {}, 'Gasto grande'), h('span', { class: 'suave' }, 'Correo al instante cuando un gasto llega a este monto en soles. Vacío = apagado.')),
         h('div', { class: 'campo campo-select' }, h('div', { class: 'campo-soles' }, h('span', {}, 'S/'), inGrande))),
@@ -7221,6 +7495,15 @@ async function vistaPresupuesto() {
       const barra = li.querySelector('.barra-pres');
       if (barra && gastado > 0) { const b = h('b', { class: `real ${tono}` }); barra.append(b); requestAnimationFrame(() => requestAnimationFrame(() => { b.style.width = `${Math.min(100, pct)}%`; })); }
     });
+    // v178: si lo de los últimos meses no cuadra con lo planeado, un botón para ajustarlo de una.
+    if (motorNuevo() && emailSesion() && cmpMes(d.mes, mesDelCiclo(hoyISO())) >= 0 && !hero.querySelector('.boton-ajuste')) {
+      const sug = sugerenciasAjuste(d.filas, rt?.datos?.tarjetas);
+      const donde = hero.querySelector('.hero-personal') || hero.querySelector('.hero-principal');
+      if (sug.length && donde) {
+        donde.append(h('button', { type: 'button', class: 'boton-hero boton-ajuste', title: `Ajustar el presupuesto con lo que gastaron: ${sug.length} ${sug.length === 1 ? 'línea' : 'líneas'}`, onclick: () => abrirAjuste(d.mes) },
+          icono('ajustes'), 'Ajustar', h('b', { class: 'aj-cuenta' }, String(sug.length))));
+      }
+    }
   }).catch(() => {});
 
   // Cómo se reparte el ingreso: gastos, ahorros y lo que queda libre.
@@ -7332,7 +7615,8 @@ async function vistaPresupuesto() {
         fuera ? h('p', { class: 'hero-nota-hoja', title: 'La hoja cuenta como gasto del mes lo que se pagó con el sobrante de alguien o con un ahorro. Aquí no, porque esa plata ya salió de otro lado.' },
           `En la hoja: ${soles(totHoja.saldo)} (ahí ${soles(fuera)} pagados con sobrantes o ahorros cuentan como gasto)`) : null),
     h('div', { class: 'meses-barras', role: 'group', 'aria-label': 'Lo que sobra o falta cada mes' },
-      h('div', { class: 'mb-cab' }, h('span', { class: 'mb-titulo' }, 'Lo que sobra o falta cada mes'), leyendaMeses),
+      h('div', { class: 'mb-cab' }, h('span', { class: 'mb-titulo' }, 'Lo que sobra o falta cada mes'),
+        h('button', { type: 'button', class: 'boton-hero boton-anio', onclick: () => abrirAnio(todosMeses, d.mes.slice(0, 4)) }, icono('calendario'), 'Ver el año'), leyendaMeses),
       plano),
     h('ul', { class: 'hero-datos' },
       heroDato('sube', 'Lo que entra', soles(tot.ingresos), deltas.ingresos),
