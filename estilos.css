@@ -4557,3 +4557,111 @@ body .pantalla.inicio .hero .hero-dato-extra { font-size: 0.875rem; white-space:
   .una-pantalla > .inicio-abajo .lista-mov > li[hidden] { display: none; }
 }
 .gp-top li[hidden] { display: none; }
+/* ---------- v166: letras legibles en el resto de pantallas (computadora) ---------- */
+@media (min-width: 900px) {
+  /* Nuevo gasto */
+  .formulario fieldset > legend, .formulario .campo > label { font-size: 0.875rem; }
+  .formulario .opcion, .formulario .opcion-texto, .formulario .ficha, .formulario .fecha-boton span, .origen-texto > span { font-size: 0.9rem; }
+  .origen-texto small, .vista-previa { font-size: 0.82rem; }
+  .formulario .opcion .avatar, .origen-ico .avatar { font-size: 0.78rem; }
+  /* Presupuesto */
+  .mb-leyenda li, .mb-mes, .mb-mes small, .mb-mes em, .mb-valor, .pf-titulo, .pres-flujo .pf-leyenda li, .pres-flujo .pf-leyenda span, .pres-flujo .pf-leyenda strong, .pres-flujo .pf-leyenda small { font-size: 0.82rem; }
+  .filas-pres .pct, .meta-pie span, .monto-editable, .panel-cab .pill, .segmentos button { font-size: 0.82rem; }
+  .chip-meta { font-size: 0.78rem; }
+  /* Configuración */
+  .config-item-texto .suave, .config-cuenta .suave, .muestra span, .config-fila .pill, kbd { font-size: 0.82rem; }
+  .pa-tcs-etq, .pa-tc, .pa-tc b, .pa-nombre small { font-size: 0.82rem; }
+  /* Movimientos y detalle de tarjeta */
+  .buscador-cuenta, .chip-filtro span, .lista .dia > span, .lista .dia .dia-n, .lista .dia .dia-total, .dias-plegables .dia span, .dia-n, .dia-total { font-size: 0.85rem; }
+  .gp-chip b, .gp-chip span, .consumo-texto .suave, .etiqueta-estado, .linea .pill, .estado-pill { font-size: 0.85rem; }
+  .gp-chip .avatar, .ico-quien .avatar { font-size: 0.75rem; }
+  .ruta-fecha i { font-size: 0.78rem; }
+}
+@media (min-width: 900px) {
+  body .formulario.registro-uno fieldset > legend { font-size: 0.85rem; }
+  body .formulario.registro-uno .opcion { font-size: 0.875rem; }
+  body .formulario.registro-uno .origen-texto small { font-size: 0.8rem; }
+  body .formulario.registro-uno .vista-previa { font-size: 0.82rem; }
+  body .formulario.registro-uno .opcion .avatar { font-size: 0.75rem; }
+  body .pantalla.presupuesto .mb-plano .mb-valor { font-size: 0.78rem; }
+  body .pantalla.presupuesto .pres-flujo .pf-titulo { font-size: 0.85rem; }
+  body .hero-personal .avatares .avatar { font-size: 0.78rem; }
+}
+@media (min-width: 900px) {
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .r-der fieldset > legend { font-size: 0.85rem; }
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .r-der .opcion, body:not(.solo-gasto) .registrar .formulario.registro-uno .opciones.chicas > .opcion { font-size: 0.875rem; }
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .r-der .opcion.medio { font-size: 0.85rem; }
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .opcion.origen small { font-size: 0.8rem; }
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .r-der .vista-previa { font-size: 0.82rem; }
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .r-der .opcion .avatar { font-size: 0.75rem; }
+}
+/* ---------- v166: ventanas bajas de computadora (como 1532×697): menos aire arriba y abajo ---------- */
+@media (min-width: 1024px) and (max-height: 760px) {
+  body .vista > .pantalla:not(.una-pantalla) { padding-top: 14px; padding-bottom: 10px; gap: 14px; }
+  .pantalla.detalle .lateral { gap: 10px; }
+  .pantalla.detalle .lateral .boton.datos-tc { min-height: 36px; padding-block: 6px; }
+  .pantalla.detalle .resumen-tc { padding: 12px 14px; gap: 8px; }
+  .pantalla.detalle .resumen-leyenda li:nth-child(n+4) { display: none; }
+  .pantalla.detalle .chips-filtro { flex-wrap: nowrap; }
+}
+@media (min-width: 1280px) {
+  body .rejilla-config.una[data-seccion="datos"] { display: block; columns: 3; column-gap: 16px; }
+  body .rejilla-config.una[data-seccion="datos"] > .panel { break-inside: avoid; margin: 0 0 16px; width: 100%; display: flex; }
+  body .rejilla-config.una[data-seccion="datos"] > .panel:not(.visible):not(.revelar) { display: none; }
+}
+/* v166: Presupuesto en ventana ancha y baja (p. ej. 1532×697): lo que entra y ahorros a la izquierda, gastos a la derecha */
+@media (min-width: 1280px) and (max-height: 780px) {
+  body .pantalla.presupuesto { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); grid-template-areas: 'cab cab' 'hero hero' 'lado gastos'; align-items: start; column-gap: 12px; }
+  body .pantalla.presupuesto > .cabecera-fila { grid-area: cab; }
+  body .pantalla.presupuesto > .hero { grid-area: hero; }
+  body .pantalla.presupuesto > .mensaje { grid-column: 1 / -1; }
+  body .pantalla.presupuesto > .rejilla-pres { grid-area: lado; grid-template-columns: minmax(0, 1fr); }
+  body .pantalla.presupuesto > .seccion-gastos { grid-area: gastos; }
+  body .pantalla.presupuesto .seccion-gastos > .filas-pres { columns: 2; }
+  body .pantalla.presupuesto > .solo-movil { display: none; }
+}
+@media (min-width: 1280px) and (max-height: 780px) {
+  body .pantalla.presupuesto .hero.hero-meses { grid-template-columns: minmax(0, 0.75fr) minmax(0, 1fr) minmax(0, 1.15fr); grid-template-areas: 'principal flujo meses'; grid-template-rows: auto; column-gap: 24px; padding-block: 12px; }
+  body .pantalla.presupuesto .meses-barras .mb-plano { height: 78px; }
+  body .pantalla.presupuesto .seccion-pres { padding-block: 10px; gap: 4px; }
+  body .pantalla.presupuesto .seccion-pres .filas-pres > li { padding-block: 2px; }
+  body .pantalla.presupuesto .seccion-ahorros .metas { gap: 4px 14px; }
+  body .pantalla.presupuesto .seccion-ahorros li.meta { padding-block: 2px; }
+}
+@media (min-width: 1280px) and (max-height: 780px) {
+  body .pantalla.presupuesto .meses-barras .mb-cab { flex-wrap: nowrap; gap: 10px; align-items: center; }
+  body .pantalla.presupuesto .meses-barras .mb-titulo { white-space: nowrap; }
+  body .pantalla.presupuesto .meses-barras .mb-leyenda { flex-wrap: nowrap; gap: 10px; }
+  body .pantalla.presupuesto .meses-barras .mb-plano { height: 64px; }
+}
+@media (min-width: 1280px) and (max-height: 780px) {
+  body .pantalla.presupuesto .meses-barras .mb-leyenda { display: none; }
+  body .pantalla.presupuesto .seccion-pres > .panel-cab { min-height: 0; margin: 0; }
+  body .pantalla.presupuesto > .rejilla-pres { gap: 10px; }
+}
+@media (min-width: 1280px) and (max-height: 780px) {
+  body .pantalla.presupuesto .meses-barras .mb-plano { height: 88px; margin-top: 16px; }
+  body .pantalla.presupuesto .seccion-ahorros .meta-pie { display: none; }
+}
+/* En computadora el menú va al costado: el espacio de abajo para la barra del celular sobra y daba scroll */
+@media (min-width: 1024px) { html body { padding-bottom: 0; } }
+/* v166: Movimientos en computadora: los días plegados en dos columnas y los filtros en una fila (sin scroll) */
+@media (min-width: 1024px) {
+  body .pantalla.movimientos > .bloque.grupo > ul.lista { columns: 2; column-gap: 28px; }
+  body .pantalla.movimientos > .bloque.grupo > ul.lista > li { break-inside: avoid; }
+  body .pantalla.movimientos > .chips-filtro { flex-wrap: nowrap; overflow-x: auto; }
+}
+@media (min-width: 1024px) {
+  body .pantalla.movimientos > .bloque.grupo > ul.lista { display: block; }
+  body .pantalla.movimientos > .bloque.grupo > ul.lista > li { margin-bottom: 4px; }
+  body .pantalla.movimientos > .bloque.grupo > ul.lista:not(.buscando) > li.dia-oculto { display: none; }
+}
+@media (min-width: 1024px) and (max-width: 1399px) {
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .r-der { gap: 7px; }
+  body:not(.solo-gasto) .registrar .formulario.registro-uno .r-der fieldset > legend { margin-bottom: 4px; }
+}
+@media (min-width: 1180px) {
+  body .rejilla-config.una[data-seccion="datos"] { display: block; columns: 3; column-gap: 16px; }
+  body .rejilla-config.una[data-seccion="datos"] > .panel { break-inside: avoid; margin: 0 0 16px; width: 100%; display: flex; }
+  body .rejilla-config.una[data-seccion="datos"] > .panel:not(.visible):not(.revelar) { display: none; }
+}
