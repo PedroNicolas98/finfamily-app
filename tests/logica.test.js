@@ -1361,3 +1361,22 @@ test('1.25.0: cobros aprendidos (dos recibos de Entel son dos cobros) y subidas 
   assert.match(t.cuerpo, /Entel cobró S\/ 45\.94\. La vez anterior \(13\/10\/2026\) fueron S\/ 37\.94\./);
   assert.equal(L.textoCobrosProximos([{ de: 'entel', monto: 37.94, fecha: '2026-12-13', linea: 'Plan móvil' }]).asunto, 'FinFamily: en 2 días toca Entel');
 });
+
+test('1.25.1: un recibo por pagar que invita al débito automático no cuenta; el pie con "YouTube" no confunde la empresa', () => {
+  assert.equal(L.pagoDeServicioDeCorreo({ remitente: 'Recibo Claro <recibo@claro.example>', asunto: 'Recibo Claro - Octubre 90010',
+    cuerpo: 'Revisa el detalle en tu recibo adjunto. El monto es S/ 37.45. Afíliate al débito automático.', fechaISO: '2026-09-22' }), null);
+  assert.equal(L.pagoDeServicioDeCorreo({ remitente: 'WOW <noreply@wow.example>', asunto: '¡Tu Boleta WOW del mes!',
+    cuerpo: 'Se realizó un débito automático S/ 74.90', fechaISO: '2026-09-23' }), null);
+  assert.equal(L.pagoDeServicioDeCorreo({ remitente: 'iO <n@io.example>', asunto: 'Pagaste con éxito tu Tarjeta iO',
+    cuerpo: 'Pagaste con éxito tu Tarjeta iO Pago exitoso S/ 300.00', fechaISO: '2026-09-30' }), null);
+  const entel = L.pagoDeServicioDeCorreo({ remitente: 'atencionclientes@entel.example', asunto: 'Hola, Te enviamos el detalle de tu solicitud',
+    cuerpo: 'Se realizó con éxito el cobro de tu recibo a través del Débito Automático Importe debitado S/ 37.94. Encuéntranos en Facebook Twitter Instagram YouTube',
+    fechaISO: '2026-10-13' });
+  const lineas = [{ clave: 'plan movil', palabras: ['entel'] }, { clave: 'suscripciones', palabras: ['youtube', 'netflix'] }];
+  assert.deepEqual(L.lineaDePago(entel.texto, lineas), { clave: 'plan movil', palabra: 'entel' });
+  assert.ok(!/youtube/.test(entel.textoCuerpo), 'el pie se corta');
+  const yape = L.pagoDeServicioDeCorreo({ remitente: 'YAPE <notificaciones@yape.example>', asunto: 'Tu yapeo de servicio ha sido confirmado',
+    cuerpo: '¡Tu servicio fue yapeado con éxito! Monto total S/ 120.00 Empresa: Luz del Sur', fechaISO: '2026-11-02' });
+  assert.equal(L.lineaDePago(yape.texto, [{ clave: 'servicios', palabras: ['luz del sur'] }]), null);
+  assert.deepEqual(L.lineaDePago(yape.textoCuerpo, [{ clave: 'servicios', palabras: ['luz del sur'] }]), { clave: 'servicios', palabra: 'luz del sur' });
+});

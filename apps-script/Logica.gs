@@ -2446,8 +2446,11 @@ function palabrasDeFijo(concepto, config) {
   return [];
 }
 
-var FRASES_PAGO_SERVICIO = /debito automatico|cobro de tu recibo|pago de (tu |su )?servicio|servicio fue yapeado|yapeo de servicio|pago exitoso|pagaste (tu|el) recibo|recibo pagado/;
-var FRASES_NO_PAGO = /recibo digital|tu boleta|total a pagar|monto a pagar|ultimo dia de pago|afiliacion|modificacion de (la )?tarjeta|rechazad|no se pudo|fallid|pendiente de pago/;
+// Motor 1.25.1: solo confirmaciones claras ("afíliate al débito automático" en un recibo por pagar no cuenta).
+var FRASES_PAGO_SERVICIO = /(realizo|procesado) un debito automatico|(exito|exitoso)[^.]{0,80}cobro de tu recibo|cobro de tu recibo[^.]{0,80}(exito|exitoso)|servicio fue yapeado|yapeo de servicio ha sido confirmado|pago de tu servicio se realizo|pago de (tu |su )?servicio[^.]{0,60}(exitoso|realizado|con exito)|pagaste (tu|el) recibo|recibo pagado/;
+var FRASES_NO_PAGO = /recibo digital|tu boleta|total a pagar|monto a pagar|ultimo dia de pago|afiliacion|modificacion de (la )?tarjeta|rechazad|no se pudo|fallid|pendiente de pago|pagaste con exito tu tarjeta|pago de tu tarjeta|pago a tu tarjeta/;
+// El pie de los correos (redes sociales, "descarga la app") no sirve para saber la empresa: trae "YouTube", "Facebook"...
+var CORTE_PIE_CORREO = /encuentranos|siguenos|descarga (la|nuestra) app|copyright|redes sociales|este buzon no es monitoreado|no respondas este/;
 
 /**
  * Un correo {remitente, asunto, cuerpo, fechaISO} que confirma un pago de servicio ya hecho, en soles:
@@ -2459,11 +2462,17 @@ function pagoDeServicioDeCorreo(correo) {
   var cuerpo = String(c.cuerpo || '');
   var texto = normalizar(asunto + ' ' + cuerpo);
   if (!FRASES_PAGO_SERVICIO.test(texto) || FRASES_NO_PAGO.test(texto)) return null;
+  var asuntoN = normalizar(asunto);
+  if (/\b(recibo|boleta)\b/.test(asuntoN) && !/pagad|cobro|exito/.test(asuntoN)) return null; // "Recibo Claro - Octubre"
   var dinero = montoDeTexto_(cuerpo) || montoDeTexto_(asunto);
   if (!dinero || dinero.moneda !== 'PEN') return null;
   var fecha = fechaISO(parsearFecha(c.fechaISO));
   if (!fecha) return null;
-  return { monto: dinero.monto, fecha: fecha, texto: normalizar(String(c.remitente || '') + ' ' + asunto + ' ' + cuerpo) };
+  var cuerpoN = normalizar(cuerpo);
+  var pie = cuerpoN.search(CORTE_PIE_CORREO);
+  // texto: quién lo manda y el asunto (manda primero); textoCuerpo: el cuerpo sin el pie, para "Empresa: Luz del Sur".
+  return { monto: dinero.monto, fecha: fecha, texto: normalizar(String(c.remitente || '') + ' ' + asunto),
+    textoCuerpo: (pie >= 0 ? cuerpoN.slice(0, pie) : cuerpoN).slice(0, 800) };
 }
 
 function contienePalabra_(textoNormalizado, palabra) {

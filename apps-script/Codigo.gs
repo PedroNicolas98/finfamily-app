@@ -26,7 +26,7 @@
  *   FINFAMILY_ICONOS               ícono elegido para cada tipo de gasto (motor 1.5.1).
  */
 
-var VERSION = '1.25.0';
+var VERSION = '1.25.1';
 var ZONA_HORARIA = 'America/Lima';
 var DIAS_AVISO = 3;
 var SEGUNDOS_CACHE_TOKEN = 300;
@@ -55,7 +55,8 @@ var PROPIEDAD_WA_GREEN = 'FINFAMILY_WA_GREEN';         // motor 1.19.0: {apiUrl,
 var PROPIEDAD_WA_META = 'FINFAMILY_WA_META';           // motor 1.18.0: {token, phoneId, plantilla, idioma, version} (privado)
 var PROPIEDAD_CUADRES = 'FINFAMILY_CUADRES';           // motor 1.16.0: último cuadre de cada cuenta
 var PROPIEDAD_METAS = 'FINFAMILY_METAS';               // motor 1.15.0: objetivo y mes límite por línea de ahorro
-var PROPIEDAD_PAGOS_HISTORIA = 'FINFAMILY_PAGOS_HISTORIA'; // motor 1.25.0: ya se leyeron los cobros de los últimos 75 días
+var PROPIEDAD_PAGOS_HISTORIA = 'FINFAMILY_PAGOS_HISTORIA_V2'; // motor 1.25.1: ya se leyeron (bien) los cobros de los últimos 75 días
+var PROPIEDAD_PAGOS_HISTORIA_V1 = 'FINFAMILY_PAGOS_HISTORIA';   // la lectura de 1.25.0 (con empresas mal reconocidas)
 var PROPIEDAD_META_ANUAL = 'FINFAMILY_META_ANUAL';     // motor 1.24.0: meta de ahorro de cada año {'2027': 12000}
 var PROPIEDAD_FIJOS = 'FINFAMILY_FIJOS';               // motor 1.13.0: día y si se paga solo, por línea fija
 var PROPIEDAD_FIJOS_HECHOS = 'FINFAMILY_FIJOS_HECHOS'; // lo ya marcado o avisado, por línea y mes
@@ -3003,7 +3004,7 @@ function revisarPagosDeServicios_(extras, opciones) {
           var fechaCorreo = mensaje.getDate();
           if (fechaCorreo && fechaCorreo.getTime && fechaCorreo.getTime() < desde.getTime()) return;
           // El historial deja los de los últimos días para la pasada normal (esos sí marcan y avisan).
-          if (op.soloRegistrar && fechaCorreo && fechaCorreo.getTime && fechaCorreo.getTime() >= recientes.getTime()) return;
+          if (op.soloRegistrar && !op.conRecientes && fechaCorreo && fechaCorreo.getTime && fechaCorreo.getTime() >= recientes.getTime()) return;
           var pago = pagoDeServicioDeCorreo({ remitente: mensaje.getFrom(), asunto: mensaje.getSubject(),
             cuerpo: mensaje.getPlainBody(), fechaISO: fechaISO(fechaCorreo) });
           if (pago) { pago.id = id; nuevos.push(pago); } else registro.ids[id] = hoy; // no era un pago: no se vuelve a leer
@@ -3034,7 +3035,7 @@ function revisarPagosDeServicios_(extras, opciones) {
         if (!p) return;
         var filasG = p.filas.filter(function (f) { return f.seccion === 'gastos' && !f.esTarjeta && f.monto > 0; });
         var lineas = filasG.map(function (f) { return { clave: claveLinea(f.concepto), palabras: palabrasDeFijo(f.concepto, config) }; });
-        var l = lineaDePago(pago.texto, lineas);
+        var l = lineaDePago(pago.texto, lineas) || (pago.textoCuerpo ? lineaDePago(pago.textoCuerpo, lineas) : null);
         if (!l) return;
         if (!op.soloRegistrar) {
           var anteriores = [];
@@ -3087,7 +3088,11 @@ function revisarPagosDeServicios_(extras, opciones) {
 /** Una sola vez: guarda los cobros de servicios de los últimos 75 días (sin marcar ni avisar) para aprender sus días. */
 function historialPagosServicioUnaVez_() {
   if (propiedad_(PROPIEDAD_PAGOS_HISTORIA)) return null;
-  var r = revisarPagosDeServicios_([], { dias: 75, soloRegistrar: true });
+  // 1.25.1: si ya corrió la lectura de 1.25.0, se borra lo guardado y se vuelve a leer todo (también los últimos días,
+  // que la pasada normal ya marcó) solo para guardar.
+  var rehacer = !!propiedad_(PROPIEDAD_PAGOS_HISTORIA_V1);
+  if (rehacer) PropertiesService.getScriptProperties().setProperty(PROPIEDAD_PAGOS_FIJOS, JSON.stringify({ ids: {}, meses: {} }));
+  var r = revisarPagosDeServicios_([], { dias: 75, soloRegistrar: true, conRecientes: rehacer });
   PropertiesService.getScriptProperties().setProperty(PROPIEDAD_PAGOS_HISTORIA, new Date().toISOString());
   return r;
 }
