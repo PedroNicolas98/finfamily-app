@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v160';
+const VERSION_APP = 'finfamily-v161';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -1582,7 +1582,7 @@ function pintarProximoPago() {
     h('span', { class: 'np-cab' }, icono('calendario'), h('span', {}, 'Próximo pago'), icono('adelante')),
     h('strong', { class: 'np-monto' }, soles(prox.pendiente)),
     h('span', { class: 'np-pie' }, chipTC(prox.id, 'mini'), h('span', { class: 'np-nombre' }, nombreCortoTC(prox))),
-    h('span', { class: `pill ${e.clase}`.trim() }, e.texto));
+    h('span', { class: `pill ${e.clase}`.trim() }, e.texto.replace('Pago atrasado · ', 'Atrasado · ')));
 }
 
 function pintarAvisos() {
