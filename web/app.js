@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v171';
+const VERSION_APP = 'finfamily-v172';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -6890,7 +6890,14 @@ async function vistaPresupuesto() {
   marcarDatos(r);
   const d = r.datos;
   if (d.meses?.length) guardarCache('meses', d.meses);
-  const tot = d.totales || {};
+  // v172: el mes en curso dice lo mismo que Inicio. A lo que sobra según la hoja se le suma lo ya pagado con
+  // sobrantes o ahorros (la hoja lo resta como gasto del mes, pero esa plata salió de otro lado). Solo si la copia
+  // de Inicio corresponde a esta misma hoja (mismo saldo), para no mezclar datos viejos.
+  const totHoja = d.totales || {};
+  const bComun = d.mes === mesActual() && motorBolsas() ? bolsasGuardadas()?.comun : null;
+  const fuera = bComun && Number(bComun.fuera) > 0 && Math.abs((Number(bComun.saldoHoja) || 0) - (Number(totHoja.saldo) || 0)) < 0.01 ? Number(bComun.fuera) : 0;
+  const tot = fuera ? { ...totHoja, saldo: Number(bComun.saldo) || 0, gastos: Math.max(0, (totHoja.gastos || 0) - fuera),
+    saldoPersonal: (Number(bComun.saldo) || 0) / Math.max(1, (bolsasGuardadas()?.personas || []).length || 2) } : totHoja;
   const fijos = fijosDe(d.filas);
   const resumenFijos = h('span', { class: 'pill resumen-fijos' });
   const pintarResumenFijos = () => {
@@ -7074,7 +7081,9 @@ async function vistaPresupuesto() {
         h('p', { class: 'hero-etq' }, `Sobra en ${mesNombre}`),
         h('p', { class: 'hero-monto', 'data-rico': '', 'data-contar': String(tot.saldo || 0) }, soles(0)),
          h('p', { class: 'hero-personal' }, h('span', { class: 'avatares' }, responsables().map((nombre) => avatar(nombre))),
-          h('span', {}, h('strong', {}, soles(tot.saldoPersonal)), ' para cada uno'))),
+          h('span', {}, h('strong', {}, soles(tot.saldoPersonal)), ' para cada uno')),
+        fuera ? h('p', { class: 'hero-nota-hoja', title: 'La hoja cuenta como gasto del mes lo que se pagó con el sobrante de alguien o con un ahorro. Aquí no, porque esa plata ya salió de otro lado.' },
+          `En la hoja: ${soles(totHoja.saldo)} (ahí ${soles(fuera)} pagados con sobrantes o ahorros cuentan como gasto)`) : null),
     h('div', { class: 'meses-barras', role: 'group', 'aria-label': 'Lo que sobra o falta cada mes' },
       h('div', { class: 'mb-cab' }, h('span', { class: 'mb-titulo' }, 'Lo que sobra o falta cada mes'), leyendaMeses),
       plano),
