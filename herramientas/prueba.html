@@ -62,7 +62,7 @@
         var d = cuerpo.datos || {};
         window.__llamadas.push({ accion: cuerpo.accion, datos: d });
         var datos = null;
-        var vMotor = P.get('motor') === '12' ? '1.2.0' : P.get('motor') === '13' ? '1.3.1' : P.get('motor') === '14' ? '1.4.0' : P.get('motor') === '15' ? '1.5.0' : P.get('motor') === '151' ? '1.5.1' : P.get('motor') === '16' ? '1.6.0' : P.get('motor') === '18' ? '1.8.0' : P.get('motor') === '19' ? '1.9.0' : P.get('motor') === '110' ? '1.10.0' : P.get('motor') === '111' ? '1.11.0' : P.get('motor') === '112' ? '1.12.0' : P.get('motor') === '113' ? '1.13.0' : P.get('motor') === '114' ? '1.14.0' : '1.7.0';
+        var vMotor = P.get('motor') === '12' ? '1.2.0' : P.get('motor') === '13' ? '1.3.1' : P.get('motor') === '14' ? '1.4.0' : P.get('motor') === '15' ? '1.5.0' : P.get('motor') === '151' ? '1.5.1' : P.get('motor') === '16' ? '1.6.0' : P.get('motor') === '18' ? '1.8.0' : P.get('motor') === '19' ? '1.9.0' : P.get('motor') === '110' ? '1.10.0' : P.get('motor') === '111' ? '1.11.0' : P.get('motor') === '112' ? '1.12.0' : P.get('motor') === '113' ? '1.13.0' : P.get('motor') === '114' ? '1.14.0' : P.get('motor') === '115' ? '1.15.0' : '1.7.0';
         var vMin = function (x) { var p = vMotor.split('.').map(Number), q = x.split('.').map(Number); for (var i = 0; i < 3; i++) { if ((p[i] || 0) !== (q[i] || 0)) return (p[i] || 0) > (q[i] || 0); } return true; };
         window.__bolsas = window.__bolsas || { mes: '2026-11', comun: { saldoHoja: 985.57, fuera: 119, saldo: 1104.57 },
           personas: [{ nombre: 'PersonaA', acumulado: 279.41, gastado: 0, gastadoMes: 0, disponible: 279.41, comprometido: 119 }, { nombre: 'PersonaB', acumulado: 279.41, gastado: 0, gastadoMes: 0, disponible: 279.41, comprometido: 0 }],
@@ -105,6 +105,15 @@
         else if (cuerpo.accion === 'guardarAjustesAvisos') { window.__ajustes = Object.assign({}, window.__ajustes, d); datos = { ajustes: window.__ajustes }; }
         else if (cuerpo.accion === 'datosTarjetas') datos = { tarjetas: { SIP: { digitos: '', red: '', nombre: '' }, IBK_P: { digitos: '', red: '', nombre: '' }, IBK_B: { digitos: '', red: '', nombre: '' }, BCP: { digitos: '4821', red: 'visa', nombre: 'PersonaB' }, RIPLEY: { digitos: '', red: '', nombre: '' } } };
         else if (cuerpo.accion === 'guardarDatosTarjeta') datos = { guardado: true, id: d.id };
+        else if (cuerpo.accion === 'guardarMeta' || (cuerpo.accion === 'ahorros' && window.__metas && Object.keys(window.__metas).length)) {
+          if (cuerpo.accion === 'guardarMeta') { window.__metas = window.__metas || {}; if (d.objetivo) window.__metas[d.concepto] = { objetivo: d.objetivo, fecha: d.fecha }; else delete window.__metas[d.concepto]; }
+          datos = { mes: d.mes, desde: '2026-06', total: 2350, totalDelMes: 300, metas: [
+            { concepto: 'Ahorro Casa', fila: 30, acumulado: 1500, delMes: 200, disponible: 1500, meses: [] },
+            { concepto: 'Ahorro Viaje', fila: 31, acumulado: 600, delMes: 100, disponible: 600, meses: [] },
+            { concepto: 'Fondo de Emergencia', fila: 32, acumulado: 250, delMes: 0, disponible: 250, meses: [] }] };
+          datos.metas.forEach(function (x) { var g = window.__metas[x.concepto]; if (!g) return; var faltan = Math.max(0, g.objetivo - x.disponible); var [a1, m1] = d.mes.split('-').map(Number), [a2, m2] = g.fecha.split('-').map(Number); var r = (a2 * 12 + m2) - (a1 * 12 + m1);
+            var por = faltan && r > 0 ? Math.ceil(faltan / r * 100) / 100 : 0; x.meta = { objetivo: g.objetivo, fecha: g.fecha, faltan: faltan, mesesRestantes: r, porMes: por, pct: Math.min(100, x.disponible / g.objetivo * 100), estado: !faltan ? 'lista' : r <= 0 ? 'vencida' : x.delMes >= por ? 'bien' : 'atrasada' }; });
+        }
         else if (cuerpo.accion === 'ahorros') datos = { mes: d.mes, desde: '2026-06', total: 2350, totalDelMes: 300, metas: [
           { concepto: 'Ahorro Casa', fila: 30, acumulado: 1500, delMes: 200, meses: [{ mes: '2026-10', etiqueta: 'oct-26', monto: 200 }] },
           { concepto: 'Ahorro Viaje', fila: 31, acumulado: 600, delMes: 100, meses: [] },

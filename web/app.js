@@ -2116,6 +2116,91 @@ function panelCuentas() {
   return caja;
 }
 
+// ---------------------------------------------------------------------------
+// Metas de ahorro con fecha (v127, motor 1.15): objetivo y mes límite por ahorro; cuánto falta, cuánto apartar
+// al mes y si con lo que se pone este mes se llega.
+// ---------------------------------------------------------------------------
+function motorMetas() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 15); }
+const mesesEntreClaves = (desde, hasta) => { const [a1, m1] = desde.split('-').map(Number), [a2, m2] = hasta.split('-').map(Number); return (a2 * 12 + m2) - (a1 * 12 + m1); };
+// Igual que el motor (planDeMeta).
+function planDeMeta(objetivo, fecha, disponible, aporteMes, mes) {
+  const faltan = Math.max(0, Math.round((objetivo - (disponible || 0)) * 100) / 100);
+  const restantes = mesesEntreClaves(mes, fecha);
+  let porMes = 0, estado;
+  if (faltan <= 0) estado = 'lista';
+  else if (restantes <= 0) estado = 'vencida';
+  else { porMes = Math.ceil((faltan / restantes) * 100) / 100; estado = (aporteMes || 0) + 0.005 >= porMes ? 'bien' : 'atrasada'; }
+  return { objetivo, fecha, faltan, mesesRestantes: restantes, porMes, estado, pct: objetivo > 0 ? Math.max(0, Math.min(100, ((disponible || 0) / objetivo) * 100)) : 0 };
+}
+function textoMeta(p, aporteMes) {
+  if (p.estado === 'lista') return { clase: 'ok', texto: '¡Meta cumplida!' };
+  if (p.estado === 'vencida') return { clase: 'mal', texto: `Se pasó el plazo · faltan ${soles(p.faltan)}` };
+  if (p.estado === 'bien') return { clase: 'ok', texto: `Vas bien · ${soles(p.porMes)} al mes` };
+  return { clase: 'aviso', texto: `Aparta ${soles(p.porMes)} al mes${aporteMes > 0 ? ` (hoy ${soles(aporteMes)})` : ''}` };
+}
+
+// Ventanita "Meta de <ahorro>": cuánto y para cuándo, con el cálculo en vivo.
+function abrirMeta({ concepto, disponible, aporteMes, mes, actual }, alGuardar) {
+  const nombre = nombreLinea(concepto);
+  const v = ventanita('meta-dlg', `Meta de ${nombre}`);
+  const inMonto = h('input', { type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: '0', 'aria-label': 'Objetivo', value: actual?.objetivo ? String(actual.objetivo) : '' });
+  let fecha = actual?.fecha || sumarMes(mes, 6);
+  const atajos = [3, 6, 12, 24].map((n) => ({ n, clave: sumarMes(mes, n) }));
+  const chips = h('div', { class: 'meta-plazos' });
+  const inMes = h('input', { type: 'month', min: mes, value: fecha, 'aria-label': 'Mes de la meta' });
+  const resumen = h('div', { class: 'meta-calculo', 'aria-live': 'polite' });
+  const msg = h('p', { class: 'mensaje error', hidden: true });
+  const btn = h('button', { type: 'button', class: 'boton primario' }, 'Guardar meta');
+  const pintar = () => {
+    chips.replaceChildren(...atajos.map((x) => h('button', { type: 'button', class: 'opcion chica', 'aria-pressed': String(x.clave === fecha),
+      onclick: () => { fecha = x.clave; inMes.value = fecha; pintar(); } }, x.n < 12 ? `${x.n} meses` : x.n === 12 ? '1 año' : '2 años')));
+    const objetivo = leerMonto(inMonto.value) || 0;
+    btn.disabled = !(objetivo > 0) || !fecha;
+    if (!(objetivo > 0)) { resumen.replaceChildren(h('span', { class: 'suave' }, `Ya tienes ${soles(disponible)} en ${nombre}.`)); return; }
+    const p = planDeMeta(objetivo, fecha, disponible, aporteMes, mes);
+    const t = p.estado === 'bien' ? { clase: 'ok', texto: `Con los ${soles(aporteMes)} de este mes llegas` }
+      : p.estado === 'atrasada' ? { clase: 'aviso', texto: aporteMes > 0 ? `Hoy pones ${soles(aporteMes)}: súbelo para llegar` : 'Ponle ese monto en el presupuesto para llegar' }
+        : textoMeta(p, aporteMes);
+    resumen.replaceChildren(
+      h('div', { class: 'gp-barra meta-barra' }, h('i', { style: `width: ${p.pct}%` })),
+      h('strong', {}, p.estado === 'lista' ? '¡Ya llegaste!' : p.estado === 'vencida' ? 'Elige un mes más adelante' : `${soles(p.porMes)} al mes`),
+      h('small', { class: 'suave' }, p.estado === 'lista' || p.estado === 'vencida' ? `${soles(disponible)} de ${soles(objetivo)}`
+        : `por ${p.mesesRestantes} ${p.mesesRestantes === 1 ? 'mes' : 'meses'} hasta ${mesCorto(fecha)} · faltan ${soles(p.faltan)}`),
+      h('span', { class: `meta-estado ${t.clase}` }, t.texto));
+  };
+  inMonto.addEventListener('input', pintar);
+  inMes.addEventListener('change', () => { if (/^\d{4}-\d{2}$/.test(inMes.value)) { fecha = inMes.value; pintar(); } });
+  const guardar = async (objetivo) => {
+    msg.hidden = true;
+    ocuparBoton(btn, 'Guardando…');
+    try {
+      const r = await llamarApi('guardarMeta', { concepto, objetivo, fecha, mes }, { email: emailSesion() });
+      guardarCache('ahorros:' + mes, r);
+      avisar(objetivo ? `Meta de ${nombre}: ${soles(objetivo)} para ${mesCorto(fecha)}` : 'Meta quitada', 'ok');
+      v.cerrar();
+      alGuardar?.(r);
+    } catch (e) {
+      liberarBoton(btn, 'Guardar meta');
+      msg.textContent = mensajeError(e, 'No se pudo guardar. Intenta de nuevo.'); msg.hidden = false;
+    }
+  };
+  btn.onclick = () => { const o = leerMonto(inMonto.value); if (o > 0) guardar(o); };
+  inMonto.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); btn.click(); } });
+  v.caja.append(...[
+    h('p', { class: 'cierre-etq' }, `Meta de ${nombre}`),
+    h('label', { class: 'cuenta-monto' }, h('span', {}, 'S/'), inMonto),
+    h('p', { class: 'etq meta-pregunta' }, '¿Para cuándo?'),
+    chips,
+    h('label', { class: 'meta-mes' }, h('span', { class: 'suave' }, 'u otro mes'), inMes),
+    resumen, msg,
+    h('div', { class: 'acciones modal-acciones' }, btn,
+      actual ? h('button', { type: 'button', class: 'boton enlace', onclick: () => guardar(0) }, 'Quitar meta') : null,
+      h('button', { type: 'button', class: 'boton', onclick: v.cerrar }, 'Cancelar'))].filter(Boolean));
+  pintar();
+  v.abrir();
+  inMonto.focus();
+}
+
 function actualizarCacheFijo(mes, f) {
   const c = leerCache('presupuesto:' + mes);
   const linea = c?.datos?.filas?.find((x) => x.fila === f.fila);
@@ -5953,11 +6038,19 @@ async function vistaPresupuesto() {
           const nombre = nombreLinea(f?.concepto || m.concepto);
           const vacia = !(m.acumulado > 0);
           const usado = usadoDe({ f, m });
+          const plan = m.meta || null;
+          const aporte = f ? (f.monto || 0) : (m.delMes || 0);
+          const tMeta = plan ? textoMeta(plan, aporte) : null;
+          const botonMeta = motorMetas() && editable ? h('button', { type: 'button', class: 'chip-meta' + (plan ? ' con-meta' : ''), title: plan ? 'Cambiar la meta' : 'Ponerle una meta con fecha',
+            onclick: () => abrirMeta({ concepto: f?.concepto || m.concepto, disponible: Number(m.disponible ?? m.acumulado) || 0, aporteMes: aporte, mes: d.mes,
+              actual: plan ? { objetivo: plan.objetivo, fecha: plan.fecha } : null }, () => navegar({ silencioso: true })) },
+            icono('meta'), plan ? `${soles(plan.objetivo)} · ${mesCorto(plan.fecha)}` : 'Meta') : null;
           return h('li', { class: vacia ? 'meta vacia' : 'meta', style: `--i: ${k}`, title: aportes.map((x) => `${x.etiqueta}: ${soles(x.monto)}`).join('\n') },
-            h('div', { class: 'meta-top' }, h('span', { class: 'meta-nombre' }, nombre),
+            h('div', { class: 'meta-top' }, h('span', { class: 'meta-nombre' }, nombre, botonMeta),
               h('strong', { 'data-contar': String(Math.max(0, (m.acumulado || 0) - usado)) }, soles(0))),
             usado > 0 ? h('small', { class: 'suave meta-usado' }, `Guardado ${soles(m.acumulado || 0)} · usado ${soles(usado)}`) : null,
-            h('div', { class: 'gp-barra' }, h('i', { 'data-w': `${Math.round(((m.acumulado || 0) / mayor) * 100)}%` })),
+            h('div', { class: 'gp-barra' + (plan ? ' hacia-meta' : '') }, h('i', { 'data-w': `${Math.round(plan ? plan.pct : ((m.acumulado || 0) / mayor) * 100)}%` })),
+            plan ? h('div', { class: 'meta-avance' }, h('span', { class: 'suave' }, `${Math.floor(plan.pct)} % · faltan ${soles(plan.faltan)}`), h('span', { class: `meta-estado ${tMeta.clase}` }, tMeta.texto)) : null,
             h('div', { class: 'meta-pie' },
               h('span', {}, 'Este mes ',
                 f && editable && !(f.monto < 0)

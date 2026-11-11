@@ -347,13 +347,13 @@ test('version: informa 1.7.1 y la lista de acciones; inicio y config traen el ca
     new HojaFalsa('Configuración', [['Conceptos de Gasto', 'Responsable'], ['Limpieza', 'PersonaB']])]) });
   const r = m.llamar('version', {});
   assert.equal(r.ok, true);
-  assert.equal(r.datos.version, '1.14.0');
+  assert.equal(r.datos.version, '1.15.0');
   for (const a of ['desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'marcarPagado', 'inicio',
     'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos', 'datosTarjetas', 'guardarDatosTarjeta']) {
     assert.ok(r.datos.acciones.includes(a), 'falta la acción ' + a);
   }
-  assert.equal(m.llamar('inicio', {}).datos.version, '1.14.0');
-  assert.equal(m.llamar('config', {}).datos.version, '1.14.0');
+  assert.equal(m.llamar('inicio', {}).datos.version, '1.15.0');
+  assert.equal(m.llamar('config', {}).datos.version, '1.15.0');
 });
 
 test('la lista ACCIONES coincide con las acciones que atiende doPost', () => {
@@ -1986,7 +1986,7 @@ test('config: un ícono guardado para un concepto que ya no existe en Configurac
   assert.deepEqual(m.llamar('config', {}).datos.iconos, { Supermercado: 'carrito' });
   const danado = motorCompleto({ propiedades: { FINFAMILY_ICONOS: '{roto' } });
   assert.deepEqual(danado.llamar('config', {}).datos.iconos, {});
-  assert.equal(danado.llamar('version', {}).datos.version, '1.14.0');
+  assert.equal(danado.llamar('version', {}).datos.version, '1.15.0');
   assert.ok(danado.llamar('version', {}).datos.acciones.includes('guardarIconoConcepto'));
 });
 
@@ -2224,7 +2224,7 @@ test('gasto grande con tarjeta prestada: el correo dice quién gastó; versión 
   const m = motorCompleto();
   m.llamar('registrar', Object.assign({}, GASTO_PRESTADO, { monto: 450, descripcion: 'Saga Falabella' }));
   assert.equal(m.correos[0].subject, 'FinFamily: PersonaA registró S/ 450 en Saga Falabella (TC Interbank)');
-  assert.equal(m.llamar('version', {}).datos.version, '1.14.0');
+  assert.equal(m.llamar('version', {}).datos.version, '1.15.0');
 });
 
 // ===========================================================================
@@ -2504,7 +2504,7 @@ test('bolsas con un solo usuario (N = 1): todo el saldo de los meses anteriores 
 test('versión 1.7.0: la acción bolsas está en la lista y presupuesto no cambió', () => {
   const m = motorBolsas();
   const v = m.llamar('version', {}).datos;
-  assert.equal(v.version, '1.14.0');
+  assert.equal(v.version, '1.15.0');
   assert.ok(v.acciones.includes('bolsas'));
   const p = m.llamar('presupuesto', { mes: '2026-11' }).datos;
   assert.equal(p.totales.saldo, 985.57);
@@ -3228,4 +3228,39 @@ test('1.14.0: compactarCuentas junta lo viejo en "Saldo anterior" sin cambiar el
   assert.ok(c.movimientos.length < 300);
   const despues = L.cuentasEntre([], c, ['PersonaA', 'PersonaB'], []);
   assert.deepEqual(JSON.parse(JSON.stringify(despues.saldos)), JSON.parse(JSON.stringify(antes.saldos)));
+});
+
+
+// ---------- 1.15.0: metas de ahorro con fecha ----------
+
+test('1.15.0: guardarMeta pone objetivo y mes a un ahorro y ahorros dice cuánto falta y si se llega', () => {
+  const m = motorCompleto({ hoy: '2026-11-10' }); // ciclo de octubre
+  const antes = m.llamar('ahorros', { mes: '2026-10' }).datos.metas.find((x) => x.concepto === 'Ahorro Viaje');
+  assert.equal(antes.meta, undefined, 'sin meta no cambia la respuesta');
+  const r = m.llamar('guardarMeta', { concepto: 'ahorro viaje', objetivo: 300, fecha: '2027-01', mes: '2026-10' });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  const viaje = r.datos.metas.find((x) => x.concepto === 'Ahorro Viaje');
+  // Octubre: 0 guardado; faltan 300 en 3 meses (nov, dic, ene) → 100 al mes; este mes pone 0 → atrasada.
+  assert.deepEqual(JSON.parse(JSON.stringify(viaje.meta)), { objetivo: 300, fecha: '2027-01', faltan: 300, mesesRestantes: 3, porMes: 100, estado: 'atrasada', pct: 0 });
+  // Ahorro Casa ya tiene 50: con objetivo 50 queda lista.
+  const casa = m.llamar('guardarMeta', { concepto: 'Ahorro Casa', objetivo: 50, fecha: '2026-12', mes: '2026-10' }).datos.metas.find((x) => x.concepto === 'Ahorro Casa');
+  assert.equal(casa.meta.estado, 'lista');
+  assert.equal(casa.meta.pct, 100);
+  // Validaciones: no es ahorro, mes pasado, sin mes.
+  assert.equal(m.llamar('guardarMeta', { concepto: 'Luz', objetivo: 100, fecha: '2027-01' }).ok, false);
+  assert.equal(m.llamar('guardarMeta', { concepto: 'Ahorro Viaje', objetivo: 100, fecha: '2026-01' }).ok, false);
+  assert.equal(m.llamar('guardarMeta', { concepto: 'Ahorro Viaje', objetivo: 100 }).ok, false);
+  // Quitar.
+  const q = m.llamar('guardarMeta', { concepto: 'Ahorro Viaje', objetivo: 0, mes: '2026-10' });
+  assert.equal(q.datos.metas.find((x) => x.concepto === 'Ahorro Viaje').meta, undefined);
+});
+
+test('1.15.0: planDeMeta: bien, atrasada, vencida y lista', () => {
+  const L = crearMotor({}).contexto;
+  const p = (o, f, d, a, mes) => JSON.parse(JSON.stringify(L.planDeMeta(o, f, d, a, mes)));
+  assert.equal(p(1000, '2027-04', 400, 120, '2026-11').estado, 'bien'); // faltan 600 en 5 meses = 120
+  assert.equal(p(1000, '2027-04', 400, 119.99, '2026-11').estado, 'atrasada');
+  assert.equal(p(1000, '2026-11', 400, 120, '2026-11').estado, 'vencida');
+  assert.equal(p(1000, '2026-11', 1000, 0, '2026-11').estado, 'lista');
+  assert.equal(p(1000, '2027-02', 0, 0, '2026-11').porMes, 333.34);
 });

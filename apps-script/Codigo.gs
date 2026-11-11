@@ -26,7 +26,7 @@
  *   FINFAMILY_ICONOS               ícono elegido para cada tipo de gasto (motor 1.5.1).
  */
 
-var VERSION = '1.14.0';
+var VERSION = '1.15.0';
 var ZONA_HORARIA = 'America/Lima';
 var DIAS_AVISO = 3;
 var SEGUNDOS_CACHE_TOKEN = 300;
@@ -44,6 +44,7 @@ var PROPIEDAD_CATALOGO = 'FINFAMILY_CATALOGO';
 var PROPIEDAD_LINEAS = 'FINFAMILY_LINEAS';
 var PROPIEDAD_ICONOS = 'FINFAMILY_ICONOS';
 var PROPIEDAD_CUENTAS = 'FINFAMILY_CUENTAS';           // motor 1.14.0: préstamos y devoluciones entre ustedes
+var PROPIEDAD_METAS = 'FINFAMILY_METAS';               // motor 1.15.0: objetivo y mes límite por línea de ahorro
 var PROPIEDAD_FIJOS = 'FINFAMILY_FIJOS';               // motor 1.13.0: día y si se paga solo, por línea fija
 var PROPIEDAD_FIJOS_HECHOS = 'FINFAMILY_FIJOS_HECHOS'; // lo ya marcado o avisado, por línea y mes
 var FUNCION_AVISOS = 'avisosDeVencimiento';
@@ -55,7 +56,7 @@ var DIAS_CORREOS = 3; // cuántos días hacia atrás busca el lector
 
 /** Acciones que entiende este motor (la acción 'version' las devuelve). */
 var ACCIONES = ['inicio', 'tarjetas', 'presupuesto', 'config', 'registrar', 'marcarPagado', 'marcarFijo',
-  'editarGasto', 'borrarGasto', 'personas', 'desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'abrirSesion', 'cerrarSesion', 'reenvio', 'pasarACuotas', 'fijosAuto', 'guardarFijoAuto', 'cuentas', 'anotarCuenta', 'borrarCuenta',
+  'editarGasto', 'borrarGasto', 'personas', 'desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'abrirSesion', 'cerrarSesion', 'reenvio', 'pasarACuotas', 'fijosAuto', 'guardarFijoAuto', 'cuentas', 'anotarCuenta', 'borrarCuenta', 'guardarMeta',
   'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos',
   'datosTarjetas', 'guardarDatosTarjeta',
   'agregarTarjeta', 'editarTarjeta', 'quitarTarjeta', 'restaurarTarjeta',
@@ -142,6 +143,7 @@ function doPost(e) {
       case 'cuentas': resultado = accionCuentas_(usuario, datos); break;
       case 'anotarCuenta': resultado = accionAnotarCuenta_(usuario, datos); break;
       case 'borrarCuenta': resultado = accionBorrarCuenta_(usuario, datos); break;
+      case 'guardarMeta': resultado = accionGuardarMeta_(usuario, datos); break;
       case 'pendientes': resultado = accionPendientes_(usuario, datos); break;
       case 'confirmarPendiente': resultado = accionConfirmarPendiente_(usuario, datos); break;
       case 'descartarPendiente': resultado = accionDescartarPendiente_(usuario, datos); break;
@@ -1603,7 +1605,42 @@ function accionAhorros_(usuario, datos) {
     meta.retirado = x ? x.retirado : 0;
     meta.disponible = Math.round((meta.acumulado - meta.retirado) * 100) / 100;
   });
+  // Motor 1.15.0: la meta (objetivo y mes límite) de cada ahorro que tenga una.
+  var config = leerMetas_();
+  r.metas.forEach(function (meta) {
+    var cfg = config[claveLinea(meta.concepto)];
+    if (cfg) meta.meta = planDeMeta(cfg.objetivo, cfg.fecha, meta.disponible, meta.delMes, mes);
+  });
   return r;
+}
+
+function leerMetas_() { return metasDesde(propiedad_(PROPIEDAD_METAS)); }
+function guardarMetas_(config) { PropertiesService.getScriptProperties().setProperty(PROPIEDAD_METAS, JSON.stringify(config)); }
+
+/** {concepto, objetivo (0 = quitar), fecha 'YYYY-MM', mes?}. La línea debe ser un ahorro del presupuesto. */
+function accionGuardarMeta_(usuario, datos) {
+  var concepto = String(datos.concepto || '').replace(/\s+/g, ' ').trim();
+  if (!concepto || concepto.length > 80) throw errorApp_('datos_invalidos', 'Falta la línea de ahorro.');
+  var objetivo = typeof datos.objetivo === 'number' ? datos.objetivo : parsearMonto(String(datos.objetivo || '0'));
+  if (objetivo === null || !isFinite(objetivo) || objetivo < 0 || objetivo > 10000000) throw errorApp_('datos_invalidos', 'El objetivo no es válido.');
+  var config = leerMetas_();
+  var clave = claveLinea(concepto);
+  var mesHoy = mesDelCiclo(hoyServidor_());
+  if (objetivo === 0) {
+    delete config[clave];
+  } else {
+    var fecha = String(datos.fecha || '');
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(fecha)) throw errorApp_('datos_invalidos', 'Elige el mes de la meta.');
+    if (mesesEntre(mesHoy, fecha) < 0 || mesesEntre(mesHoy, fecha) > 120) throw errorApp_('datos_invalidos', 'El mes de la meta debe ser de este mes en adelante (hasta 10 años).');
+    var p = leerPresupuestoDelMes_(mesValido_(datos.mes || mesHoy));
+    var linea = null;
+    (p ? p.filas : []).forEach(function (f) { if (f.seccion === 'ahorros' && claveLinea(f.concepto) === clave) linea = f; });
+    if (!linea) throw errorApp_('datos_invalidos', 'Esa línea no es un ahorro del presupuesto.');
+    if (!config[clave] && Object.keys(config).length >= MAXIMO_METAS) throw errorApp_('datos_invalidos', 'Ya hay demasiadas metas.');
+    config[clave] = { concepto: linea.concepto, objetivo: Math.round(objetivo * 100) / 100, fecha: fecha };
+  }
+  guardarMetas_(config);
+  return accionAhorros_(usuario, { mes: datos.mes || mesHoy });
 }
 
 // ---------------------------------------------------------------------------
@@ -3184,6 +3221,13 @@ function accionRenombrarLinea_(usuario, datos) {
     if (Object.prototype.hasOwnProperty.call(mapa, claveLinea(linea.concepto))) {
       guardarMapaLineas_(renombrarLineaEnMapa(mapa, linea.concepto, nombre));
     }
+    var metasR = leerMetas_();
+    if (metasR[claveLinea(linea.concepto)]) {
+      var metaR = metasR[claveLinea(linea.concepto)];
+      delete metasR[claveLinea(linea.concepto)];
+      metasR[claveLinea(nombreLineaParaSeccion(nombre, linea.seccion))] = { concepto: nombreLineaParaSeccion(nombre, linea.seccion), objetivo: metaR.objetivo, fecha: metaR.fecha };
+      guardarMetas_(metasR);
+    }
     var fijos = leerFijos_();
     if (fijos[claveLinea(linea.concepto)]) {
       var fijo = fijos[claveLinea(linea.concepto)];
@@ -3229,6 +3273,8 @@ function accionQuitarLinea_(usuario, datos) {
     if (Object.prototype.hasOwnProperty.call(mapa, claveLinea(linea.concepto))) guardarMapaLineas_(quitarLineaDeMapa(mapa, linea.concepto));
     var fijosQ = leerFijos_();
     if (fijosQ[claveLinea(linea.concepto)]) { delete fijosQ[claveLinea(linea.concepto)]; guardarFijos_(fijosQ); }
+    var metasQ = leerMetas_();
+    if (metasQ[claveLinea(linea.concepto)]) { delete metasQ[claveLinea(linea.concepto)]; guardarMetas_(metasQ); }
     SpreadsheetApp.flush();
     return Object.assign({ quitada: true, mesesConMonto: mesesConMonto }, lineasDelMes_(mes));
   } finally {

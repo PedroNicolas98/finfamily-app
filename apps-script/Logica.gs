@@ -1154,6 +1154,57 @@ function mesDelCiclo(fecha) {
 }
 
 // ---------------------------------------------------------------------------
+// Metas de ahorro con fecha (motor 1.15.0): a cada línea de ahorro se le pone un objetivo y el mes límite;
+// se calcula cuánto falta, cuánto apartar al mes y si con lo que se pone este mes se llega.
+// ---------------------------------------------------------------------------
+
+var MAXIMO_METAS = 30;
+
+/** Config guardada saneada: { claveLinea: {concepto, objetivo, fecha ('YYYY-MM')} }. */
+function metasDesde(texto) {
+  var obj = {};
+  try { obj = typeof texto === 'string' ? JSON.parse(texto || '{}') : (texto || {}); } catch (err) { obj = {}; }
+  var salida = {}, n = 0;
+  Object.keys(obj || {}).forEach(function (k) {
+    var v = obj[k] || {};
+    var concepto = String(v.concepto || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    var objetivo = Math.round(Number(v.objetivo) * 100) / 100;
+    var fecha = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(v.fecha || '')) ? v.fecha : '';
+    if (!concepto || !(objetivo > 0) || !fecha || n >= MAXIMO_METAS) return;
+    salida[claveLinea(concepto)] = { concepto: concepto, objetivo: objetivo, fecha: fecha };
+    n++;
+  });
+  return salida;
+}
+
+/** Meses de 'desde' a 'hasta' ('2026-11' a '2027-02' = 3). */
+function mesesEntre(desde, hasta) {
+  var a = String(desde).split('-').map(Number), b = String(hasta).split('-').map(Number);
+  return (b[0] * 12 + b[1]) - (a[0] * 12 + a[1]);
+}
+
+/**
+ * Cómo va una meta en el mes 'mes': lo que ya hay (disponible, con lo de este mes) contra el objetivo.
+ * porMes = lo que hay que apartar en cada mes que queda (después de este) hasta el mes límite.
+ * estado: 'lista' (ya llegó), 'bien' (lo de este mes alcanza para ese ritmo), 'atrasada' o 'vencida' (se acabó el plazo).
+ */
+function planDeMeta(objetivo, fecha, disponible, aporteMes, mes) {
+  var obj = Math.round(Number(objetivo) * 100) / 100;
+  var hay = Math.round((Number(disponible) || 0) * 100) / 100;
+  var faltan = Math.max(0, Math.round((obj - hay) * 100) / 100);
+  var restantes = mesesEntre(mes, fecha);
+  var porMes = 0, estado;
+  if (faltan <= 0) estado = 'lista';
+  else if (restantes <= 0) estado = 'vencida';
+  else {
+    porMes = Math.ceil((faltan / restantes) * 100) / 100;
+    estado = (Number(aporteMes) || 0) + 0.005 >= porMes ? 'bien' : 'atrasada';
+  }
+  return { objetivo: obj, fecha: fecha, faltan: faltan, mesesRestantes: restantes, porMes: porMes, estado: estado,
+    pct: obj > 0 ? Math.max(0, Math.min(100, Math.round((hay / obj) * 1000) / 10)) : 0 };
+}
+
+// ---------------------------------------------------------------------------
 // Gastos fijos automáticos (motor 1.13.0): cada fijo tiene su día; los de débito automático se marcan
 // pagados solos ese día y los demás se recuerdan hasta que se marquen.
 // ---------------------------------------------------------------------------
