@@ -4055,15 +4055,35 @@ body.menu-chico .cuenta-menu.nav .cuenta-boton:has(.avatar.con-foto):focus-visib
 /* BCP: logo con las flechas naranjas y la Q de Qore de fondo */
 .bcp-logo { font-style: italic; font-weight: 900; font-size: clamp(0.95rem, 6cqw, 1.35rem); letter-spacing: -0.03em; display: inline-flex; align-items: center; gap: 0.06em; }
 .bcp-logo b { color: #FF7A00; font-style: normal; font-weight: 900; transform: scaleX(0.9); }
-.bcp-logo b:first-child { color: #FFFFFF; }
-/* Sip: "sip" grande en vertical, celeste con letras oscuras o negra con letras blancas */
-.plastico[data-diseno="sip-celeste"] { color: #0B1220; background: linear-gradient(150deg, #33B4F5, #1C9BE2); }
+/* Sip (v143, copiado de la tarjeta real): negra o celeste, "sip" grande a la derecha con su punto,
+   VISA y "Crédito" de costado en el borde; sin número ni sin contacto. Los datos de la app van en la columna izquierda. */
+.plastico[data-diseno="sip-negra"] { background: linear-gradient(160deg, #1A1B1F, #050506); }
+.plastico[data-diseno="sip-celeste"] { color: #0B0D12; background: linear-gradient(160deg, #35B6F6, #1E9DE4); }
 .plastico[data-diseno="sip-celeste"] .plastico-monto strong { text-shadow: none; }
-.plastico[data-diseno="sip-celeste"] .sip-letras, .plastico[data-diseno="sip-celeste"] .sip-punto { fill: #0B0D12; }
-.plastico[data-diseno="sip-negra"] .sip-letras, .plastico[data-diseno="sip-negra"] .sip-punto { fill: #FFFFFF; }
+.plastico[data-diseno="sip-negra"] .sip-letras, .plastico[data-diseno="sip-negra"] .sip-visa, .plastico[data-diseno="sip-negra"] .sip-credito { fill: #FFFFFF; }
 .plastico[data-diseno="sip-negra"] .sip-punto { fill: #29AEF3; }
-.plastico[data-diseno^="sip"] .plastico-top { justify-content: flex-start; }
-.plastico[data-diseno^="sip"] > .plastico-top, .plastico[data-diseno^="sip"] > .plastico-medio, .plastico[data-diseno^="sip"] > .plastico-numero, .plastico[data-diseno^="sip"] > .plastico-pie { padding-right: 25cqw; }
+.plastico[data-diseno="sip-celeste"] .sip-letras, .plastico[data-diseno="sip-celeste"] .sip-visa, .plastico[data-diseno="sip-celeste"] .sip-credito, .plastico[data-diseno="sip-celeste"] .sip-punto { fill: #0B0D12; }
+.plastico[data-diseno^="sip"] .plastico-top > .icono, .plastico[data-diseno^="sip"] .plastico-numero, .plastico[data-diseno^="sip"] .plastico-red { display: none; }
+.plastico[data-diseno^="sip"] > .plastico-medio, .plastico[data-diseno^="sip"] > .plastico-pie { padding-left: 13cqw; padding-right: 48cqw; }
+.plastico[data-diseno^="sip"] > .plastico-top { padding-left: 13cqw; padding-right: 14cqw; }
+.plastico[data-diseno^="sip"] > .plastico-top { padding-top: 0; min-height: 4cqw; }
+.plastico[data-diseno^="sip"] .plastico-medio { flex-direction: column-reverse; align-items: flex-start; justify-content: flex-end; gap: 3cqw; margin-top: 0; }
+.plastico[data-diseno^="sip"] .plastico-monto { align-items: flex-start; text-align: left; }
+.plastico[data-diseno^="sip"] .plastico-monto strong { font-size: clamp(1rem, 7cqw, 1.75rem); }
+.plastico[data-diseno^="sip"] .plastico-pie { flex-wrap: wrap; }
+/* Chip plateado, como en las tarjetas Sip y BCP Qore */
+.plastico:is([data-diseno^="sip"], [data-diseno="bcp-qore"], [data-diseno="bcp-qore-platinum"]) .plastico-chip { background: linear-gradient(135deg, #F1F3F5, #B4BBC3 55%, #8E969F); }
+/* BCP Qore (v143, copiado de la tarjeta real): azul que oscurece hacia abajo, la Q como un anillo grande y su estrella; sin número al frente */
+.plastico[data-diseno="bcp-qore"] { background: linear-gradient(180deg, #0B76CB 0%, #1158B5 45%, #16388E 100%); }
+.plastico[data-diseno="bcp-qore-gold"] { background: linear-gradient(180deg, #DDBA6E 0%, #C9A04F 50%, #A47B32 100%); }
+.plastico[data-diseno="bcp-qore-platinum"] { background: linear-gradient(180deg, #BDC2C8 0%, #A2A8AF 50%, #7E858D 100%); }
+.plastico[data-diseno="bcp-qore"] .qore-q path:first-child { stroke: #4DA6EA; stroke-opacity: 0.55; }
+.plastico[data-diseno="bcp-qore"] .qore-q path:last-child { fill: #4DA6EA; fill-opacity: 0.6; }
+.plastico:is([data-diseno="bcp-qore-gold"], [data-diseno="bcp-qore-platinum"]) .qore-q path:first-child { stroke: #FFFFFF; stroke-opacity: 0.28; }
+.plastico:is([data-diseno="bcp-qore-gold"], [data-diseno="bcp-qore-platinum"]) .qore-q path:last-child { fill: #FFFFFF; fill-opacity: 0.32; }
+.plastico[data-diseno^="bcp-qore"] .qore-txt { fill: #FFFFFF; }
+.plastico[data-diseno^="bcp-qore"] .plastico-numero { display: none; }
+.plastico[data-diseno="bcp-clasica"] .qore-txt { display: none; }
 /* Ripley: gris con la R grande y la franja de colores al borde */
 .ripley-logo { font-size: clamp(0.62rem, 3.6cqw, 0.86rem); font-weight: 600; letter-spacing: 0.01em; opacity: 0.92; }
 .plastico-franja { position: absolute; z-index: -1; right: 4%; top: 22%; bottom: 14%; width: 1.4%; border-radius: 2px; background: linear-gradient(#E4002B 0 46%, #F5B400 46% 72%, #7B2D8E 72%); }
