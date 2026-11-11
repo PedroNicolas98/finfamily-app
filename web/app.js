@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v165';
+const VERSION_APP = 'finfamily-v166';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -1136,7 +1136,7 @@ function filaMov(c, derecha, sinFecha = false) {
 
 // Caja con título y, si hace falta, un enlace o dato a la derecha.
 const ICONO_PANEL = { 'Consumos por día': 'presupuesto', '¿En qué se fue?': 'dona', 'Últimos consumos': 'lista',
-  'Gastos hormiga': 'billetera', 'Calendario de pagos': 'calendario', Ingresos: 'sube', Gastos: 'baja', Ahorros: 'billetera', 'Tus tarjetas': 'tarjetas', 'Gastos fijos': 'check', 'Quién gastó': 'personas' };
+  'Gastos hormiga': 'billetera', 'Calendario de pagos': 'calendario', Ingresos: 'sube', 'Lo que entra': 'sube', Gastos: 'baja', Ahorros: 'billetera', 'Tus tarjetas': 'tarjetas', 'Gastos fijos': 'check', 'Quién gastó': 'personas' };
 function tituloSeccion(titulo) {
   return h('h2', {}, ICONO_PANEL[titulo] ? h('span', { class: 'titulo-ico' }, icono(ICONO_PANEL[titulo])) : null, titulo);
 }
@@ -3204,9 +3204,9 @@ function editarConsumo(t, c) {
       h('button', { type: 'button', class: 'boton icono-solo', 'aria-label': 'Cerrar', title: 'Cerrar', onclick: cerrar }, icono('cerrar'))),
     h('div', { class: 'modal-cuerpo' },
       cMonto,
-      campo('ed-fecha', 'Fecha', selectorFecha(inFecha), 'campo-chico'),
+      campo('ed-fecha', '¿Cuándo?', selectorFecha(inFecha), 'campo-chico'),
       cDesc,
-      campo('ed-concepto', 'Concepto', selConcepto),
+      campo('ed-concepto', '¿En qué fue?', selConcepto),
       conPagadoCon ? campo('ed-medio', 'Pagué con', selMedio) : null,
       motorBolsas() ? campo('ed-origen', 'De dónde sale', selOrigen) : null,
       campo('ed-nota', 'Nota', inNota)),
@@ -3454,7 +3454,7 @@ async function vistaInicio() {
     const reparto = [
       { etiqueta: 'Gastos', valor: gastos, clase: 'r-gastos' },
       { etiqueta: 'Ahorros', valor: ahorros, clase: 'r-ahorros' },
-      { etiqueta: 'Saldo libre', valor: libre, clase: 'r-libre' },
+      { etiqueta: 'Sobra', valor: libre, clase: 'r-libre' },
     ];
     hero.append(
       h('div', { class: 'hero-pagar hero-reparto' },
@@ -3667,7 +3667,7 @@ function controlesGastos(seccion) {
       li.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 520, delay: Math.min(i * 14, 160), easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'backwards' });
     });
   };
-  const ordenes = [['hoja', 'Excel'], ['monto', 'Monto'], ['nombre', 'A–Z'], ['pendiente', 'Por pagar']];
+  const ordenes = [['hoja', 'Como la hoja'], ['monto', 'Monto'], ['nombre', 'A–Z'], ['pendiente', 'Por pagar']];
   const botonesOrden = ordenes.map(([id, texto]) => h('button', { type: 'button', 'aria-pressed': String(pref.orden === id),
     title: id === 'hoja' ? 'En el mismo orden que la hoja' : id === 'monto' ? 'Del más grande al más chico' : id === 'nombre' ? 'Por nombre' : 'Primero lo que falta pagar',
     onclick: () => { pref.orden = id; recordar(); botonesOrden.forEach((b, k) => b.setAttribute('aria-pressed', String(ordenes[k][0] === id))); ordenar(true); } }, texto));
@@ -4788,7 +4788,7 @@ function panelPresupuestoAdmin() {
           h('i', { class: `pf-punto ${x.clase}`, 'aria-hidden': 'true' }), h('span', {}, x.etiqueta), h('strong', {}, soles(x.valor)))))));
     cuerpo.replaceChildren(resumen,
       h('div', { class: 'pa-izq' },
-        grupo('ingresos', 'Ingresos', 'sube', h('div', { class: 'pa-lista' }, ingresos.map((l) => fila(l, false))), tIng),
+        grupo('ingresos', 'Lo que entra', 'sube', h('div', { class: 'pa-lista' }, ingresos.map((l) => fila(l, false))), tIng),
         grupo('ahorros', 'Ahorros', 'billetera', h('div', { class: 'pa-lista' }, ahorros.length ? ahorros.map((l) => fila(l, false)) : h('p', { class: 'suave' }, 'Sin ahorros.')), tAho)),
       grupo('gastos', 'Gastos', 'baja', h('div', { class: 'pa-cuerpo-gastos' },
         tcs.length ? h('div', { class: 'pa-tcs', title: 'Lo que se paga de cada tarjeta lo calcula la hoja con los consumos: no se cambia aquí.' },
@@ -5929,9 +5929,9 @@ async function vistaRegistrar() {
     cargarRapido('presupuesto', { mes: mc }, 'presupuesto:' + mc).then(() => pintarSemaforo()).catch(() => null);
     cargarRapido('tarjetas', { hoy: hoyISO(), incluirPagados: true }, 'tarjetas-todo').then(() => pintarSemaforo()).catch(() => null);
   }
-  const campoConcepto = h('fieldset', { class: 'f-conceptos' }, h('legend', {}, 'Concepto'), h('div', { class: 'opciones chicas' }, botonesConcepto));
+  const campoConcepto = h('fieldset', { class: 'f-conceptos' }, h('legend', {}, '¿En qué gastaste?'), h('div', { class: 'opciones chicas' }, botonesConcepto));
   const cajaFecha = selectorFecha(inFecha);
-  const campoFecha = h('div', { class: 'campo' }, h('label', { for: 'fecha' }, 'Fecha'), cajaFecha);
+  const campoFecha = h('div', { class: 'campo' }, h('label', { for: 'fecha' }, '¿Cuándo?'), cajaFecha);
   inFecha.addEventListener('change', () => limpiarError(campoFecha));
   // Últimos gastos: primero los registrados en esta visita, luego los más recientes que ya están en el Sheets.
   const listaRecientes = h('ul', { class: 'rec-lista' });
@@ -6077,7 +6077,7 @@ async function vistaRegistrar() {
       vistaPrevia,
       campoConcepto,
       h('div', { class: 'r-fila r-fila-quien' }, campoQuien,
-        h('fieldset', { class: 'r-fecha-campo' }, h('legend', {}, 'Fecha'),
+        h('fieldset', { class: 'r-fecha-campo' }, h('legend', {}, '¿Cuándo?'),
           h('div', { class: 'r-fecha', role: 'group', 'aria-label': 'Fecha' }, fechaHoy, fechaAyer, cajaFecha))),
       h('div', { class: 'r-fila r-fila-textos' },
         h('div', { class: 'campo r-desc' }, inDesc, sugerencia),
@@ -6825,7 +6825,7 @@ async function vistaPresupuesto() {
   const partes = [
     { etiqueta: 'Gastos', valor: gastos, clase: 'r-gastos' },
     { etiqueta: 'Ahorros', valor: ahorros, clase: 'r-ahorros' },
-    { etiqueta: 'Saldo libre', valor: libre, clase: 'r-libre' },
+    { etiqueta: 'Sobra', valor: libre, clase: 'r-libre' },
   ];
   const mesNombre = (nombreMesClave(d.mes) || d.etiquetaMes || '').split(' ')[0].toLowerCase();
   const deltas = { ingresos: h('span', { class: 'hero-delta' }), gastos: h('span', { class: 'hero-delta' }), ahorros: h('span', { class: 'hero-delta' }), saldo: h('span', { class: 'hero-delta' }) };
@@ -6915,21 +6915,21 @@ async function vistaPresupuesto() {
   const hero = h('section', { class: 'hero hero-meses' }, heroFondo(),
     sinIngresos
       ? h('div', { class: 'hero-principal' },
-        h('p', { class: 'hero-etq' }, `Saldo final de ${mesNombre}`),
+        h('p', { class: 'hero-etq' }, `Sobra en ${mesNombre}`),
         h('p', { class: 'hero-vacio' }, `${nombreMesClave(d.mes) || 'Este mes'} aún no tiene ingresos cargados.`))
       : h('div', { class: 'hero-principal' },
-        h('p', { class: 'hero-etq' }, `Saldo final de ${mesNombre}`),
+        h('p', { class: 'hero-etq' }, `Sobra en ${mesNombre}`),
         h('p', { class: 'hero-monto', 'data-rico': '', 'data-contar': String(tot.saldo || 0) }, soles(0)),
          h('p', { class: 'hero-personal' }, h('span', { class: 'avatares' }, responsables().map((nombre) => avatar(nombre))),
-          h('span', {}, h('strong', {}, soles(tot.saldoPersonal)), ' c/u'))),
+          h('span', {}, h('strong', {}, soles(tot.saldoPersonal)), ' para cada uno'))),
     h('div', { class: 'meses-barras', role: 'group', 'aria-label': 'Lo que sobra o falta cada mes' },
       h('div', { class: 'mb-cab' }, h('span', { class: 'mb-titulo' }, 'Lo que sobra o falta cada mes'), leyendaMeses),
       plano),
     h('ul', { class: 'hero-datos' },
-      heroDato('sube', 'Ingresos', soles(tot.ingresos), deltas.ingresos),
+      heroDato('sube', 'Lo que entra', soles(tot.ingresos), deltas.ingresos),
       heroDato('baja', 'Gastos', soles(tot.gastos), deltas.gastos),
       heroDato('billetera', 'Ahorros', soles(tot.ahorros), deltas.ahorros),
-      heroDato('check', 'Saldo libre', soles(libre), deltas.saldo)),
+      heroDato('check', 'Sobra', soles(libre), deltas.saldo)),
     flujo);
 
   // Cambio frente al mes anterior (se completa cuando llegan esos datos, sin frenar la pantalla).
@@ -6956,7 +6956,7 @@ async function vistaPresupuesto() {
   }
 
   const secciones = [
-    seccion('ingresos', 'Ingresos', 'Total ingresos', tot.ingresos),
+    seccion('ingresos', 'Lo que entra', 'Total que entra', tot.ingresos),
     seccion('ahorros', 'Ahorros', 'Total ahorros', tot.ahorros),
     seccion('gastos', 'Gastos', 'Total gastos', tot.gastos),
   ];
