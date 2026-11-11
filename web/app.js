@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v157';
+const VERSION_APP = 'finfamily-v158';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -687,9 +687,43 @@ function estadoPill(vence, pendiente, pago) {
   return h('span', { class: `pill ${e.clase}`.trim() }, e.texto);
 }
 
+// v158: lo pagado con débito, Yape, Plin, Lemon o efectivo (hoja Gastos Hormiga) se muestra como una tarjeta por cuenta.
+// Yape cuenta en la débito BCP y Plin en la Interbank de quien gastó. Las débito de quien mira salen aunque estén en cero.
+function cuentasDeHormiga(hormiga) {
+  if (!hormiga) return [];
+  const debitos = (leerCache('config')?.datos?.medios || []).filter((m) => m.tipo === 'debito');
+  if (!debitos.length) return [hormiga];
+  const yo = usuarioActual()?.nombre || '';
+  const grupos = new Map();
+  const grupo = (clave, datos) => { if (!grupos.has(clave)) grupos.set(clave, { ...datos, consumos: [] }); return grupos.get(clave); };
+  const debitoDe = (banco, quien) => debitos.find((d) => normalizar(d.banco) === normalizar(banco) && mismoNombre(d.titular, quien || ''));
+  const deDebito = (d) => grupo(d.id, { id: d.id, nombre: d.etiqueta, banco: d.banco, titular: d.titular, tipo: 'debito' });
+  for (const d of debitos) if (yo && mismoNombre(d.titular, yo)) deDebito(d);
+  for (const g of hormiga.estados || []) for (const cons of g.consumos || []) {
+    const m = normalizar(cons.medio || '');
+    const cuenta = debitos.find((d) => normalizar(d.etiqueta) === m)
+      || (m === 'yape' ? debitoDe('BCP', cons.responsable) : m === 'plin' ? debitoDe('Interbank', cons.responsable) : null);
+    const gr = cuenta ? deDebito(cuenta)
+      : m === 'lemon' ? grupo('LEMON', { id: 'LEMON', nombre: 'Lemon', banco: 'Lemon', titular: cons.responsable, tipo: 'debito' })
+        : m === 'efectivo' ? grupo('EFECTIVO', { id: 'EFECTIVO', nombre: 'Efectivo', tipo: 'efectivo' })
+          : m === 'yape' || m === 'plin' ? grupo(m.toUpperCase(), { id: m.toUpperCase(), nombre: cons.medio, banco: m === 'yape' ? 'BCP' : 'Interbank', titular: cons.responsable, tipo: 'debito' })
+            : grupo('OTROS', { id: 'OTROS', nombre: 'Otros pagos', tipo: 'efectivo' });
+    gr.consumos.push(cons);
+  }
+  return [...grupos.values()].map((x) => {
+    const total = Math.round(x.consumos.reduce((sum, k) => sum + (Number(k.monto) || 0), 0) * 100) / 100;
+    const usos = [...new Set(x.consumos.map((k) => (/^d[eé]bito/i.test(k.medio || '') ? 'Débito' : k.medio)).filter(Boolean))];
+    return { id: x.id, nombre: x.nombre, hoja: hormiga.hoja, base: hormiga, cuenta: { ...x, usos }, pendiente: total, proximoVence: null,
+      estados: [{ vence: '', pago: '', total, pendiente: total, consumos: x.consumos }] };
+  });
+}
+const tarjetasVista = (lista) => (lista || []).flatMap((t) => (t.id === 'HORMIGA' ? cuentasDeHormiga(t) : [t]));
+
 // Tarjeta dibujada como plástico: marca, monto por pagar, titular y vencimiento.
 function tarjetaVisual(t, comoEnlace = true, opciones = {}) {
-  const esH = t.id === 'HORMIGA';
+  const cta = t.cuenta || null;
+  const esDeb = cta?.tipo === 'debito';
+  const esH = t.id === 'HORMIGA' || !!cta;
   const dis = esH ? null : disenoTC(t, opciones.diseno);
   const D = dis ? DISENOS_TC[dis] : null;
   const pagoTC = esH ? null : pagoDeTC(t);
@@ -706,21 +740,23 @@ function tarjetaVisual(t, comoEnlace = true, opciones = {}) {
   const digitos = /^\d{4}$/.test(d.digitos || '') ? d.digitos : null;
   // Con diseño real: logo y dibujo del banco; el nombre de la tarjeta queda para lectores de pantalla.
   const nombre = NOMBRE_TC[t.id] || t.nombre;
-  let marca = h('span', { class: 'plastico-marca', 'data-sub': esH ? 'Billetera' : 'Tarjeta de crédito' }, nombre);
-  let arriba = icono(esH ? 'billetera' : 'sin-contacto');
+  let marca = h('span', { class: 'plastico-marca', 'data-sub': esDeb ? 'Tarjeta de débito' : esH ? 'Billetera' : 'Tarjeta de crédito' }, esDeb ? cta.banco : nombre);
+  let arriba = icono(esH && !esDeb ? 'billetera' : 'sin-contacto');
+  if (esDeb && normalizar(cta.banco) === 'bcp') marca = h('span', { class: 'plastico-marca diseno bcp-logo', title: nombre }, h('b', {}, '›'), 'BCP', h('b', {}, '›'));
+  const claseCta = esDeb ? (normalizar(cta.banco) === 'lemon' ? 'TD-lemon' : claseDebito(cta.banco)) : cta ? 'HORMIGA' : t.id;
   if (D?.banco === 'Interbank') { marca = h('span', { class: 'plastico-marca diseno', title: nombre }, 'Benefit'); arriba = svgFijo(LOGO_IBK(D.logo), 'plastico-logo'); }
   else if (D?.banco === 'BCP') marca = h('span', { class: 'plastico-marca diseno bcp-logo', title: nombre }, h('b', {}, '›'), 'BCP', h('b', {}, '›'));
   else if (D?.banco === 'Sip') marca = h('span', { class: 'plastico-marca diseno oculta' }, nombre);
   else if (D?.banco === 'Ripley') { marca = h('span', { class: 'plastico-marca diseno oculta' }, nombre); arriba = h('span', { class: 'ripley-logo', 'aria-hidden': 'true' }, 'banco ripley'); }
   const arte = D ? (ARTE_TC[dis] || ARTE_TC[D.banco] || '') : '';
-  return h(comoEnlace ? 'a' : 'div', { class: `plastico tc-${t.id}${esH ? ' hormiga' : ''}`, href: comoEnlace ? `#tarjeta-${t.id}` : null,
+  return h(comoEnlace ? 'a' : 'div', { class: `plastico tc-${claseCta}${esH && !esDeb ? ' hormiga' : ''}${esDeb ? ' debito' : ''}`, href: comoEnlace ? `#tarjeta-${t.id}` : null,
     'data-diseno': dis, style: D ? `--c1:${D.c[0]};--c2:${D.c[1]};--acento:${D.c[2]}` : null },
     h('i', { class: 'plastico-brillo', 'aria-hidden': 'true' }),
     arte ? h('i', { class: 'plastico-arte', 'aria-hidden': 'true' }, svgFijo(arte, 'arte-svg')) : null,
     D?.banco === 'Ripley' ? h('i', { class: 'plastico-franja', 'aria-hidden': 'true' }) : null,
     h('span', { class: 'plastico-top' }, marca, arriba),
     h('span', { class: 'plastico-medio' },
-      esH ? null : h('span', { class: 'plastico-chip', 'aria-hidden': 'true' }, h('i'), h('i')),
+      esH && !esDeb ? null : h('span', { class: 'plastico-chip', 'aria-hidden': 'true' }, h('i'), h('i')),
       h('span', { class: 'plastico-monto' },
         h('span', {}, esH ? 'Gastado este mes' : 'Por pagar'),
         h('strong', { 'data-rico': '', 'data-contar': String(t.pendiente || 0) }, soles(0)))),
@@ -729,7 +765,9 @@ function tarjetaVisual(t, comoEnlace = true, opciones = {}) {
       h('i', { class: 'plastico-holo' })),
     h('span', { class: 'plastico-pie' },
       h('span', { class: 'plastico-datos' },
-        h('span', { class: 'plastico-dato' }, h('small', {}, esH ? 'Medios de pago' : 'Titular'), h('span', { class: 'plastico-titular' }, esH ? 'Yape · Plin · Efectivo' : (d.nombre || duenioTC(t)))),
+        esDeb ? h('span', { class: 'plastico-dato' }, h('small', {}, 'Titular'), h('span', { class: 'plastico-titular' }, nombreCorto(cta.titular) || '—'))
+          : h('span', { class: 'plastico-dato' }, h('small', {}, esH ? 'Medios de pago' : 'Titular'), h('span', { class: 'plastico-titular' }, cta ? (cta.usos.join(' · ') || cta.nombre) : esH ? 'Yape · Plin · Efectivo' : (d.nombre || duenioTC(t)))),
+        esDeb ? h('span', { class: 'plastico-dato' }, h('small', {}, 'Pagos con'), h('span', {}, cta.usos.join(' · ') || 'Sin gastos')) : null,
         e ? h('span', { class: `plastico-dato vence ${e.clase}`.trim() }, h('small', {}, rotulo), h('span', {}, valor)) : null),
       esH ? null : marcaRed(redTC(t))));
 }
@@ -6228,7 +6266,8 @@ function porConceptoDe(consumos, maximo) {
 }
 
 async function vistaTarjetas() {
-  const r = await obtenerTarjetas();
+  // Las cuentas de débito salen de la configuración: si aún no está en el equipo, se trae junto con las tarjetas.
+  const [r] = await Promise.all([obtenerTarjetas(), leerCache('config') ? null : cargar('config', {}, 'config').catch(() => null)]);
   marcarDatos(r);
   const lista = r.datos.tarjetas || [];
   const deCredito = lista.filter((t) => t.id !== 'HORMIGA');
@@ -6254,7 +6293,7 @@ async function vistaTarjetas() {
     h('ul', { class: 'hero-datos' },
       heroDato('calendario', 'Próximo pago', proxima ? fechaCorta(fechaPagoTC(proxima)) : 'Ninguno'),
       heroDato('tarjetas', 'La más alta', conDeuda[0] ? nombreCortoTC(conDeuda[0]) : 'Ninguna'),
-      heroDato('billetera', 'Gastos hormiga', soles(hormiga?.pendiente || 0))));
+      heroDato('billetera', 'Con débito', soles(hormiga?.pendiente || 0))));
 
   // Calendario de pagos: de hoy a la última fecha
   let panelRuta = null;
@@ -6276,8 +6315,8 @@ async function vistaTarjetas() {
 
   // Billetera: las tarjetas van encimadas, como en una billetera. La que vence primero queda adelante, completa;
   // de las demás se ve la franja de arriba con el nombre y lo que falta pagar.
-  const peso = (t) => (t.id === 'HORMIGA' ? 0 : t.pendiente > 0 && t.proximoVence ? 2 : 1);
-  const enPila = [...lista].sort((a, b) => peso(a) - peso(b) || String(b.proximoVence || '').localeCompare(String(a.proximoVence || '')));
+  const peso = (t) => (t.id === 'HORMIGA' || t.cuenta ? 0 : t.pendiente > 0 && t.proximoVence ? 2 : 1);
+  const enPila = tarjetasVista(lista).sort((a, b) => peso(a) - peso(b) || String(b.proximoVence || '').localeCompare(String(a.proximoVence || '')));
   const billetera = h('div', { class: 'billetera' }, enPila.map((t, i) => {
     const el = tarjetaVisual(t);
     el.style.setProperty('--i', String(i));
@@ -6293,14 +6332,14 @@ async function vistaTarjetas() {
 }
 
 async function vistaTarjeta(id) {
-  const r = await obtenerTarjetas();
+  const [r] = await Promise.all([obtenerTarjetas(), leerCache('config') ? null : cargar('config', {}, 'config').catch(() => null)]);
   marcarDatos(r);
-  const t = (r.datos.tarjetas || []).find((x) => x.id === id);
+  const t = tarjetasVista(r.datos.tarjetas).find((x) => x.id === id) || (r.datos.tarjetas || []).find((x) => x.id === id);
   const volver = h('a', { class: 'volver', href: '#tarjetas' }, icono('atras'), 'Tarjetas');
   if (!t) return h('div', { class: 'pantalla' }, volver, vacio('No encontramos esta tarjeta.'));
 
   if (estado.selTarjeta !== id) { estado.selTarjeta = id; estado.seleccion = new Set(); }
-  const esHormiga = t.id === 'HORMIGA';
+  const esHormiga = t.id === 'HORMIGA' || !!t.cuenta;
   const enEspera = (c) => estado.filasEnEspera.has(`${t.hoja}#${c.fila}`);
   const marcable = (c) => c.estado !== 'Pagado' && !enEspera(c);
   const pendientesTC = consumosDe([t], () => true).filter((c) => esHormiga || c.estado !== 'Pagado');
@@ -6318,8 +6357,8 @@ async function vistaTarjeta(id) {
       h('section', { class: 'panel resumen-tc' },
         esHormiga ? null : h('div', { class: 'linea' }, h('span', { class: 'suave' }, 'Próximo pago'), estadoPill(t.proximoVence, t.pendiente, pagoDeTC(t))),
         h('div', { class: 'linea' }, h('span', { class: 'suave' }, esHormiga ? 'Gastos del mes' : 'Consumos por pagar'), h('strong', {}, String(porPagar))),
-        duenioTC(t) ? h('div', { class: 'linea' }, h('span', { class: 'suave' }, 'Titular'),
-          h('span', { class: 'titular' }, avatar(duenioTC(t), 'chico'), duenioTC(t))) : null,
+        (t.cuenta ? nombreCorto(t.cuenta.titular) : duenioTC(t)) ? h('div', { class: 'linea' }, h('span', { class: 'suave' }, 'Titular'),
+          h('span', { class: 'titular' }, avatar(t.cuenta ? nombreCorto(t.cuenta.titular) : duenioTC(t), 'chico'), t.cuenta ? nombreCorto(t.cuenta.titular) : duenioTC(t))) : null,
         partes.length ? h('div', { class: 'resumen-conceptos' },
           h('p', { class: 'etq' }, 'En qué se usó'),
           barraPartes(partes.map((p, i) => ({ ...p, clase: `d${i}` }))),
@@ -6355,7 +6394,7 @@ async function vistaTarjeta(id) {
 
   const grupos = t.estados || [];
   if (!grupos.length || grupos.every((g) => !(g.consumos || []).length)) {
-    col.append(vacio(esHormiga ? 'Sin gastos hormiga este mes.' : 'No hay consumos pendientes.'));
+    col.append(vacio(t.cuenta ? 'Sin gastos con esta cuenta este mes.' : esHormiga ? 'Sin gastos hormiga este mes.' : 'No hay consumos pendientes.'));
   }
 
   const botonesGrupo = [];
@@ -6436,10 +6475,10 @@ async function vistaTarjeta(id) {
           h('div', { class: 'consumo-texto', onclick: (ev) => {
             // En pantallas táctiles no hay lápiz: tocar el nombre abre la edición.
             if (enEspera(c) || !matchMedia('(hover: none)').matches) return;
-            ev.preventDefault(); editarConsumo(t, c);
+            ev.preventDefault(); editarConsumo(t.base || t, c);
           } }, h('span', {}, limpiarComercio(c.descripcion)), h('span', { class: 'suave' }, sub, c.origen ? h('em', { class: 'de-donde' }, textoOrigen(c.origen)) : null)),
           enEspera(c) ? null : h('button', { type: 'button', class: 'boton-editar', title: 'Editar', 'aria-label': `Editar ${limpiarComercio(c.descripcion)}`,
-            onclick: (ev) => { ev.preventDefault(); ev.stopPropagation(); editarConsumo(t, c); } }, icono('lapiz')),
+            onclick: (ev) => { ev.preventDefault(); ev.stopPropagation(); editarConsumo(t.base || t, c); } }, icono('lapiz')),
           h('div', { class: 'derecha' }, h('strong', {}, soles(c.monto)),
             etiquetaEstado ? h('span', { class: 'etiqueta-estado' }, etiquetaEstado) : null)));
         return franja ? [franja, fila] : [fila];

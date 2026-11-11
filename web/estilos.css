@@ -4342,3 +4342,6 @@ body .grupo-cabecera .derecha .acciones { background: none; border: 0; box-shado
 }
 /* v156: Lemon (tarjeta negra con verde neón) */
 .tc-TD-lemon { --c1: #1E1F1C; --c2: #050505; --acento: #00F068; --op: #00C45A; }
+/* v158: con muchas tarjetas (crédito + débito + efectivo) la pila se junta un poco más para no dar scroll */
+body .pantalla.tarjetas .billetera:has(> .plastico:nth-child(9)) > .plastico + .plastico { margin-top: calc(-63.05% + 42px); }
+body .pantalla.tarjetas .billetera:has(> .plastico:nth-child(12)) > .plastico + .plastico { margin-top: calc(-63.05% + 36px); }
