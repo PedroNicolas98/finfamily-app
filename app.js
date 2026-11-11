@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v174';
+const VERSION_APP = 'finfamily-v175';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -2133,6 +2133,65 @@ function chipDiaFijo(f) {
 }
 
 // Inicio: fijos que vencen en 2 días o menos (o ya vencieron este mes) y siguen sin marcar.
+// v175: cómo vas en este mes de cobro (desde el último cobro): lo que llevas gastado en el día a día (tarjetas,
+// débito, Yape, Plin, Lemon y efectivo; los pagos fijos no son gastos anotados), a cuánto llegarías a este ritmo y
+// cuánto llevabas el mes anterior a la misma altura (mismo número de días desde el cobro), en total y por tipo.
+function comoVas(tarjetas) {
+  const hoy = hoyISO();
+  const mesC = mesDelCiclo(hoy);
+  const { desde, hasta } = cicloDelMes(mesC);
+  const ant = cicloDelMes(sumarMes(mesC, -1));
+  const dias = (a, b) => Math.round((deISO(b) - deISO(a)) / 86400000) + 1;
+  const masDias = (f, n) => { const d = deISO(f); return iso(new Date(d.getFullYear(), d.getMonth(), d.getDate() + n)); };
+  const total = dias(desde, hasta);
+  const pasados = Math.max(1, Math.min(total, dias(desde, hoy)));
+  const corte = masDias(ant.desde, pasados - 1);
+  const act = new Map(), antMismo = new Map(), antTotal = new Map();
+  let primero = null;
+  for (const cons of consumosDe(tarjetas || [], () => true)) {
+    const m = Number(cons.monto) || 0;
+    if (!cons.fecha || !(m > 0)) continue;
+    if (!primero || cons.fecha < primero) primero = cons.fecha;
+    const k = cons.concepto || 'Sin tipo';
+    const sumar = (mapa) => mapa.set(k, (mapa.get(k) || 0) + m);
+    if (cons.fecha >= desde && cons.fecha <= hoy) sumar(act);
+    else if (cons.fecha >= ant.desde && cons.fecha <= ant.hasta) { sumar(antTotal); if (cons.fecha <= corte) sumar(antMismo); }
+  }
+  const suma = (mapa) => Math.round([...mapa.values()].reduce((x, v) => x + v, 0) * 100) / 100;
+  const llevas = suma(act);
+  // Hay mes anterior para comparar solo si los datos lo cubren (con unos días de gracia al inicio).
+  const hayAnterior = !!primero && primero <= masDias(ant.desde, 5) && suma(antTotal) > 0;
+  const conceptos = [...act.keys()].map((k) => ({ concepto: k, llevas: act.get(k), antes: antMismo.get(k) || 0 }))
+    .sort((a, b) => b.llevas - a.llevas);
+  return { desde, hasta, total, pasados, llevas, proyectado: pasados >= 5 ? Math.round((llevas / pasados) * total) : null,
+    antMismo: suma(antMismo), antTotal: suma(antTotal), hayAnterior, conceptos };
+}
+// ▲ 18 % (gastar más es malo: rojo) / ▼ 12 % (verde). null si no hay con qué comparar.
+function deltaGasto(ahora, antes) {
+  if (!(antes > 0)) return null;
+  const pct = Math.round(((ahora - antes) / antes) * 100);
+  if (Math.abs(pct) < 3) return h('span', { class: 'cv-delta igual' }, 'igual');
+  return h('span', { class: `cv-delta ${pct > 0 ? 'sube' : 'baja'}` }, `${pct > 0 ? '▲' : '▼'} ${Math.abs(pct)}%`);
+}
+function nodoComoVas(cv) {
+  const sub = `Llevas ${soles(cv.llevas)} en ${cv.pasados} de ${cv.total} días desde el cobro`;
+  return h('div', { class: 'cv' },
+    h('div', { class: 'cv-cab' },
+      h('p', { class: 'cv-titular' }, cv.proyectado !== null
+        ? ['A este ritmo, este mes gastas ', h('strong', {}, soles(cv.proyectado))]
+        : ['Llevas ', h('strong', {}, soles(cv.llevas)), ' este mes']),
+      cv.hayAnterior && cv.proyectado !== null ? deltaGasto(cv.proyectado, cv.antTotal) : null),
+    h('p', { class: 'cv-sub' }, cv.proyectado !== null ? sub : `${sub} · aún es pronto para calcular el ritmo`,
+      cv.hayAnterior ? h('span', {}, ` · el mes pasado: ${soles(cv.antTotal)}`) : null),
+    cv.hayAnterior ? h('p', { class: 'cv-sub' }, `A esta altura del mes pasado llevabas ${soles(cv.antMismo)} `, deltaGasto(cv.llevas, cv.antMismo)) : null,
+    cv.conceptos.length ? h('ul', { class: 'cv-lista' }, cv.conceptos.map((x) => h('li', { title: cv.hayAnterior ? `${x.concepto}: ${soles(x.llevas)} ahora · ${soles(x.antes)} a esta altura del mes pasado` : null },
+      h('span', { class: 'cv-ico' }, catIco(x.concepto)),
+      h('span', { class: 'cv-nombre' }, x.concepto),
+      h('strong', {}, soles(x.llevas)),
+      cv.hayAnterior ? (x.antes > 0 ? deltaGasto(x.llevas, x.antes) : h('span', { class: 'cv-delta nuevo' }, 'nuevo')) : null)))
+      : vacio('Todavía no hay gastos desde el último cobro.'));
+}
+
 // Inicio en computadora: el mismo criterio que usa el CSS para ponerlo todo en una pantalla.
 function esComputadoraInicio() { return matchMedia('(min-width: 1024px)').matches; }
 
@@ -3578,9 +3637,22 @@ async function vistaInicio() {
           nodo: h('div', { class: 'pest-lista' }, hormigas.length ? h('ul', { class: 'lista-mov' }, hormigas.map((c) => filaMov(c, c.medio))) : vacio('Sin gastos hormiga este mes.')) });
     }
     pestanasGasto.unshift({ etiqueta: 'Últimos gastos', lado: h('a', { href: '#movimientos' }, 'Ver todos'), nodo: h('div', { class: 'pest-lista' }, listaRecientes) });
+    // v175: "Cómo vas" va primero: a cuánto llegas a este ritmo y cómo vas frente al mes pasado.
+    const cv = completo ? comoVas(rtodo.datos.tarjetas) : null;
+    if (cv) pestanasGasto.unshift({ etiqueta: 'Cómo vas', lado: `${cv.pasados} de ${cv.total} días`, pista: 'Desde el último cobro. Cuenta todo lo anotado (tarjetas, débito, Yape, Plin, Lemon y efectivo); los pagos fijos no.', nodo: nodoComoVas(cv) });
     const panelGasto = panelPestanas('panel-gasto', pestanasGasto);
     agregar(panelGasto);
-    setTimeout(() => { const pc = panelGasto.querySelector('.pest-cuerpo'); if (pc) encajarEn(pc, () => [...pc.querySelectorAll('.lista-mov > li')]); }, 0);
+    const ajustarListas = () => { const pc = panelGasto.querySelector('.pest-cuerpo'); if (pc) encajarEn(pc, () => [...pc.querySelectorAll('.lista-mov > li, .cv-lista > li')]); };
+    setTimeout(ajustarListas, 0);
+    panelGasto.querySelectorAll('.pest').forEach((b) => b.addEventListener('click', () => setTimeout(ajustarListas, 50)));
+    // Aviso si a este ritmo se gasta bastante más que el mes pasado.
+    if (cv?.hayAnterior && cv.proyectado !== null && cv.pasados >= 7 && cv.proyectado > cv.antTotal * 1.15 && cv.proyectado - cv.antTotal >= 100) {
+      raiz.append(h('section', { class: 'avisos-inicio avisos-pres aviso-ritmo-mes' },
+        h('div', { class: 'aviso-fila justo' }, icono('alerta'),
+          h('span', {}, h('strong', {}, 'Vas gastando más que el mes pasado'),
+            h('small', {}, `A este ritmo, ${soles(cv.proyectado - cv.antTotal)} más que el mes pasado`)),
+          h('strong', { class: 'aviso-monto' }, soles(cv.proyectado)))));
+    }
 
     raiz.append(rejilla);
   }
