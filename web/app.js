@@ -508,7 +508,7 @@ function disenoTC(t, forzado) {
   const n = `${t.nombre || ''} ${t.id || ''}`;
   if (/interbank|\bibk/i.test(n)) return 'ibk-clasica';
   if (/\bbcp\b/i.test(n)) return 'bcp-qore';
-  if (/\bsip\b|\boh\b/i.test(n)) return 'sip-celeste';
+  if (/\bsip\b|\boh\b/i.test(n)) return 'sip-negra';
   if (/ripley/i.test(n)) return 'ripley';
   return null;
 }
