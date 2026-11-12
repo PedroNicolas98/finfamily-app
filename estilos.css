@@ -5057,3 +5057,34 @@ button.anio-col:hover, .anio-col.elegida { background: color-mix(in srgb, var(--
 .cobros-linea li .icono, .cobros-linea li svg { width: 16px; height: 16px; color: var(--accion); flex-shrink: 0; }
 .cobros-linea li strong { color: var(--tinta); }
 .cobros-linea li b { margin-left: auto; color: var(--tinta); font-variant-numeric: tabular-nums; }
+/* ---------- v182: apartados ---------- */
+.chip-apartados { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; margin-right: 10px; padding: 4px 10px; border: 1px solid color-mix(in srgb, var(--accion) 35%, transparent); border-radius: 99px; background: color-mix(in srgb, var(--accion) 8%, transparent); color: var(--tinta); font: inherit; font-size: 0.85rem; font-weight: 650; cursor: pointer; white-space: nowrap; transition: background 180ms ease, transform 180ms ease; animation: aparecer 300ms ease both; }
+.chip-apartados[hidden] { display: none; }
+.chip-apartados:hover { background: color-mix(in srgb, var(--accion) 16%, transparent); transform: translateY(-1px); }
+.chip-apartados .icono, .chip-apartados svg { width: 15px; height: 15px; color: var(--accion); }
+.chip-apartados b { font-variant-numeric: tabular-nums; }
+.hoja-modal.apartados-dlg { width: min(600px, calc(100vw - 24px)); }
+.apartados-dlg .cierre-caja { text-align: left; gap: 12px; }
+.apt-cab { display: flex; align-items: baseline; justify-content: space-between; padding: 10px 14px; border-radius: var(--radio-chico); background: var(--sup-2); color: var(--tinta-2); font-weight: 650; font-size: 0.92rem; }
+.apt-total { font-size: 1.3rem; font-weight: 800; color: var(--tinta); font-variant-numeric: tabular-nums; }
+.apt-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.apt-fila { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid color-mix(in srgb, var(--tinta) 8%, transparent); animation: subir 420ms var(--suave) both; animation-delay: calc(60ms + var(--i, 0) * 50ms); }
+.apt-lista.sin-entrada .apt-fila { animation: none; }
+.apt-fila:first-child { border-top: 0; }
+.apt-fila .cat-ico { width: 30px; height: 30px; }
+.apt-texto { display: grid; min-width: 0; line-height: 1.3; }
+.apt-texto strong { font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.apt-texto small { font-size: 0.85rem; color: var(--tinta-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.apt-saldo { font-size: 1.1rem; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--ok); white-space: nowrap; }
+.apt-saldo.falta { color: var(--mal); }
+.apt-editar { width: 32px; height: 32px; }
+.apt-campo { width: 130px; }
+.apt-fila:has(.apt-campo) { grid-template-columns: 30px minmax(0, 1fr) auto auto; }
+@media (max-width: 640px) {
+  .apt-fila { grid-template-columns: 30px minmax(0, 1fr) auto; }
+  .apt-editar { display: none; }
+  .apt-fila:has(.apt-campo) { grid-template-columns: 1fr auto; }
+  .apt-fila:has(.apt-campo) .cv-ico { display: none; }
+  .apt-fila:has(.apt-campo) .apt-texto { grid-column: 1 / -1; }
+  .apt-texto small { white-space: normal; }
+}
