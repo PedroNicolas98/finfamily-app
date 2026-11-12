@@ -382,13 +382,13 @@ test('version: informa 1.7.1 y la lista de acciones; inicio y config traen el ca
     new HojaFalsa('Configuración', [['Conceptos de Gasto', 'Responsable'], ['Limpieza', 'PersonaB']])]) });
   const r = m.llamar('version', {});
   assert.equal(r.ok, true);
-  assert.equal(r.datos.version, '1.25.2');
+  assert.equal(r.datos.version, '1.26.0');
   for (const a of ['desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'marcarPagado', 'inicio',
     'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos', 'datosTarjetas', 'guardarDatosTarjeta']) {
     assert.ok(r.datos.acciones.includes(a), 'falta la acción ' + a);
   }
-  assert.equal(m.llamar('inicio', {}).datos.version, '1.25.2');
-  assert.equal(m.llamar('config', {}).datos.version, '1.25.2');
+  assert.equal(m.llamar('inicio', {}).datos.version, '1.26.0');
+  assert.equal(m.llamar('config', {}).datos.version, '1.26.0');
 });
 
 test('la lista ACCIONES coincide con las acciones que atiende doPost', () => {
@@ -2049,7 +2049,7 @@ test('config: un ícono guardado para un concepto que ya no existe en Configurac
   assert.deepEqual(m.llamar('config', {}).datos.iconos, { Supermercado: 'carrito' });
   const danado = motorCompleto({ propiedades: { FINFAMILY_ICONOS: '{roto' } });
   assert.deepEqual(danado.llamar('config', {}).datos.iconos, {});
-  assert.equal(danado.llamar('version', {}).datos.version, '1.25.2');
+  assert.equal(danado.llamar('version', {}).datos.version, '1.26.0');
   assert.ok(danado.llamar('version', {}).datos.acciones.includes('guardarIconoConcepto'));
 });
 
@@ -2287,7 +2287,7 @@ test('gasto grande con tarjeta prestada: el correo dice quién gastó; versión 
   const m = motorCompleto();
   m.llamar('registrar', Object.assign({}, GASTO_PRESTADO, { monto: 450, descripcion: 'Saga Falabella' }));
   assert.equal(m.correos[0].subject, 'FinFamily: PersonaA registró S/ 450 en Saga Falabella (TC Interbank)');
-  assert.equal(m.llamar('version', {}).datos.version, '1.25.2');
+  assert.equal(m.llamar('version', {}).datos.version, '1.26.0');
 });
 
 // ===========================================================================
@@ -2567,7 +2567,7 @@ test('bolsas con un solo usuario (N = 1): todo el saldo de los meses anteriores 
 test('versión 1.7.0: la acción bolsas está en la lista y presupuesto no cambió', () => {
   const m = motorBolsas();
   const v = m.llamar('version', {}).datos;
-  assert.equal(v.version, '1.25.2');
+  assert.equal(v.version, '1.26.0');
   assert.ok(v.acciones.includes('bolsas'));
   const p = m.llamar('presupuesto', { mes: '2026-11' }).datos;
   assert.equal(p.totales.saldo, 985.57);
@@ -3677,4 +3677,10 @@ test('1.25.1: si ya corrió la lectura de 1.25.0, se borra lo guardado y se vuel
   assert.deepEqual(reg.meses['2026-09'].internet.map((x) => x.monto), [60]);
   assert.deepEqual(reg.meses['2026-10'].internet.map((x) => x.monto), [75]);
   assert.equal(m.correos.filter((c) => /subió/.test(c.subject)).length, 0, 'la relectura no avisa');
+});
+
+test('1.26.0: apartados y guardarApartado responden con la hoja (sin líneas con cuenta: lista vacía y error claro)', () => {
+  const m = motorCompleto({ hoy: '2026-11-14' });
+  assert.deepEqual(JSON.parse(JSON.stringify(m.llamar('apartados', {}))), { ok: true, datos: { apartados: [] } });
+  assert.deepEqual(m.llamar('guardarApartado', { linea: 'Luz', saldo: 50 }), { ok: false, codigo: 'datos_invalidos', error: 'Esa línea no tiene apartado.' });
 });

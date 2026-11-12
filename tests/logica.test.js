@@ -1382,3 +1382,27 @@ test('1.25.1: un recibo por pagar que invita al débito automático no cuenta; e
   assert.equal(L.lineaDePago(yape.texto, [{ clave: 'servicios', palabras: ['luz del sur'] }]), null);
   assert.deepEqual(L.lineaDePago(yape.textoCuerpo, [{ clave: 'servicios', palabras: ['luz del sur'] }]), { clave: 'servicios', palabra: 'luz del sur' });
 });
+
+test('1.26.0: apartados por línea: entra lo planeado de los meses pagados, sale lo gastado del fondo común; se acumula', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(L.cuentaDeLinea('Alimentación (BCP-DEB-PE)'))), { codigo: 'BCP-DEB-PE', banco: 'BCP', etiqueta: 'Débito BCP' });
+  assert.equal(L.cuentaDeLinea('Alacena (SIP)').etiqueta, 'Sip');
+  assert.equal(L.cuentaDeLinea('Suscripciones (IBK/BCP/IBK)'), null, 'varias cuentas: no');
+  assert.equal(L.cuentaDeLinea('Pasajes'), null);
+  const fila = (concepto, monto, pagado, conceptos) => ({ seccion: 'gastos', concepto, monto, pagado, conceptos, fila: 1 });
+  const meses = [
+    { mes: '2026-10', filas: [fila('Alacena (SIP)', 248.79, true, ['Supermercado']), fila('Internet (IBK)', 74.9, true, ['Internet y Telefonía']), fila('Pasajes', 276, true, ['Pasajes'])] },
+    { mes: '2026-11', filas: [fila('Alacena (SIP)', 365.46, true, ['Supermercado'])] }
+  ];
+  const consumos = [
+    { fecha: '2026-11-11', concepto: 'Supermercado', monto: 174, origen: '', deTarjeta: false },
+    { fecha: '2026-11-12', concepto: 'Supermercado', monto: 50, origen: '', deTarjeta: true }, // con tarjeta de crédito: no
+    { fecha: '2026-11-13', concepto: 'Supermercado', monto: 20, origen: 'P:Pedro', deTarjeta: false }, // de su sobrante: no
+    { fecha: '2026-10-20', concepto: 'Supermercado', monto: 99, origen: '', deTarjeta: false }, // antes del primer mes: no
+    { fecha: '2026-12-05', concepto: 'Supermercado', monto: 30, origen: '', deTarjeta: false }
+  ];
+  const r = L.apartadosDeLineas(meses, consumos, { fijos: {}, ajustes: { 'alacena (sip)': { ajuste: 10 } } }, '2026-12-10');
+  assert.equal(r.length, 1, 'Internet tiene empresas (es un recibo) y Pasajes no tiene cuenta');
+  assert.deepEqual(JSON.parse(JSON.stringify(r[0])), { clave: 'alacena (sip)', linea: 'Alacena (SIP)', cuenta: 'Sip', conceptos: ['Supermercado'],
+    depositado: 614.25, gastado: 204, ajuste: 10, saldo: 420.25, desde: '2026-10-31', meses: 2 });
+  assert.deepEqual(JSON.parse(JSON.stringify(L.apartadosAjustesDesde('{"x":{"ajuste":"5.5"},"y":{"ajuste":"no"}}'))), { x: { ajuste: 5.5 } });
+});

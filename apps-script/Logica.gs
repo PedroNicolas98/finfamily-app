@@ -2678,6 +2678,82 @@ function validarMetaAnual(datos) {
   return { anio: anio, monto: Math.round(monto * 100) / 100 };
 }
 
+// ---------------------------------------------------------------------------
+// Apartados (motor 1.26.0): la plata de algunas líneas (comida, súper, limpieza...) se guarda en una cuenta; lo que
+// no se gasta se acumula ahí de un mes a otro. El paréntesis del nombre dice la cuenta: "Alimentación (BCP-DEB-PE)".
+// ---------------------------------------------------------------------------
+
+var BANCOS_CODIGO_LINEA = { BCP: 'BCP', IBK: 'Interbank', SIP: 'Sip', RIPLEY: 'Ripley', OH: 'Oh!' };
+
+/** La cuenta de una línea según su paréntesis: {codigo, banco, etiqueta} o null (sin paréntesis o con varias cuentas). */
+function cuentaDeLinea(concepto) {
+  var m = String(concepto || '').match(/\(([^)]+)\)\s*$/);
+  if (!m) return null;
+  var cod = m[1].replace(/\s+/g, '').toUpperCase();
+  if (cod.indexOf('/') !== -1) return null;
+  var partes = cod.split('-');
+  var banco = BANCOS_CODIGO_LINEA[partes[0]];
+  if (!banco) return null;
+  return { codigo: cod, banco: banco, etiqueta: (partes.indexOf('DEB') !== -1 ? 'Débito ' : '') + banco };
+}
+
+/** Ajustes guardados {claveLinea: {ajuste}} (texto JSON o null), saneados. */
+function apartadosAjustesDesde(texto) {
+  var g = null;
+  try { g = JSON.parse(texto || 'null'); } catch (err) { g = null; }
+  var salida = {};
+  if (!g || typeof g !== 'object') return salida;
+  Object.keys(g).forEach(function (k) {
+    var v = Number(g[k] && g[k].ajuste);
+    if (isFinite(v) && Math.abs(v) <= 1000000) salida[k] = { ajuste: Math.round(v * 100) / 100 };
+  });
+  return salida;
+}
+
+/**
+ * Saldo de cada apartado. meses: [{mes, filas (con conceptos)}] hasta el mes de cobro en curso; consumos: los de
+ * leerConsumos (con origen y deTarjeta); config: {fijos, ajustes}; hoy.
+ * Entra: lo planeado de la línea en cada mes que se marcó pagado (se pasó a la cuenta). Sale: lo gastado en sus tipos
+ * desde el primer mes con plata, del fondo común y sin tarjeta de crédito (regla del usuario). Sin las líneas de
+ * recibos (las que se pagan solas con el correo).
+ * Devuelve [{clave, linea, cuenta, conceptos, depositado, gastado, ajuste, saldo, desde, meses}].
+ */
+function apartadosDeLineas(meses, consumos, config, hoy) {
+  var cfg = config || {};
+  var porClave = {};
+  (meses || []).slice().sort(function (a, b) { return a.mes < b.mes ? -1 : a.mes > b.mes ? 1 : 0; }).forEach(function (m) {
+    (m.filas || []).forEach(function (f) {
+      if (f.seccion !== 'gastos' || f.esTarjeta) return;
+      var cuenta = cuentaDeLinea(f.concepto);
+      if (!cuenta || !(f.conceptos && f.conceptos.length) || palabrasDeFijo(f.concepto, cfg.fijos).length) return;
+      var k = claveLinea(f.concepto);
+      var a = porClave[k] || (porClave[k] = { linea: f.concepto, cuenta: cuenta.etiqueta, conceptos: [], depositado: 0, desde: '', meses: 0 });
+      a.linea = f.concepto;
+      a.conceptos = f.conceptos.slice();
+      if (f.pagado && Number(f.monto) > 0) {
+        a.depositado += Math.round(Number(f.monto) * 100);
+        a.meses++;
+        if (!a.desde) a.desde = cicloDelMes(m.mes).desde;
+      }
+    });
+  });
+  return Object.keys(porClave).map(function (k) {
+    var a = porClave[k];
+    var claves = {};
+    a.conceptos.forEach(function (c) { claves[normalizar(c)] = true; });
+    var gastado = 0;
+    if (a.desde) {
+      (consumos || []).forEach(function (c) {
+        if (!c || c.deTarjeta || c.origen || !c.fecha || c.fecha < a.desde || c.fecha > hoy) return;
+        if (claves[normalizar(c.concepto)]) gastado += Math.round((Number(c.monto) || 0) * 100);
+      });
+    }
+    var ajuste = Math.round((Number(((cfg.ajustes || {})[k] || {}).ajuste) || 0) * 100);
+    return { clave: k, linea: a.linea, cuenta: a.cuenta, conceptos: a.conceptos, depositado: a.depositado / 100, gastado: gastado / 100,
+      ajuste: ajuste / 100, saldo: (a.depositado - gastado + ajuste) / 100, desde: a.desde, meses: a.meses };
+  }).sort(function (x, y) { return x.linea < y.linea ? -1 : x.linea > y.linea ? 1 : 0; });
+}
+
 /** Umbrales del presupuesto en que se avisa (porcentaje gastado). */
 var UMBRALES_PRESUPUESTO = [80, 100];
 
@@ -3178,6 +3254,9 @@ if (typeof module !== 'undefined') {
     datosTarjetasDesde: datosTarjetasDesde,
     validarDatosTarjeta: validarDatosTarjeta,
     textoGastoGrande: textoGastoGrande,
+    cuentaDeLinea: cuentaDeLinea,
+    apartadosAjustesDesde: apartadosAjustesDesde,
+    apartadosDeLineas: apartadosDeLineas,
     pagosUnicos: pagosUnicos,
     cobrosAprendidos: cobrosAprendidos,
     subidaDePrecio: subidaDePrecio,

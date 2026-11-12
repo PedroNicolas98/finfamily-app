@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v181';
+const VERSION_APP = 'finfamily-v182';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -2907,6 +2907,14 @@ function motorV122() { const v = versionMotor(); return v.a > 1 || (v.a === 1 &&
 function motorV123() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 23); }
 function motorV124() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 24); }
 function motorV125() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 25); }
+function motorV126() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 26); }
+// v182 (motor 1.26): apartados. La plata de algunas líneas (comida, súper...) se guarda en una cuenta y lo que no se
+// gasta se acumula. Un gasto de sus tipos, pagado en directo, sale de ahí (no del sobrante de nadie).
+const apartadosGuardados = () => (motorV126() ? leerCache('apartados')?.datos?.apartados : null) || [];
+const apartadoDeConcepto = (concepto) => {
+  const k = normalizar(concepto || '');
+  return k ? apartadosGuardados().find((a) => (a.conceptos || []).some((x) => normalizar(x) === k)) || null : null;
+};
 
 // ¿Es un pase de plata a la otra persona? ("Yape a PersonaB…", "Plin a PersonaA…"). Devuelve su nombre o ''.
 function otroDePase(texto, quien) {
@@ -3951,6 +3959,86 @@ async function abrirCierre(mes) {
   document.body.append(dlg);
   dlg.showModal();
   animarVista(dlg);
+}
+
+// ---------- v182: Apartados ----------
+
+// Botón en la cabecera de Ahorros: "Apartados S/ 450". Abre la ventanita.
+function chipApartados() {
+  if (!motorV126() || !emailSesion()) return null;
+  const b = h('button', { type: 'button', class: 'chip-apartados', hidden: true, title: 'Lo guardado de cada línea en su cuenta', onclick: () => abrirApartados() });
+  const pintar = () => {
+    const l = apartadosGuardados();
+    b.hidden = !l.length;
+    if (!l.length) return;
+    const t = l.reduce((x, a) => x + (Number(a.saldo) || 0), 0);
+    b.replaceChildren(icono('billetera'), h('span', {}, 'Apartados'), h('b', {}, soles(t)));
+  };
+  pintar();
+  cargarRapido('apartados', {}, 'apartados').then(pintar).catch(() => {});
+  return b;
+}
+
+// Cada apartado: cuánto hay, en qué cuenta, cuánto entró y se gastó; con el lápiz se dice cuánto hay de verdad.
+async function abrirApartados() {
+  let lista = apartadosGuardados();
+  if (!lista.length) { try { lista = (await cargarRapido('apartados', {}, 'apartados'))?.datos?.apartados || []; } catch { lista = []; } }
+  const v = ventanita('apartados-dlg', 'Apartados');
+  const ul = h('ul', { class: 'apt-lista' });
+  const total = h('strong', { class: 'apt-total' });
+  let animar = true;
+  const pintar = () => {
+    const t = lista.reduce((x, a) => x + (Number(a.saldo) || 0), 0);
+    total.replaceChildren(soles(t));
+    ul.replaceChildren(...lista.map((a, i) => fila(a, i)));
+    if (animar) animar = false; else ul.classList.add('sin-entrada');
+  };
+  const fila = (a, i) => {
+    const li = h('li', { class: 'apt-fila', style: `--i: ${i}` });
+    const ico = () => h('span', { class: 'cv-ico' }, catIco(a.conceptos?.[0] || nombreLinea(a.linea)));
+    const ver = () => li.replaceChildren(ico(),
+      h('span', { class: 'apt-texto' }, h('strong', {}, nombreLinea(a.linea)),
+        h('small', {}, `${a.cuenta} · entró ${soles(a.depositado)} · se gastó ${soles(a.gastado)}${a.ajuste ? ' · ajustado' : ''}`)),
+      h('span', { class: 'apt-saldo' + (a.saldo < 0 ? ' falta' : '') }, `${a.saldo < 0 ? '−' : ''}${soles(Math.abs(a.saldo))}`),
+      h('button', { type: 'button', class: 'boton icono-solo apt-editar', title: 'Decir cuánto hay de verdad', 'aria-label': `Ajustar ${nombreLinea(a.linea)}`, onclick: editar }, icono('lapiz')));
+    const editar = () => {
+      const inp = h('input', { type: 'text', inputmode: 'decimal', class: 'apt-entrada', autocomplete: 'off', value: String(a.saldo), 'aria-label': `Cuánto hay hoy para ${nombreLinea(a.linea)}` });
+      const ok = h('button', { type: 'button', class: 'boton primario chico' }, 'Guardar');
+      const guardar = async () => {
+        const txt = inp.value.trim();
+        const monto = txt === '' ? null : /^0+([.,]0+)?$/.test(txt) ? 0 : leerMonto(txt);
+        if (txt !== '' && (monto === null || monto === undefined)) { inp.classList.add('mal-meta'); inp.focus(); return; }
+        ocuparBoton(ok, 'Guardando…');
+        try {
+          const r = await llamarApi('guardarApartado', { linea: a.linea, saldo: monto }, { email: emailSesion() });
+          lista = r?.apartados || lista;
+          guardarCache('apartados', { apartados: lista });
+          pintar();
+          avisar(monto === null ? `${nombreLinea(a.linea)}: vuelve a la cuenta de la app` : `${nombreLinea(a.linea)}: ${soles(monto)}`, 'ok');
+        } catch (e) { liberarBoton(ok, 'Guardar'); avisar(mensajeError(e, 'No se pudo guardar.'), 'error'); }
+      };
+      ok.onclick = guardar;
+      inp.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') { ev.preventDefault(); guardar(); }
+        if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); ver(); }
+      });
+      inp.addEventListener('input', () => inp.classList.remove('mal-meta'));
+      li.replaceChildren(ico(),
+        h('span', { class: 'apt-texto' }, h('strong', {}, `¿Cuánto hay hoy para ${nombreLinea(a.linea)}?`), h('small', {}, `Según tu ${a.cuenta}`)),
+        h('div', { class: 'campo-soles apt-campo' }, h('span', {}, 'S/'), inp), ok);
+      setTimeout(() => { inp.focus(); inp.select(); }, 30);
+    };
+    ver();
+    return li;
+  };
+  pintar();
+  v.caja.append(
+    h('p', { class: 'cierre-etq' }, 'Apartados'),
+    h('p', { class: 'rep-intro' }, 'Lo que guardan de cada línea en su cuenta. Lo que no gastan se acumula para el mes siguiente.'),
+    lista.length ? h('div', { class: 'apt-cab' }, h('span', {}, 'Guardado en total'), total) : null,
+    lista.length ? ul : vacio('Ninguna línea tiene cuenta todavía. Pon la cuenta entre paréntesis en su nombre, por ejemplo «Alimentación (BCP-DEB)».'),
+    h('div', { class: 'acciones modal-acciones' }, h('button', { type: 'button', class: 'boton primario', onclick: v.cerrar }, 'Listo')));
+  v.abrir();
 }
 
 // ---------- v178: Ajustar el presupuesto con lo que de verdad se gasta ----------
@@ -6492,6 +6580,7 @@ async function vistaRegistrar() {
     try { if (botonesConcepto.findIndex((b) => b.dataset.c === f.concepto) >= 8) campoConcepto.classList.add('todos'); } catch { /* aún no está listo */ }
     try { pintarSemaforo(); } catch { /* aún no está listo */ }
     try { pintarResumen(); } catch { /* aún no está listo */ }
+    try { pintarOrigen(); } catch { /* aún no está listo */ } // v182: el tipo decide si sale de un apartado
   }
   function actualizarSugerencia() {
     const s = sugerirConcepto(f.descripcion, indiceHistorial(), conceptos);
@@ -6559,17 +6648,20 @@ async function vistaRegistrar() {
     if (!campoOrigen) return;
     const medioAhora = medios.find((x) => x.id === f.medio);
     const directo = !!medioAhora && medioAhora.tipo !== 'tarjeta';
-    const faltaElegir = comoDebito(medioAhora) && !f.origenManual; // con débito (y Yape o Plin, que salen de una cuenta) se pregunta cada vez
+    const billetera = lineaDeBilletera(f.medio) ? f.medio : null;
+    const apart = directo && !billetera ? apartadoDeConcepto(f.concepto) : null;
+    // con débito (y Yape o Plin, que salen de una cuenta) se pregunta cada vez, salvo que el tipo tenga su apartado
+    const faltaElegir = comoDebito(medioAhora) && !f.origenManual && !apart;
     campoOrigen.classList.toggle('pide', faltaElegir);
     const mesPago = medioAhora && !directo ? (calcularCiclo(tarjetaDe(medioAhora), f.fecha, ciclos).pago || f.fecha || '').slice(0, 7) : '';
-    const billetera = lineaDeBilletera(f.medio) ? f.medio : null;
     // Solo cuatro tipos de origen (v115): Fondo común (o la billetera, p. ej. Pasajes con Lemon), cada persona
     // (su sobrante) y cada ahorro que exista. Cada uno con lo que tiene.
     const b = bolsasGuardadas();
     const nombresP = (b?.personas || []).length ? b.personas.map((p) => p.nombre) : (personas.length ? personas : [f.responsable || usuario?.nombre || ''].filter(Boolean));
     const ops = [billetera
       ? { valor: '', etiqueta: `${lineaDeBilletera(billetera)} (${nombreBilletera(billetera)})`, ico: 'billetera', disponible: saldoBilletera(billetera, f.fecha)?.queda ?? null }
-      : { valor: '', etiqueta: 'Fondo común', ico: 'inicio', disponible: null, nota: 'al cobrar' }];
+      : apart ? { valor: '', etiqueta: `Apartado ${nombreLinea(apart.linea)}`, ico: 'billetera', disponible: Number(apart.saldo) || 0 }
+        : { valor: '', etiqueta: 'Fondo común', ico: 'inicio', disponible: null, nota: 'al cobrar' }];
     for (const n of nombresP) {
       const para = sobranteParaPagar(b, n, directo ? '' : mesPago);
       ops.push({ valor: `P:${n}`, etiqueta: nombreCorto(n), persona: n, disponible: para ? para.tiene : null, deMes: para?.mes || null });
@@ -6582,7 +6674,7 @@ async function vistaRegistrar() {
     const resp = f.responsable || usuario?.nombre || '';
     const pResp = nombresP.find((n) => nombreCorto(n) === nombreCorto(resp)) || resp;
     if (f.origen === 'P') f.origen = `P:${pResp}`;
-    const porDefecto = directo && !billetera ? `P:${pResp}` : '';
+    const porDefecto = directo && !billetera && !apart ? `P:${pResp}` : '';
     if (!f.origenManual) f.origen = porDefecto;
     if (!ops.some((o) => claveDe(o) === (f.origen || ''))) f.origen = porDefecto;
     const monto = leerMonto(f.monto || '') || 0;
@@ -6616,6 +6708,8 @@ async function vistaRegistrar() {
       ? (quedaria >= 0 ? `Te alcanza: te quedarían ${soles(quedaria)}${deDonde}.` : `No te alcanza: te faltarían ${soles(-quedaria)}${deDonde}.`)
       : !medioAhora ? '' : billetera && !f.origen
         ? `${nombreBilletera(billetera)} tiene el presupuesto de ${lineaDeBilletera(billetera)}: sale de ahí, no de tu sobrante.`
+      : apart && !f.origen
+        ? `Sale de lo guardado para ${nombreLinea(apart.linea)} (${apart.cuenta}). Lo que no gastan se acumula.`
       : directo
         ? 'Lo de este mes llega al cobrar a fin de mes. Con Yape, Plin o efectivo se gasta de lo que ya tienes.'
         : String(f.origen || '').startsWith('P:') ? 'Sale de lo que te sobre el mes en que se paga la tarjeta, no de lo que tienes hoy.'
@@ -6745,6 +6839,7 @@ async function vistaRegistrar() {
   };
   pintarOrigen();
   if (campoOrigen && !bolsasGuardadas()) cargarRapido('bolsas', {}, 'bolsas').then(pintarOrigen).catch(() => { /* quedan las opciones sin montos */ });
+  if (campoOrigen && motorV126() && emailSesion()) cargarRapido('apartados', {}, 'apartados').then(pintarOrigen).catch(() => { /* sin apartados */ });
   // Para el freno del presupuesto: el presupuesto del ciclo de hoy y lo ya gastado, en segundo plano.
   if (motorBolsas() && emailSesion()) {
     const mc = mesDelCiclo(hoyISO());
@@ -7582,7 +7677,7 @@ async function vistaPresupuesto() {
     const ordenadas = filas; // en el orden de la hoja (Excel); los controles pueden reordenar
     if (clave === 'ahorros' && !(total > 0)) {
       return h('section', { class: 'panel seccion-pres seccion-ahorros sin-ahorro' },
-        h('div', { class: 'panel-cab' }, tituloSeccion(titulo), h('strong', { class: 'cifra-cab' }, soles(0))),
+        h('div', { class: 'panel-cab' }, tituloSeccion(titulo), chipApartados(), h('strong', { class: 'cifra-cab' }, soles(0))),
         h('div', { class: 'ahorro-vacio' },
           h('span', { class: 'ahorro-vacio-ico', 'aria-hidden': 'true' }, icono('meta')),
           h('strong', {}, 'Sin ahorro este mes'),
@@ -7592,6 +7687,7 @@ async function vistaPresupuesto() {
     return h('section', { class: `panel seccion-pres seccion-${clave}` },
       h('div', { class: 'panel-cab' }, tituloSeccion(titulo),
         clave === 'gastos' && fijos.length ? resumenFijos : null,
+        clave === 'ahorros' ? chipApartados() : null,
         h('strong', { class: 'cifra-cab' }, soles(total))),
       h('ul', { class: 'filas-pres' }, ordenadas.map((f) => {
         const marcable = fijos.includes(f);

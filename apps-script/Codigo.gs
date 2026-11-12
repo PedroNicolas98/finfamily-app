@@ -26,7 +26,7 @@
  *   FINFAMILY_ICONOS               ícono elegido para cada tipo de gasto (motor 1.5.1).
  */
 
-var VERSION = '1.25.2';
+var VERSION = '1.26.0';
 var ZONA_HORARIA = 'America/Lima';
 var DIAS_AVISO = 3;
 var SEGUNDOS_CACHE_TOKEN = 300;
@@ -57,6 +57,7 @@ var PROPIEDAD_CUADRES = 'FINFAMILY_CUADRES';           // motor 1.16.0: último 
 var PROPIEDAD_METAS = 'FINFAMILY_METAS';               // motor 1.15.0: objetivo y mes límite por línea de ahorro
 var PROPIEDAD_PAGOS_HISTORIA = 'FINFAMILY_PAGOS_HISTORIA_V2'; // motor 1.25.1: ya se leyeron (bien) los cobros de los últimos 75 días
 var PROPIEDAD_PAGOS_HISTORIA_V1 = 'FINFAMILY_PAGOS_HISTORIA';   // la lectura de 1.25.0 (con empresas mal reconocidas)
+var PROPIEDAD_APARTADOS = 'FINFAMILY_APARTADOS';       // motor 1.26.0: ajuste del saldo de cada apartado {clave: {ajuste}}
 var PROPIEDAD_META_ANUAL = 'FINFAMILY_META_ANUAL';     // motor 1.24.0: meta de ahorro de cada año {'2027': 12000}
 var PROPIEDAD_FIJOS = 'FINFAMILY_FIJOS';               // motor 1.13.0: día y si se paga solo, por línea fija
 var PROPIEDAD_FIJOS_HECHOS = 'FINFAMILY_FIJOS_HECHOS'; // lo ya marcado o avisado, por línea y mes
@@ -77,7 +78,7 @@ var ACCIONES = ['inicio', 'tarjetas', 'presupuesto', 'config', 'registrar', 'mar
   'agregarConcepto', 'renombrarConcepto', 'quitarConcepto',
   'usuarios', 'agregarUsuario', 'quitarUsuario',
   'lineasPresupuesto', 'agregarLinea', 'renombrarLinea', 'quitarLinea', 'asignarConceptos', 'editarLineaMeses',
-  'guardarIconoConcepto', 'bolsas', 'debitos', 'guardarDebito', 'pasarEfectivoADebito', 'metaAnual', 'guardarMetaAnual'];
+  'guardarIconoConcepto', 'bolsas', 'debitos', 'guardarDebito', 'pasarEfectivoADebito', 'metaAnual', 'guardarMetaAnual', 'apartados', 'guardarApartado'];
 
 /** Tarjetas de débito de la casa (motor 1.21). */
 var PROPIEDAD_TARJETAS_DEBITO = 'FINFAMILY_TARJETAS_DEBITO';
@@ -164,6 +165,8 @@ function doPost(e) {
       case 'anotarCuenta': resultado = accionAnotarCuenta_(usuario, datos); break;
       case 'borrarCuenta': resultado = accionBorrarCuenta_(usuario, datos); break;
       case 'guardarMeta': resultado = accionGuardarMeta_(usuario, datos); break;
+      case 'apartados': resultado = { apartados: calcularApartados_() }; break;
+      case 'guardarApartado': resultado = accionGuardarApartado_(usuario, datos); break;
       case 'metaAnual': resultado = { metas: metasAnualesDesde(propiedad_(PROPIEDAD_META_ANUAL)) }; break;
       case 'guardarMetaAnual': resultado = accionGuardarMetaAnual_(usuario, datos); break;
       case 'cuadres': resultado = { cuadres: cuadresDesde(propiedad_(PROPIEDAD_CUADRES)) }; break;
@@ -2054,6 +2057,44 @@ function leerMetas_() { return metasDesde(propiedad_(PROPIEDAD_METAS)); }
 function guardarMetas_(config) { PropertiesService.getScriptProperties().setProperty(PROPIEDAD_METAS, JSON.stringify(config)); }
 
 /** {concepto, objetivo (0 = quitar), fecha 'YYYY-MM', mes?}. La línea debe ser un ahorro del presupuesto. */
+/** Motor 1.26.0: el saldo de cada apartado (ver apartadosDeLineas), con todos los meses hasta el ciclo en curso. */
+function calcularApartados_() {
+  var hoy = hoyServidor_();
+  var mesHoy = mesDelCiclo(hoy);
+  var rango = obtenerHoja_(HOJA_PRESUPUESTO).getDataRange();
+  var display = rango.getDisplayValues(), valores = rango.getValues(), notas = rango.getNotes();
+  var p0 = leerPresupuesto(display, valores, mesHoy, notas);
+  if (!p0) return [];
+  var meses = [];
+  (p0.meses || []).forEach(function (m) {
+    if (m.clave > mesHoy) return;
+    var p = m.clave === mesHoy ? p0 : leerPresupuesto(display, valores, m.clave, notas);
+    if (!p) return;
+    anotarConceptosEnFilas_(p.filas);
+    meses.push({ mes: m.clave, filas: p.filas });
+  });
+  return apartadosDeLineas(meses, leerTodosLosConsumos_(), { fijos: leerFijos_(), ajustes: apartadosAjustesDesde(propiedad_(PROPIEDAD_APARTADOS)) }, hoy);
+}
+
+/** {linea, saldo}: lo que de verdad hay hoy en ese apartado (se guarda la diferencia); saldo vacío quita el ajuste. */
+function accionGuardarApartado_(usuario, datos) {
+  var linea = String(datos.linea || '').trim();
+  if (!linea) throw errorApp_('datos_invalidos', 'Falta el apartado.');
+  var clave = claveLinea(linea);
+  var a = calcularApartados_().filter(function (x) { return x.clave === clave; })[0];
+  if (!a) throw errorApp_('datos_invalidos', 'Esa línea no tiene apartado.');
+  var ajustes = apartadosAjustesDesde(propiedad_(PROPIEDAD_APARTADOS));
+  if (datos.saldo === null || datos.saldo === undefined || datos.saldo === '') {
+    delete ajustes[clave];
+  } else {
+    var saldo = typeof datos.saldo === 'number' ? datos.saldo : parsearMonto(String(datos.saldo));
+    if (saldo === null || !isFinite(saldo) || Math.abs(saldo) > 1000000) throw errorApp_('datos_invalidos', 'Escribe un monto válido.');
+    ajustes[clave] = { ajuste: Math.round((saldo - (a.saldo - a.ajuste)) * 100) / 100 };
+  }
+  PropertiesService.getScriptProperties().setProperty(PROPIEDAD_APARTADOS, JSON.stringify(ajustes));
+  return { apartados: calcularApartados_() };
+}
+
 /** Motor 1.24.0: {anio, monto} guarda la meta de ahorro de ese año (0 la quita). Devuelve {metas}. */
 function accionGuardarMetaAnual_(usuario, datos) {
   var v = validarMetaAnual(datos);
