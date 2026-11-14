@@ -5138,3 +5138,31 @@ button.anio-col:hover, .anio-col.elegida { background: color-mix(in srgb, var(--
   body .vista .rejilla-config .config-fila:not(.persona-adm) { padding-block: 8px; }
   body .vista .rejilla-config .config-fila:first-of-type, body .vista .rejilla-config .panel-cab + .config-fila { padding-top: 2px; }
 }
+/* ---------- v184: Tarjetas en ventanas de computadora de ancho medio (720–1023 px, con la barra de abajo) ----------
+   La pila y el resumen van lado a lado y la pila se ajusta al alto de la ventana (antes quedaba sola, centrada,
+   con mucho vacío a los lados y la tarjeta de adelante cortada por la barra). */
+@media (min-width: 720px) and (max-width: 1023px) {
+  body .pantalla.tarjetas .rejilla-billetera { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 22px; align-items: start; }
+  body .pantalla.tarjetas .rejilla-billetera > .billetera-caja { grid-column: 1; grid-row: 1; order: 0; width: auto; }
+  body .pantalla.tarjetas .rejilla-billetera > .col-pila { grid-column: 2; grid-row: 1; width: auto; }
+  body .pantalla.tarjetas .billetera { --paso: 42px; --tope: 380px; margin-inline: 0; align-self: start; max-width: none;
+    width: clamp(230px, calc((100dvh - 215px - (var(--n, 6) - 1) * var(--paso)) / 0.6305), var(--tope)); }
+  body .pantalla.tarjetas .billetera > .plastico + .plastico { margin-top: calc(-63.05% + var(--paso)); }
+}
+@media (min-width: 720px) and (max-width: 1023px) {
+  /* La pila se queda a la vista mientras se baja por el resumen y la ruta de pagos */
+  body .pantalla.tarjetas .rejilla-billetera > .billetera-caja { position: sticky; top: 14px; align-self: start; }
+  body .pantalla.tarjetas .billetera-caja > .seccion-cab { display: none; }
+  body .pantalla.tarjetas .col-pila { gap: 14px; }
+  body .pantalla.tarjetas .col-pila > .panel:last-child { flex: none; }
+  body .pantalla.tarjetas .hero.simple { padding: 18px 20px; gap: 12px; }
+  body .pantalla.tarjetas .hero-monto { margin: 2px 0 6px; font-size: 2.6rem; }
+  body .pantalla.tarjetas .hero.simple .hero-datos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  body .pantalla.tarjetas .hero-datos li { padding: 9px 12px; }
+  body .pantalla.tarjetas .panel-ruta { padding-block: 14px; gap: 8px; }
+}
+
+/* v184: en ventanas angostas (720–819 px) los datos del resumen van en una columna para no cortar los títulos */
+@media (min-width: 720px) and (max-width: 819px) {
+  body .pantalla.tarjetas .hero.simple .hero-datos { grid-template-columns: minmax(0, 1fr); }
+}
