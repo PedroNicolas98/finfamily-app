@@ -5220,3 +5220,16 @@ body .plastico-chip { align-self: flex-start; }
   body .pantalla.detalle { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 24px; align-items: start; }
   body .pantalla.detalle .lateral { position: sticky; top: 14px; max-width: none; }
 }
+
+/* v189: en el detalle de una tarjeta los filtros se acomodan en varias filas (antes quedaban cortados y no se veía el resto)
+   y el buscador deja sitio a la foto de la cuenta en ventanas medianas. */
+@media (min-width: 720px) {
+  body .pantalla.detalle .chips-filtro { flex-wrap: wrap; overflow: visible; }
+}
+@media (min-width: 720px) and (max-width: 1023px) {
+  body .pantalla.detalle .columna > .buscador { margin-right: 54px; }
+}
+/* v189: lo mismo en Movimientos con ventana mediana: los filtros se ven todos */
+@media (min-width: 720px) and (max-width: 1023px) {
+  body .pantalla.movimientos > .chips-filtro { flex-wrap: wrap; overflow: visible; }
+}
