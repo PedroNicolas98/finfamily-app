@@ -5212,3 +5212,11 @@ body .plastico-red.visa { font-size: clamp(0.9rem, 6cqw, 1.35rem); }
 /* v187: el monto y el chip van en la misma fila (la tarjeta se cortaba por abajo en tamaños chicos) */
 body .plastico-medio, body .plastico.hormiga .plastico-medio { flex-direction: row-reverse; justify-content: space-between; align-items: flex-end; gap: 3cqw; margin-top: 1cqw; }
 body .plastico-chip { align-self: flex-start; }
+
+/* v188: ventanas de ancho medio (720–1023 px): la barra de abajo es una píldora centrada y el detalle de la tarjeta
+   va en dos columnas (tarjeta fija a la izquierda, consumos a la derecha) en vez de una tarjeta gigante. */
+@media (min-width: 720px) and (max-width: 1023px) {
+  body .barra-nav { left: 0; right: 0; margin-inline: auto; width: min(540px, calc(100% - 24px)); }
+  body .pantalla.detalle { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 24px; align-items: start; }
+  body .pantalla.detalle .lateral { position: sticky; top: 14px; max-width: none; }
+}
