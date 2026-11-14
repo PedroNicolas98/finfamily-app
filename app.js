@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v182';
+const VERSION_APP = 'finfamily-v183';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -1689,6 +1689,7 @@ async function llamarApi(...args) {
   try { return await api.llamar(...args); } finally {
     ocupado(-1);
     const accion = args[0];
+    if (accion === 'marcarFijo') borrarCaches(['apartados']); // marcar un mes como pagado mete su plata al apartado
     if (!SOLO_LEEN.includes(accion) && accion !== 'marcarFijo') {
       estado.cambioDesde = Date.now();
       if (EN_PANTALLA.includes(accion)) estado.frescoDesde = Date.now();
@@ -2166,8 +2167,10 @@ function seRepiten(tarjetas) {
     const ult = v[v.length - 1];
     const meses = new Set(v.map((x) => x.fecha.slice(0, 7)));
     const porConcepto = v.some((x) => CONCEPTOS_MENSUALES.includes(normalizar(x.concepto || '')));
+    const vigente = (deISO(hoy) - deISO(ult.fecha)) / 86400000 <= 45; // un cobro que ya no llega (cancelado) no cuenta
     const parecidos = v.length >= 2 && v.every((x) => Math.abs(x.monto - ult.monto) <= Math.max(2, ult.monto * 0.1));
     const cadaMes = v.length >= 2 && v.slice(1).every((x, i) => { const d = (deISO(x.fecha) - deISO(v[i].fecha)) / 86400000; return d >= 24 && d <= 38; });
+    if (!vigente && (porConcepto || (meses.size >= 2 && parecidos && cadaMes))) continue;
     if (porConcepto || (meses.size >= 2 && parecidos && cadaMes)) {
       mensuales.push({ nombre: nombreDe(v), concepto: ult.concepto, mensual: Number(ult.monto), anual: Math.round(ult.monto * 12 * 100) / 100, veces: v.length, seguro: meses.size >= 2 });
       continue;
@@ -2189,16 +2192,18 @@ function abrirSeRepiten(tarjetas) {
     h('span', { class: 'cv-ico' }, catIco(concepto)),
     h('span', { class: 'rep-texto' }, h('strong', {}, nombre), h('small', {}, sub)),
     h('span', { class: 'rep-monto' }, h('strong', {}, monto), h('small', {}, montoSub)));
-  const totalAnual = r.mensuales.reduce((t, x) => t + x.anual, 0) + r.habitos.reduce((t, x) => t + x.anual, 0);
+  const mensualesVistos = r.mensuales.slice(0, 4);
+  const habitosVistos = r.habitos.slice(0, 6);
+  const totalAnual = mensualesVistos.reduce((t, x) => t + x.anual, 0) + habitosVistos.reduce((t, x) => t + x.anual, 0); // solo lo que se ve
   v.caja.append(
     h('p', { class: 'cierre-etq' }, 'Lo que se repite'),
     h('p', { class: 'rep-intro' }, totalAnual > 0 ? ['Plata que se va poquito a poco: ', h('strong', {}, `~${soles(totalAnual)} al año`), '. Mira si todo sigue valiendo la pena.'] : 'Todavía no hay gastos que se repitan.'),
     h('p', { class: 'etq' }, 'Cobros de cada mes'),
-    r.mensuales.length ? h('ul', { class: 'rep-lista' }, r.mensuales.map((x) => fila(x.concepto, x.nombre,
+    r.mensuales.length ? h('ul', { class: 'rep-lista' }, mensualesVistos.map((x) => fila(x.concepto, x.nombre,
       x.seguro ? `Llega cada mes · ${x.veces} veces` : 'Parece de cada mes (falta otro mes para confirmarlo)', `${soles(x.mensual)} al mes`, `${soles(x.anual)} al año`)))
       : h('p', { class: 'suave' }, 'Todavía no hay cobros que lleguen cada mes.'),
     h('p', { class: 'etq' }, `Donde más vuelves · últimos ${r.diasVentana} días`),
-    r.habitos.length ? h('ul', { class: 'rep-lista' }, r.habitos.slice(0, 6).map((x) => fila(x.concepto, x.nombre,
+    r.habitos.length ? h('ul', { class: 'rep-lista' }, habitosVistos.map((x) => fila(x.concepto, x.nombre,
       `${x.veces} veces · ${soles(x.total)}`, `~${soles(x.anual)}`, 'al año a este ritmo')))
       : h('p', { class: 'suave' }, 'Aún no hay lugares donde compres 3 veces o más.'),
     h('div', { class: 'acciones modal-acciones' }, h('button', { type: 'button', class: 'boton primario', onclick: v.cerrar }, 'Entendido')));
@@ -2224,6 +2229,7 @@ function comoVas(tarjetas) {
     const m = Number(cons.monto) || 0;
     if (!cons.fecha || !(m > 0)) continue;
     if (!primero || cons.fecha < primero) primero = cons.fecha;
+    if (String(cons.origen || '').startsWith('A:')) continue; // lo pagado con un ahorro no infla el ritmo del mes
     const k = cons.concepto || 'Sin tipo';
     const sumar = (mapa) => mapa.set(k, (mapa.get(k) || 0) + m);
     if (cons.fecha >= desde && cons.fecha <= hoy) sumar(act);
@@ -2254,7 +2260,7 @@ function nodoComoVas(cv) {
         : ['Llevas ', h('strong', {}, soles(cv.llevas)), ' este mes'])),
     h('p', { class: 'cv-sub' }, cv.proyectado !== null ? sub : `${sub} · aún es pronto para calcular el ritmo`,
       cv.hayAnterior ? h('span', {}, ` · el mes pasado fueron ${soles(cv.antTotal)}`) : null),
-    cv.hayAnterior ? h('p', { class: 'cv-comparo' + (dif > 0 ? ' sube' : ' baja') },
+    cv.hayAnterior ? h('p', { class: 'cv-comparo' + (Math.abs(dif) < 1 ? '' : dif > 0 ? ' sube' : ' baja') },
       `A esta altura del mes pasado llevabas ${soles(cv.antMismo)}: `,
       h('strong', {}, Math.abs(dif) < 1 ? 'vas igual' : `hoy vas ${soles(Math.abs(dif))} ${dif > 0 ? 'arriba' : 'abajo'}`)) : null,
     cv.conceptos.length ? h('ul', { class: 'cv-lista' }, cv.conceptos.map((x) => h('li', { title: cv.hayAnterior ? `${x.concepto}: ${soles(x.llevas)} ahora · ${soles(x.antes)} a esta altura del mes pasado` : null },
@@ -2903,11 +2909,12 @@ function filaWhatsapp() {
 // v133 (motor 1.20): pases entre ustedes, tope de antojos, antojos → metas y anotar gastos por WhatsApp.
 // ---------------------------------------------------------------------------
 function motorV120() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 20); }
-function motorV122() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 22); }
-function motorV123() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 23); }
-function motorV124() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 24); }
-function motorV125() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 25); }
-function motorV126() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 26); }
+function motorDesde(b) { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= b); }
+function motorV122() { return motorDesde(22); }
+function motorV123() { return motorDesde(23); }
+function motorV124() { return motorDesde(24); }
+function motorV125() { return motorDesde(25); }
+function motorV126() { return motorDesde(26); }
 // v182 (motor 1.26): apartados. La plata de algunas líneas (comida, súper...) se guarda en una cuenta y lo que no se
 // gasta se acumula. Un gasto de sus tipos, pagado en directo, sale de ahí (no del sobrante de nadie).
 const apartadosGuardados = () => (motorV126() ? leerCache('apartados')?.datos?.apartados : null) || [];
@@ -3230,7 +3237,8 @@ function editarConsumo(t, c) {
   const selConcepto = h('select', { id: 'ed-concepto' }, conceptos.map((x) => h('option', { value: x, selected: normalizar(x) === normalizar(c.concepto) }, x)));
   const inFecha = h('input', { id: 'ed-fecha', type: 'date', max: manana, value: c.fecha || '' });
   const inNota = h('input', { id: 'ed-nota', type: 'text', maxlength: '200', autocomplete: 'off', placeholder: 'Opcional', value: c.nota || '' });
-  const opsOrigen = motorBolsas() ? opcionesOrigen(c.responsable || usuarioActual()?.nombre || '') : [];
+  const apartEd = t.id === 'HORMIGA' ? apartadoDeConcepto(c.concepto) : null; // pagado en directo con un tipo que tiene apartado
+  const opsOrigen = motorBolsas() ? opcionesOrigen(c.responsable || usuarioActual()?.nombre || '', false, '', null, apartEd) : [];
   if (c.origen && !opsOrigen.some((o) => o.valor === c.origen)) opsOrigen.push({ valor: c.origen, etiqueta: textoOrigen(c.origen) || c.origen });
   const selOrigen = h('select', { id: 'ed-origen' }, opsOrigen.map((o) => h('option', { value: o.valor, selected: o.valor === (c.origen || '') }, o.etiqueta)));
   // "Pagué con" (motor 1.9): cada tarjeta compartida aparece por separado, como al registrar.
@@ -3287,7 +3295,7 @@ function editarConsumo(t, c) {
       if (idTarjeta) cambios.tarjeta = idTarjeta;
       // Pagado en directo (efectivo, Yape, Plin, Lemon): si no se eligió otra cosa, sale de lo que ya tenía quien gastó.
       const directo = opsMedio.find((o) => o.valor === selMedio.value)?.directo;
-      if (directo && motorBolsas() && cambios.origen === undefined && !(c.origen || '')) {
+      if (directo && motorBolsas() && cambios.origen === undefined && !(c.origen || '') && !apartadoDeConcepto(selConcepto.value)) {
         const propio = opsOrigen.find((o) => o.valor.startsWith('P:'));
         if (propio) cambios.origen = propio.valor;
       }
@@ -3974,6 +3982,7 @@ function chipApartados() {
     const t = l.reduce((x, a) => x + (Number(a.saldo) || 0), 0);
     b.replaceChildren(icono('billetera'), h('span', {}, 'Apartados'), h('b', {}, soles(t)));
   };
+  b.refrescar = pintar; // la ventanita lo llama al guardar o al traer datos nuevos
   pintar();
   cargarRapido('apartados', {}, 'apartados').then(pintar).catch(() => {});
   return b;
@@ -3982,38 +3991,53 @@ function chipApartados() {
 // Cada apartado: cuánto hay, en qué cuenta, cuánto entró y se gastó; con el lápiz se dice cuánto hay de verdad.
 async function abrirApartados() {
   let lista = apartadosGuardados();
-  if (!lista.length) { try { lista = (await cargarRapido('apartados', {}, 'apartados'))?.datos?.apartados || []; } catch { lista = []; } }
   const v = ventanita('apartados-dlg', 'Apartados');
   const ul = h('ul', { class: 'apt-lista' });
   const total = h('strong', { class: 'apt-total' });
+  const cab = h('div', { class: 'apt-cab' }, h('span', {}, 'Guardado en total'), total);
+  const vacioMsg = vacio('Ninguna línea tiene cuenta todavía. Pon la cuenta entre paréntesis en su nombre, por ejemplo «Alimentación (BCP-DEB)».');
   let animar = true;
+  let editando = false;
+  const refrescarChips = () => document.querySelectorAll('.chip-apartados').forEach((x) => x.refrescar?.());
   const pintar = () => {
     const t = lista.reduce((x, a) => x + (Number(a.saldo) || 0), 0);
     total.replaceChildren(soles(t));
     ul.replaceChildren(...lista.map((a, i) => fila(a, i)));
+    cab.hidden = !lista.length; ul.hidden = !lista.length; vacioMsg.hidden = !!lista.length;
     if (animar) animar = false; else ul.classList.add('sin-entrada');
   };
   const fila = (a, i) => {
     const li = h('li', { class: 'apt-fila', style: `--i: ${i}` });
     const ico = () => h('span', { class: 'cv-ico' }, catIco(a.conceptos?.[0] || nombreLinea(a.linea)));
-    const ver = () => li.replaceChildren(ico(),
-      h('span', { class: 'apt-texto' }, h('strong', {}, nombreLinea(a.linea)),
-        h('small', {}, `${a.cuenta} · entró ${soles(a.depositado)} · se gastó ${soles(a.gastado)}${a.ajuste ? ' · ajustado' : ''}`)),
-      h('span', { class: 'apt-saldo' + (a.saldo < 0 ? ' falta' : '') }, `${a.saldo < 0 ? '−' : ''}${soles(Math.abs(a.saldo))}`),
-      h('button', { type: 'button', class: 'boton icono-solo apt-editar', title: 'Decir cuánto hay de verdad', 'aria-label': `Ajustar ${nombreLinea(a.linea)}`, onclick: editar }, icono('lapiz')));
+    const sinMarcar = (a.sinMarcar || []).map((m) => (nombreMesClave(m) || m).split(' ')[0].toLowerCase());
+    const ver = () => {
+      editando = false;
+      li.replaceChildren(ico(),
+        h('span', { class: 'apt-texto' }, h('strong', {}, nombreLinea(a.linea)),
+          h('small', {}, `${a.cuenta} · entró ${soles(a.depositado)} · gastó ${soles(a.gastado)}${a.ajuste ? ' · ajustado' : ''}`),
+          sinMarcar.length ? h('small', { class: 'apt-aviso' }, `${sinMarcar.join(' y ')} sin marcar como pagado: esa plata no cuenta como guardada.`) : null),
+        h('span', { class: 'apt-saldo' + (a.saldo < 0 ? ' falta' : '') }, `${a.saldo < 0 ? '−' : ''}${soles(Math.abs(a.saldo))}`),
+        h('button', { type: 'button', class: 'boton icono-solo apt-editar', title: 'Decir cuánto hay de verdad', 'aria-label': `Ajustar ${nombreLinea(a.linea)}`, onclick: editar }, icono('lapiz')));
+    };
     const editar = () => {
-      const inp = h('input', { type: 'text', inputmode: 'decimal', class: 'apt-entrada', autocomplete: 'off', value: String(a.saldo), 'aria-label': `Cuánto hay hoy para ${nombreLinea(a.linea)}` });
+      editando = true;
+      const inp = h('input', { type: 'text', inputmode: 'text', class: 'apt-entrada', autocomplete: 'off', value: String(a.saldo), 'aria-label': `Cuánto hay hoy para ${nombreLinea(a.linea)}` });
       const ok = h('button', { type: 'button', class: 'boton primario chico' }, 'Guardar');
+      const no = h('button', { type: 'button', class: 'boton chico', onclick: ver }, 'Cancelar');
       const guardar = async () => {
-        const txt = inp.value.trim();
-        const monto = txt === '' ? null : /^0+([.,]0+)?$/.test(txt) ? 0 : leerMonto(txt);
-        if (txt !== '' && (monto === null || monto === undefined)) { inp.classList.add('mal-meta'); inp.focus(); return; }
+        if (ok.disabled) return; // doble Enter
+        const txt = inp.value.trim().replace(/^[−–]/, '-');
+        const negativo = txt.startsWith('-');
+        const limpio = negativo ? txt.slice(1).trim() : txt;
+        const monto = txt === '' ? null : /^0+([.,]0+)?$/.test(limpio) ? 0 : (() => { const n = leerMonto(limpio); return n === null || n === undefined ? undefined : (negativo ? -n : n); })();
+        if (txt !== '' && monto === undefined) { inp.classList.add('mal-meta'); inp.focus(); avisar('Escribe un monto válido', 'error'); return; }
         ocuparBoton(ok, 'Guardando…');
         try {
           const r = await llamarApi('guardarApartado', { linea: a.linea, saldo: monto }, { email: emailSesion() });
           lista = r?.apartados || lista;
           guardarCache('apartados', { apartados: lista });
-          pintar();
+          editando = false;
+          pintar(); refrescarChips();
           avisar(monto === null ? `${nombreLinea(a.linea)}: vuelve a la cuenta de la app` : `${nombreLinea(a.linea)}: ${soles(monto)}`, 'ok');
         } catch (e) { liberarBoton(ok, 'Guardar'); avisar(mensajeError(e, 'No se pudo guardar.'), 'error'); }
       };
@@ -4024,8 +4048,8 @@ async function abrirApartados() {
       });
       inp.addEventListener('input', () => inp.classList.remove('mal-meta'));
       li.replaceChildren(ico(),
-        h('span', { class: 'apt-texto' }, h('strong', {}, `¿Cuánto hay hoy para ${nombreLinea(a.linea)}?`), h('small', {}, `Según tu ${a.cuenta}`)),
-        h('div', { class: 'campo-soles apt-campo' }, h('span', {}, 'S/'), inp), ok);
+        h('span', { class: 'apt-texto' }, h('strong', {}, `¿Cuánto hay hoy para ${nombreLinea(a.linea)}?`), h('small', {}, `Según tu ${a.cuenta}. Vacío = vuelve a la cuenta de la app.`)),
+        h('div', { class: 'campo-soles apt-campo' }, h('span', {}, 'S/'), inp), h('div', { class: 'apt-botones' }, ok, no));
       setTimeout(() => { inp.focus(); inp.select(); }, 30);
     };
     ver();
@@ -4035,10 +4059,18 @@ async function abrirApartados() {
   v.caja.append(
     h('p', { class: 'cierre-etq' }, 'Apartados'),
     h('p', { class: 'rep-intro' }, 'Lo que guardan de cada línea en su cuenta. Lo que no gastan se acumula para el mes siguiente.'),
-    lista.length ? h('div', { class: 'apt-cab' }, h('span', {}, 'Guardado en total'), total) : null,
-    lista.length ? ul : vacio('Ninguna línea tiene cuenta todavía. Pon la cuenta entre paréntesis en su nombre, por ejemplo «Alimentación (BCP-DEB)».'),
+    cab, ul, vacioMsg,
     h('div', { class: 'acciones modal-acciones' }, h('button', { type: 'button', class: 'boton primario', onclick: v.cerrar }, 'Listo')));
   v.abrir();
+  // Lo guardado se ve al instante; por detrás se trae lo último (un gasto o un mes marcado cambian el saldo).
+  if (navigator.onLine) {
+    cargar('apartados', {}, 'apartados').then((r) => {
+      if (!v.dlg.isConnected || !Array.isArray(r?.datos?.apartados)) return;
+      lista = r.datos.apartados;
+      if (!editando) pintar();
+      refrescarChips();
+    }).catch(() => {});
+  }
 }
 
 // ---------- v178: Ajustar el presupuesto con lo que de verdad se gasta ----------
@@ -4072,7 +4104,8 @@ function sugerenciasAjuste(filas, tarjetas) {
     let nuevo = null;
     let tipo = null;
     if (mayor > plan + 0.5) { nuevo = diez(mayor); tipo = 'sube'; }
-    else if (hay2 && (g1 || 0) < plan * 0.7 && (g2 || 0) < plan * 0.7) { nuevo = diez(mayor * 1.1); tipo = 'baja'; }
+    // Una línea con apartado guarda lo que no se gasta a propósito: no se propone bajarla.
+    else if (hay2 && !apartadosGuardados().some((a) => a.clave === normalizar(f.concepto)) && (g1 || 0) < plan * 0.7 && (g2 || 0) < plan * 0.7) { nuevo = diez(mayor * 1.1); tipo = 'baja'; }
     if (nuevo === null || Math.abs(nuevo - plan) < 10) continue;
     salida.push({ f, plan, nuevo, tipo, g1: g1 || 0, g2: hay2 ? (g2 || 0) : null, m1, m2 });
   }
@@ -4086,9 +4119,10 @@ async function abrirAjuste(mes) {
     cargarRapido('presupuesto', { mes }, 'presupuesto:' + mes).catch(() => null),
     cargarRapido('tarjetas', { hoy: hoyISO(), incluirPagados: true }, 'tarjetas-todo').catch(() => null),
   ]);
-  const lista = rp?.datos?.filas ? sugerenciasAjuste(rp.datos.filas, rt?.datos?.tarjetas) : [];
-  if (!lista.length) { avisar('Tu presupuesto ya va de acuerdo con lo que gastan', 'ok'); return; }
-  const tot = rp.datos.totales || null;
+  const todas = rp?.datos?.filas ? sugerenciasAjuste(rp.datos.filas, rt?.datos?.tarjetas) : [];
+  if (!todas.length) { avisar('Tu presupuesto ya va de acuerdo con lo que gastan', 'ok'); return; }
+  const lista = todas.slice(0, 6); // la ventana no tiene scroll: primero las que más cambian
+  const tot = rp.datos.totales ? { ...rp.datos.totales } : null;
   const corto = (m) => (nombreMesClave(m) || m).split(' ')[0].toLowerCase();
   const abr = (m) => ABR_MESES[Number(m.slice(5, 7)) - 1] || corto(m);
   const elegidos = new Set(lista.filter((x) => x.tipo === 'sube'));
@@ -4101,7 +4135,7 @@ async function abrirAjuste(mes) {
     btn.disabled = !elegidos.size;
     const saldo = tot && Number.isFinite(Number(tot.saldo)) ? Number(tot.saldo) - dif : null;
     pie.replaceChildren(...(elegidos.size
-      ? [`Tus gastos ${dif >= 0 ? 'suben' : 'bajan'} `, h('strong', {}, soles(Math.abs(dif))),
+      ? [`Los gastos ${dif >= 0 ? 'suben' : 'bajan'} `, h('strong', {}, soles(Math.abs(dif))),
         saldo === null ? '' : saldo < 0 ? [' · faltaría ', h('strong', { class: 'aj-falta' }, soles(-saldo))] : [' · te sobraría ', h('strong', {}, soles(saldo))]].flat()
       : ['Toca las líneas que quieres cambiar.']));
   };
@@ -4136,15 +4170,20 @@ async function abrirAjuste(mes) {
         hechos++;
         elegidos.delete(x);
         x.li.classList.add('hecha');
+        // Lo ya guardado queda como base: si algo falla más adelante, el reintento no manda un monto viejo.
+        if (tot && Number.isFinite(Number(tot.saldo))) tot.saldo = Number(tot.saldo) - (x.nuevo - x.plan);
+        x.f.monto = x.nuevo; x.plan = x.nuevo;
       }
       try { await cargar('presupuesto', { mes }, 'presupuesto:' + mes); } catch { /* se verá al refrescar */ }
       v.cerrar();
       avisar(`Listo: ${hechos} ${hechos === 1 ? 'línea cambiada' : 'líneas cambiadas'} en ${corto(mes)}`, 'ok');
       if (location.hash.slice(1) === 'presupuesto') navegar({ silencioso: true });
     } catch (e) {
+      // Si la llamada se aplicó pero la respuesta se perdió, el monto de la hoja ya es otro: se vuelve a leer.
+      try { await cargar('presupuesto', { mes }, 'presupuesto:' + mes); } catch { /* sin señal */ }
       liberarBoton(btn, 'Intentar de nuevo');
       pintarPie();
-      avisar(mensajeError(e, hechos ? `Se guardaron ${hechos}; las demás no. Intenta de nuevo.` : 'No se pudo guardar. Intenta de nuevo.'), 'error');
+      avisar(mensajeError(e, hechos ? `Se guardaron ${hechos}; las demás no. Cierra y vuelve a abrir esta ventana.` : 'No se pudo guardar. Cierra y vuelve a abrir esta ventana.'), 'error');
     }
   });
   pintarPie();
@@ -4153,6 +4192,7 @@ async function abrirAjuste(mes) {
     h('p', { class: 'rep-intro', title: 'Cuenta lo pagado con débito, Yape, Plin, Lemon y efectivo. Lo de tarjeta de crédito ya va en la línea de cada tarjeta.' },
       `Según lo que gastaron en ${corto(lista[0].m1)}${lista.some((x) => x.g2 !== null) ? ' y ' + corto(lista[0].m2) : ''}. Se cambia el presupuesto de `, h('strong', {}, corto(mes)), '.'),
     h('ul', { class: 'aj-lista' }, filas),
+    todas.length > lista.length ? h('p', { class: 'suave aj-mas' }, `Y ${todas.length - lista.length} ${todas.length - lista.length === 1 ? 'línea más' : 'líneas más'}: cámbialas primero y vuelve a entrar.`) : null,
     pie,
     h('div', { class: 'acciones modal-acciones' }, btn, h('button', { type: 'button', class: 'boton', onclick: v.cerrar }, 'Ahora no')));
   v.abrir();
@@ -4173,9 +4213,11 @@ function abrirAnio(meses, anioInicial) {
   const lista = (meses || []).filter((m) => /^\d{4}-\d{2}$/.test(m.clave || ''));
   const anios = [...new Set(lista.map((m) => m.clave.slice(0, 4)))].sort();
   if (!anios.length) { avisar('Todavía no hay meses en el presupuesto'); return; }
-  const hoyMes = mesActual();
+  const hoyMes = mesDelCiclo(hoyISO()); // el mes que se está gastando (se cobra a fin de mes), no el del calendario
   let anio = anios.includes(anioInicial) ? anioInicial : anios.includes(hoyMes.slice(0, 4)) ? hoyMes.slice(0, 4) : anios[anios.length - 1];
   const datos = new Map();
+  const frescos = new Set(); // meses ya pedidos al Sheets desde que se abrió la ventana
+  const fallidos = new Set();
   const animados = new Set();
   let contado = '';
   let elegido = null;
@@ -4204,9 +4246,10 @@ function abrirAnio(meses, anioInicial) {
     const sugerido = Math.ceil((llevas + plan) / 100) * 100;
     if (editandoMeta) {
       const inp = h('input', { type: 'text', inputmode: 'decimal', class: 'anio-meta-entrada', autocomplete: 'off', value: meta ? String(meta) : '',
-        placeholder: sugerido > 0 ? sugerido.toLocaleString('en-US') : '0', 'aria-label': `Meta de ahorro de ${anio}` });
+        placeholder: montosOcultos() ? 'Monto' : sugerido > 0 ? sugerido.toLocaleString('en-US') : '0', 'aria-label': `Meta de ahorro de ${anio}` });
       const guardarB = h('button', { type: 'button', class: 'boton primario chico' }, 'Guardar');
       const enviar = async (monto) => {
+        if (guardarB.disabled) return; // doble Enter
         ocuparBoton(guardarB, 'Guardando…');
         try {
           const r = await llamarApi('guardarMetaAnual', { anio, monto }, { email: emailSesion() });
@@ -4302,7 +4345,6 @@ function abrirAnio(meses, anioInicial) {
       if (contado !== anio) { contado = anio; animarVista(totales); ultimo.animar = true; }
       else totales.querySelectorAll('[data-contar]').forEach((el) => pintarMonto(el, Number(el.dataset.contar)));
     }
-    const anioHoy = hoyMes.slice(0, 4);
     ultimo = { ...ultimo,
       llevas: reales.reduce((x, y) => x + Math.max(0, Number(y.t.ahorros) || 0), 0),
       plan: conDatos.filter((x) => x.futuro).reduce((x, y) => x + Math.max(0, Number(y.t.ahorros) || 0), 0),
@@ -4315,8 +4357,8 @@ function abrirAnio(meses, anioInicial) {
       const mesTxt = h('span', { class: 'anio-mes' }, h('span', { class: 'am-largo' }, ABR_MESES[x.i]), h('span', { class: 'am-corto', 'aria-hidden': 'true' }, ABR_MESES[x.i][0]),
         x.clave === hoyMes ? h('em', {}, 'hoy') : null);
       if (!x.t || !(x.t.ingresos > 0)) {
-        const tipo = !x.existe ? 'fuera' : !x.t ? 'cargando' : 'nodato';
-        return h('div', { class: `anio-col ${tipo}`, title: tipo === 'cargando' ? 'Cargando…' : `${nombreDe(x.clave)}: sin ingresos cargados` },
+        const tipo = !x.existe ? 'fuera' : !x.t ? (fallidos.has(x.clave) || !navigator.onLine ? 'error' : 'cargando') : 'nodato';
+        return h('div', { class: `anio-col ${tipo}`, title: tipo === 'cargando' ? 'Cargando…' : tipo === 'error' ? `${nombreDe(x.clave)}: no se pudo cargar` : `${nombreDe(x.clave)}: sin ingresos cargados` },
           h('span', { class: 'anio-zona' }, h('i', { class: 'anio-vacio' })), mesTxt);
       }
       const g = Math.max(0, x.t.gastos || 0);
@@ -4328,7 +4370,7 @@ function abrirAnio(meses, anioInicial) {
         style: `--i: ${x.i}; --h: ${alto(g + a + Math.max(0, s))}; --tope: ${alto(x.t.ingresos)}`,
         'aria-label': `${nombreDe(x.clave)}: entró ${soles(x.t.ingresos)}, ${s < 0 ? 'faltó' : 'sobró'} ${soles(Math.abs(s))}` },
         h('span', { class: 'anio-zona' },
-          h('b', { class: 'anio-valor' }, `${s < 0 ? '−' : ''}${milCorto(s)}`),
+          h('b', { class: 'anio-valor' }, `${s < 0 && !montosOcultos() ? '−' : ''}${milCorto(s)}`),
           h('span', { class: 'anio-pila' },
             s > 0 ? h('i', { class: 'pf-sobra', style: `flex: ${s} 1 0` }) : null,
             a > 0 ? h('i', { class: 'pf-ahorro', style: `flex: ${a} 1 0` }) : null,
@@ -4359,6 +4401,11 @@ function abrirAnio(meses, anioInicial) {
       textoBase = ['Tu mejor mes: ', h('strong', {}, nombreDe(mejor.clave).toLowerCase()), ` (sobró ${soles(Math.max(0, mejor.t.saldo || 0))})`,
         ...((Number(peor.t.saldo) || 0) < 0 ? [' · en ', h('strong', {}, nombreDe(peor.clave).toLowerCase()), ' faltaron ', h('strong', { class: 'anio-falta' }, soles(-peor.t.saldo))] : [])];
     } else textoBase = [terminado ? 'Este año todavía no tiene meses con ingresos cargados.' : 'Cargando…'];
+    const sinCargar = filas.filter((x) => x.existe && !x.t && (fallidos.has(x.clave) || !navigator.onLine));
+    if (sinCargar.length) {
+      textoBase = [`Faltan ${sinCargar.length} ${sinCargar.length === 1 ? 'mes' : 'meses'} por cargar: los totales no están completos. `,
+        navigator.onLine ? h('button', { type: 'button', class: 'boton chico enlace', onclick: () => { fallidos.clear(); cargarAnio(); } }, 'Reintentar') : 'Sin señal.'];
+    }
     if (!elegido) ponerDetalle(textoBase);
     const hayPlan = conDatos.some((x) => x.futuro);
     const hayFalta = conDatos.some((x) => (Number(x.t.saldo) || 0) < 0);
@@ -4370,16 +4417,20 @@ function abrirAnio(meses, anioInicial) {
     const claves = lista.filter((m) => m.clave.startsWith(anio)).map((m) => m.clave);
     const faltan = [];
     for (const k of claves) {
-      if (datos.has(k)) continue;
-      const t = leerCache('presupuesto:' + k)?.datos?.totales;
-      if (t) datos.set(k, t); else faltan.push(k);
+      const cache = leerCache('presupuesto:' + k);
+      const t = cache?.datos?.totales;
+      if (t && !datos.has(k)) datos.set(k, t);
+      // Lo guardado se muestra al instante, pero se vuelve a pedir si es viejo o si algo cambió desde entonces.
+      const vieja = !cache || cache.ts < estado.cambioDesde || Date.now() - cache.ts > FRESCO_MS;
+      if (vieja && !frescos.has(k)) faltan.push(k);
     }
     const este = anio;
     pintar(!faltan.length || !navigator.onLine);
     for (let k = 0; k < faltan.length && navigator.onLine; k += 3) {
       if (!v.dlg.isConnected || este !== anio) return;
       await Promise.all(faltan.slice(k, k + 3).map((clave) => cargar('presupuesto', { mes: clave }, 'presupuesto:' + clave)
-        .then((x) => datos.set(clave, x?.datos?.totales || { ingresos: 0 })).catch(() => datos.set(clave, { ingresos: 0 }))));
+        .then((x) => { const t = x?.datos?.totales; if (t) { datos.set(clave, t); frescos.add(clave); fallidos.delete(clave); } else fallidos.add(clave); })
+        .catch(() => { fallidos.add(clave); })));
       if (!v.dlg.isConnected || este !== anio) return;
       pintar(k + 3 >= faltan.length);
     }
@@ -4706,7 +4757,9 @@ async function abrirPendientes() {
   const comercioDe = (p) => limpiarComercio(p.comercio || '') || p.comercio || 'Consumo';
   const montoDe = (p) => (enDolares(p) ? `US$ ${Number(p.monto).toFixed(2)}` : soles(p.monto));
   const debitoDe = (p) => (/^TD_/.test(String(p.medioSugerido || '')) ? (leerCache('config')?.datos?.medios || []).find((m) => m.id === p.medioSugerido) || { id: p.medioSugerido, etiqueta: 'Débito' } : null);
-  const faltaOrigen = (p) => motorBolsas() && (!!debitoDe(p) || !!CUENTA_DE_MEDIO[directoDe(p)]) && p._origen === undefined; // débito, Yape o Plin: se pregunta cada vez
+  // Débito, Yape o Plin: se pregunta cada vez, salvo que el tipo de gasto tenga su apartado (sale de ahí).
+  const faltaOrigen = (p, concepto) => motorBolsas() && (!!debitoDe(p) || !!CUENTA_DE_MEDIO[directoDe(p)]) && p._origen === undefined
+    && !apartadoDeConcepto(concepto !== undefined ? concepto : sugeridoDe(p));
   const listos = () => cola.filter((p) => sugeridoDe(p) && !enDolares(p) && !faltaOrigen(p));
   const sacarDeMemoria = (p) => { if (Array.isArray(estado.ultimosPendientes)) estado.ultimosPendientes = estado.ultimosPendientes.filter((x) => x.id !== p.id); borrarCaches(['pendientes']); };
   const devolver = (p, nota) => { p._nota = nota; cola.push(p); if (!cerrado && cola.length === 1) pintar(); else if (!cerrado) refrescarProgreso(); };
@@ -4718,7 +4771,8 @@ async function abrirPendientes() {
     if (quienDe(p) && quienDe(p) !== yo) datos.responsable = quienDe(p);
     if (directoDe(p)) datos.medio = directoDe(p);
     if (p._repetido) datos.confirmarDuplicado = true;
-    const origenP = p._origen === undefined && directoDe(p) && !lineaDeBilletera(directoDe(p)) ? 'P' : p._origen;
+    const conApartado = !p._origenManual && (directoDe(p) || debitoDe(p)) && !lineaDeBilletera(directoDe(p)) && !!apartadoDeConcepto(concepto);
+    const origenP = conApartado ? '' : p._origen === undefined && directoDe(p) && !lineaDeBilletera(directoDe(p)) ? 'P' : p._origen;
     if (motorBolsas() && origenP) datos.origen = origenP.startsWith('P') ? `P:${quienDe(p)}` : origenP;
     if (p._cuotas?.cuotas > 1) { datos.cuotas = p._cuotas.cuotas; if (p._cuotas.montoCuota > 0) datos.montoCuota = p._cuotas.montoCuota; }
     envios = envios.then(async () => {
@@ -4777,7 +4831,7 @@ async function abrirPendientes() {
     }
     const p = cola[0];
     const id = idDe(p), directo = directoDe(p), dolar = enDolares(p), sugerido = sugeridoDe(p);
-    if (directo && !CUENTA_DE_MEDIO[directo] && motorBolsas() && p._origen === undefined) p._origen = 'P'; // efectivo: sale de lo que ya se tiene
+    if (directo && !CUENTA_DE_MEDIO[directo] && motorBolsas() && p._origen === undefined && !apartadoDeConcepto(sugerido)) p._origen = 'P'; // efectivo: sale de lo que ya se tiene (salvo apartado)
     const hora = (p.fechaCorreo || '').slice(11, 16);
     const deBilletera = ['YAPE', 'LEMON'].includes(String(p.banco || '').toUpperCase()); // leído del correo de Yape o Lemon
     const deb = debitoDe(p);
@@ -4793,7 +4847,7 @@ async function abrirPendientes() {
     let cajaElige = null;
     const confirmar = (c) => {
       if (paso.classList.contains('ocupado')) return;
-      if (faltaOrigen(p)) { p._concepto = c; cajaElige?.classList.remove('tiembla'); void cajaElige?.offsetWidth; cajaElige?.classList.add('tiembla'); return; }
+      if (faltaOrigen(p, c)) { p._concepto = c; cajaElige?.classList.remove('tiembla'); void cajaElige?.offsetWidth; cajaElige?.classList.add('tiembla'); return; }
       cola.shift(); enviar(p, c); avanzar(ticket, 'confirmado');
     };
     const nota = p._nota || (dolar ? 'Está en dólares: regístralo a mano con el monto en soles y descarta este.' : '');
@@ -4820,15 +4874,17 @@ async function abrirPendientes() {
       faltaOrigen(p) ? (cajaElige = h('div', { class: 'pend-elige-origen' },
         h('span', {}, `Pagaste con ${deb ? 'débito' : directo === 'YAPE' ? 'Yape (cuenta BCP)' : 'Plin (cuenta Interbank)'}. ¿De dónde sale?`),
         h('div', { class: 'pend-pase-botones' },
-          h('button', { type: 'button', class: 'boton chico', onclick: () => { p._origen = ''; pintar(); } }, icono('inicio'), 'Presupuesto'),
-          h('button', { type: 'button', class: 'boton chico', onclick: () => { p._origen = 'P'; pintar(); } }, avatar(quienDe(p), 'mini'), `Sobrante de ${nombreCorto(quienDe(p))}`)))) : motorBolsas() ? (() => {
-        const ops = () => opcionesOrigen(quienDe(p), !!directoDe(p) || !!deb, '', lineaDeBilletera(directoDe(p)) ? directoDe(p) : null);
-        const actual = () => ops().find((o) => (o.valor.startsWith('P:') ? 'P' : o.valor) === (p._origen || '')) || ops()[0];
+          h('button', { type: 'button', class: 'boton chico', onclick: () => { p._origen = ''; p._origenManual = true; pintar(); } }, icono('inicio'), 'Presupuesto'),
+          h('button', { type: 'button', class: 'boton chico', onclick: () => { p._origen = 'P'; p._origenManual = true; pintar(); } }, avatar(quienDe(p), 'mini'), `Sobrante de ${nombreCorto(quienDe(p))}`)))) : motorBolsas() ? (() => {
+        const apartP = (directoDe(p) || deb) && !lineaDeBilletera(directoDe(p)) ? apartadoDeConcepto(sugerido) : null;
+        const ops = () => opcionesOrigen(quienDe(p), !!directoDe(p) || !!deb, '', lineaDeBilletera(directoDe(p)) ? directoDe(p) : null, apartP);
+        const actual = () => (apartP && !p._origenManual ? ops()[0] : ops().find((o) => (o.valor.startsWith('P:') ? 'P' : o.valor) === (p._origen || '')) || ops()[0]);
         const b = h('button', { type: 'button', class: 'pend-origen', title: 'Toca para cambiar de dónde sale', onclick: () => {
           const lista = ops();
           const i = lista.findIndex((o) => (o.valor.startsWith('P:') ? 'P' : o.valor) === (p._origen || ''));
           const sig = lista[(Math.max(0, i) + 1) % lista.length];
           p._origen = sig.valor.startsWith('P:') ? 'P' : sig.valor;
+          p._origenManual = true;
           b.lastChild.textContent = actual().etiqueta;
           b.classList.toggle('activo', !!p._origen);
         } }, h('span', { class: 'suave' }, 'Sale de'), h('strong', {}, actual().etiqueta));
@@ -5449,17 +5505,22 @@ function dialogoLineaEdit(l, mes, alTerminar) {
   let palabras = conCorreo ? (palabrasFijo(l.concepto) || []).slice() : [];
   let palabrasAntes = JSON.stringify(palabras);
   const cajaPalabras = conCorreo ? h('div', { class: 'palabras-fijo' }) : null;
+  const tieneApartado = conCorreo && apartadosGuardados().some((a) => a.clave === normalizar(l.concepto));
+  const avisoApartado = tieneApartado ? h('p', { class: 'suave le-aviso', hidden: true },
+    'Esta línea guarda su plata en una cuenta (apartado). Si le pones empresas, pasa a ser un recibo y deja de ser apartado.') : null;
   const inPalabra = conCorreo ? h('input', { type: 'text', class: 'palabra-entrada', maxlength: '30', placeholder: palabras.length ? 'Otra empresa' : 'Ej. Entel', 'aria-label': 'Agregar empresa' }) : null;
   const pintarPalabras = () => {
     if (!cajaPalabras) return;
     cajaPalabras.replaceChildren(...palabras.map((p) => h('span', { class: 'palabra-chip' }, nombreEmpresa(p),
       h('button', { type: 'button', 'aria-label': `Quitar ${nombreEmpresa(p)}`, title: 'Quitar', onclick: () => { palabras = palabras.filter((x) => x !== p); pintarPalabras(); } }, icono('cerrar')))), inPalabra);
     inPalabra.placeholder = palabras.length ? 'Otra empresa' : 'Ej. Entel';
+    if (avisoApartado) avisoApartado.hidden = !palabras.length;
   };
   const agregarPalabra = () => {
     const t = normalizar(inPalabra.value).trim();
     inPalabra.value = '';
-    if (t.length < 2 || palabras.includes(t) || palabras.length >= 8) return;
+    if (palabras.length >= 8 && t.length >= 2 && !palabras.includes(t)) { avisar('Son 8 empresas como máximo por línea'); return; }
+    if (t.length < 2 || palabras.includes(t)) return;
     palabras.push(t); pintarPalabras(); inPalabra.focus();
   };
   if (inPalabra) {
@@ -5524,6 +5585,7 @@ function dialogoLineaEdit(l, mes, alTerminar) {
         cajaPalabras ? h('p', { class: 'etq', title: 'Cuando llega el correo del pago (débito automático, «cobro de tu recibo», pago o yapeo del servicio) o un consumo con tarjeta en estas empresas, lo pagado se suma; al llegar a lo planeado, la línea queda pagada sola.' },
           'Se marca pagado solo con el correo de') : null,
         cajaPalabras,
+        avisoApartado,
         cajaCobros),
       cajas ? h('div', { class: 'le-col' }, h('p', { class: 'etq' }, 'Qué tipos de gasto cuentan aquí'), cajas) : null),
     msg, zona,
@@ -5815,7 +5877,7 @@ function pedirPinNuevo() {
       if (!/^\d{4,6}$/.test(p1)) { msg.textContent = 'El PIN debe tener de 4 a 6 números.'; msg.hidden = false; a.focus(); return; }
       if (p1 !== p2) { msg.textContent = 'Los dos PIN no son iguales.'; msg.hidden = false; b.focus(); return; }
       const sal = b64u(crypto.getRandomValues(new Uint8Array(12)));
-      localStorage.setItem(BLOQUEO_CLAVE, JSON.stringify({ tipo: 'pin', sal, hash: await hashPin(p1, sal) }));
+      localStorage.setItem(BLOQUEO_CLAVE, JSON.stringify({ tipo: 'pin', sal, hash: await hashPin(p1, sal), n: p1.length }));
       listo = true; v.cerrar(); resolver(true);
     };
     [a, b].forEach((x) => x.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); guardar(); } }));
@@ -5832,15 +5894,29 @@ function pedirPinNuevo() {
 function mostrarBloqueo() {
   const b = bloqueoGuardado();
   if (!b || SOLO_GASTO || document.querySelector('.bloqueo') || !api.emailGuardado()) return;
+  // Lo que estuviera abierto (una ventanita con montos, por ejemplo) se cierra: nada queda encima ni a la vista.
+  document.querySelectorAll('dialog[open]').forEach((d) => { try { d.close(); } catch { /* nada */ } });
   document.body.classList.add('con-bloqueo');
   const msg = h('p', { class: 'bloqueo-msg', 'aria-live': 'polite' });
-  const capa = h('div', { class: 'bloqueo', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'FinFamily está bloqueada' });
-  const abrir = () => { capa.classList.add('saliendo'); document.body.classList.remove('con-bloqueo'); setTimeout(() => capa.remove(), 260); };
+  // Es un <dialog> modal: el resto de la app queda inerte (sin foco, sin teclado) mientras está bloqueada.
+  const capa = h('dialog', { class: 'bloqueo', 'aria-label': 'FinFamily está bloqueada' });
+  capa.addEventListener('cancel', (ev) => ev.preventDefault());
+  const poner = () => { document.body.append(capa); capa.showModal(); };
+  const abrir = () => { capa.classList.add('saliendo'); document.body.classList.remove('con-bloqueo'); setTimeout(() => { if (capa.open) capa.close(); capa.remove(); }, 260); };
+  let armado = 0;
+  const textoSalir = '¿No puedes? Cerrar sesión y entrar con Google';
   const salir = h('button', { type: 'button', class: 'boton enlace bloqueo-salir', onclick: () => {
+    // Quita el bloqueo y cierra la sesión: pide un segundo toque para que no sea un atajo por accidente.
+    if (Date.now() > armado) {
+      armado = Date.now() + 5000;
+      salir.textContent = 'Toca otra vez: se quita el bloqueo y se cierra la sesión';
+      setTimeout(() => { if (salir.isConnected) salir.textContent = textoSalir; }, 5000);
+      return;
+    }
     try { localStorage.removeItem(BLOQUEO_CLAVE); } catch { /* nada */ }
     borrarCaches(); api.cerrarSesion(); estado.tsDatos = null; estado.cola = []; estado.filasEnEspera = new Set();
     abrir(); mostrar(pantallaLogin('Sesión cerrada.')); construirNav(); pintarAvisos();
-  } }, '¿No puedes? Cerrar sesión y entrar con Google');
+  } }, textoSalir);
   const cab = [h('span', { class: 'bloqueo-ico', 'aria-hidden': 'true' }, icono('candado')), h('h2', {}, 'FinFamily está bloqueada')];
   if (b.tipo === 'huella') {
     const boton = h('button', { type: 'button', class: 'boton primario bloqueo-boton', onclick: async () => {
@@ -5848,19 +5924,35 @@ function mostrarBloqueo() {
       try { await probarHuella(b); abrir(); } catch { msg.textContent = 'No se pudo. Toca el botón para intentar otra vez.'; }
     } }, 'Desbloquear');
     capa.append(...cab, h('p', { class: 'suave' }, 'Usa tu huella, tu cara o el PIN de tu equipo.'), boton, msg, salir);
-    document.body.append(capa);
+    poner();
     setTimeout(() => { if (capa.isConnected && document.visibilityState === 'visible') boton.click(); }, 350);
   } else {
     const campo = h('input', { type: 'password', inputmode: 'numeric', autocomplete: 'off', maxlength: '6', class: 'pin-campo', 'aria-label': 'Tu PIN', placeholder: '••••' });
+    let fallos = 0, rondas = 0, hasta = 0, reloj = 0;
+    const esperar = () => {
+      const seg = Math.min(300, 30 * 2 ** rondas++);
+      hasta = Date.now() + seg * 1000;
+      campo.disabled = true; campo.value = '';
+      const tic = () => {
+        const r = Math.ceil((hasta - Date.now()) / 1000);
+        if (r <= 0) { clearInterval(reloj); campo.disabled = false; msg.textContent = ''; campo.focus(); } else msg.textContent = `Muchos intentos. Espera ${r} s.`;
+      };
+      tic(); reloj = setInterval(tic, 1000);
+    };
     const probar = async () => {
-      if (!/^\d{4,6}$/.test(campo.value)) return;
-      if (await hashPin(campo.value, b.sal) === b.hash) { abrir(); return; }
-      if (campo.value.length >= 6 || campo.dataset.enter) { msg.textContent = 'PIN incorrecto.'; campo.value = ''; capa.classList.remove('tiembla'); void capa.offsetWidth; capa.classList.add('tiembla'); }
+      if (Date.now() < hasta || !/^\d{4,6}$/.test(campo.value)) return;
+      if (await hashPin(campo.value, b.sal) === b.hash) { clearInterval(reloj); abrir(); return; }
+      // Con el largo guardado del PIN se avisa apenas se completa; los PIN viejos avisan a los 6 números o con Enter.
+      if (campo.value.length >= (b.n || 6) || campo.dataset.enter) {
+        fallos++;
+        campo.value = ''; capa.classList.remove('tiembla'); void capa.offsetWidth; capa.classList.add('tiembla');
+        if (fallos >= 5) { fallos = 0; esperar(); } else msg.textContent = `PIN incorrecto${fallos >= 3 ? ` · te quedan ${5 - fallos} intentos` : ''}.`;
+      }
     };
     campo.addEventListener('input', () => { campo.dataset.enter = ''; probar(); });
     campo.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { campo.dataset.enter = '1'; probar(); } });
     capa.append(...cab, h('p', { class: 'suave' }, 'Escribe tu PIN.'), campo, msg, salir);
-    document.body.append(capa);
+    poner();
     setTimeout(() => campo.focus(), 100);
   }
 }
@@ -5869,8 +5961,14 @@ function iniciarBloqueo() {
   mostrarBloqueo();
   let oculta = 0;
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') oculta = Date.now();
-    else if (oculta && Date.now() - oculta >= BLOQUEO_MINUTOS * 60000) mostrarBloqueo();
+    if (document.visibilityState === 'hidden') {
+      oculta = Date.now();
+      // La vista previa de "apps recientes" se toma al salir: se tapa la pantalla para que no muestre montos.
+      if (bloqueoGuardado()) document.body.classList.add('tapado');
+    } else {
+      document.body.classList.remove('tapado');
+      if (oculta && Date.now() - oculta >= BLOQUEO_MINUTOS * 60000) mostrarBloqueo();
+    }
   });
 }
 
@@ -6172,7 +6270,7 @@ async function vistaConfiguracion(seccion) {
         try { localStorage.setItem('ff:ocultar', v ? '1' : ''); } catch { /* nada */ }
         alCambiarOcultos();
       })),
-    filaConfig('Bloquear la app', 'Al abrirla (y al volver después de 5 minutos) te pide tu huella, tu cara o el PIN de este equipo. La app solo para gastos no se bloquea.',
+    filaConfig('Bloquear la app', 'Al abrirla te pide huella, cara o PIN. Es contra miradas: no cifra los datos. La app solo para gastos no se bloquea.',
       (() => {
         const sw = interruptor(!!bloqueoGuardado(), 'Bloquear la app', async (v) => {
           if (!v) { try { localStorage.removeItem(BLOQUEO_CLAVE); } catch { /* nada */ } avisar('Listo: la app ya no se bloquea.', 'ok'); return; }
@@ -6371,12 +6469,13 @@ function sobranteParaPagar(b, quien, mesPago) {
   const suyo = prox?.personas?.find((x) => nombreCorto(x.nombre) === nombreCorto(quien));
   return suyo ? { tiene: Number(suyo.queda) || 0, mes: mesPago } : null;
 }
-function opcionesOrigen(quien, soloEnMano = false, mesPago = '', billetera = null) {
+function opcionesOrigen(quien, soloEnMano = false, mesPago = '', billetera = null, apartado = null) {
   const b = bolsasGuardadas();
   const persona = (b?.personas || []).find((x) => nombreCorto(x.nombre) === nombreCorto(quien));
   const ops = billetera
     ? [{ valor: '', etiqueta: `${lineaDeBilletera(billetera)} (${nombreBilletera(billetera)})`, ico: 'billetera',
       disponible: saldoBilletera(billetera)?.queda ?? null, nota: 'presupuesto del mes' }]
+    : apartado ? [{ valor: '', etiqueta: `Apartado ${nombreLinea(apartado.linea)}`, ico: 'billetera', disponible: Number(apartado.saldo) || 0 }]
     : soloEnMano ? [] : [{ valor: '', etiqueta: 'Fondo común', ico: 'inicio', disponible: null, nota: 'al cobrar' }];
   // Con tarjeta, el sobrante que se usa es el del mes en que se paga (aún no llega).
   const para = sobranteParaPagar(b, quien, soloEnMano ? '' : mesPago);
@@ -6761,6 +6860,15 @@ async function vistaRegistrar() {
       return armar(nivelDe(s.queda), s.queda, `En ${nombreBilletera(s.medio)} (${s.linea})`,
         { alto: `No alcanza lo que hay en ${nombreBilletera(s.medio)}`, ojo: `Ojo: ${nombreBilletera(s.medio)} casi vacío`, ok: 'Te alcanza' },
         `Cargaste ${soles(s.plan)} de ${s.linea} y ya usaste ${soles(s.usado)}.`);
+    }
+    // Apartado (v183): un tipo con su cuenta guardada, pagado en directo, se compara con lo que hay guardado.
+    const apart = !f.origen && directo && !lineaDeBilletera(f.medio) ? apartadoDeConcepto(f.concepto) : null;
+    if (apart) {
+      const saldoAp = Number(apart.saldo) || 0;
+      const nAp = nombreLinea(apart.linea);
+      return armar(nivelDe(saldoAp), saldoAp, `En el apartado ${nAp}`,
+        { alto: `No alcanza lo guardado para ${nAp}`, ojo: `Ojo: lo guardado para ${nAp} quedaría casi vacío`, ok: 'Te alcanza' },
+        `Guardado en ${apart.cuenta}. Lo que no gastan se acumula.`);
     }
     // Fondo común (v116): el gasto se resta de lo que sobra ENTRE LOS DOS en el mes en que se paga, y lo que
     // quede se reparte mitad y mitad. Se muestra el total y cuánto le toca a cada uno.
