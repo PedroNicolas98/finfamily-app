@@ -5186,3 +5186,25 @@ a.plastico:hover { box-shadow: 0 24px 34px -22px var(--c2), inset 0 0 0 1px rgba
 /* v185: las tarjetas ya no flotan sin parar; solo entran y se levantan al pasar el cursor */
 .detalle .lateral .plastico { animation: none; }
 .vista.entrada .carrusel > * { animation: de-lado 700ms var(--suave) both; animation-delay: calc(240ms + var(--i, 0) * 80ms); }
+
+/* v186: rediseño de las tarjetas. Plástico oscuro y sobrio con el color de cada banco, nombre arriba,
+   chip y monto a la izquierda, y abajo titular, fecha y marca. Sin dibujos, texturas, brillos ni número en relieve. */
+body .plastico {
+  border-radius: 18px;
+  background: linear-gradient(155deg, color-mix(in oklab, var(--c1) 66%, #0A1020) 0%, color-mix(in oklab, var(--c2) 84%, #05070D) 100%);
+  box-shadow: 0 16px 28px -20px #000, inset 0 0 0 1px rgba(255, 255, 255, 0.09);
+}
+body .plastico::before, body .plastico::after { display: none; }
+body .plastico-marca { font-size: clamp(0.9rem, 5.6cqw, 1.2rem); font-weight: 700; display: inline-flex; align-items: center; gap: 0.5em; }
+body .plastico-marca:not(.diseno)::before { content: ''; width: 0.5em; height: 0.5em; border-radius: 50%; background: var(--acento, #fff); flex-shrink: 0; }
+body .plastico-marca::after { display: none; }
+body .plastico-top .icono { opacity: 0.55; }
+body .plastico-medio, body .plastico.hormiga .plastico-medio { flex-direction: column; align-items: flex-start; gap: 2.4cqw; margin-top: 1.5cqw; }
+body .plastico-monto { align-items: flex-start; text-align: left; }
+body .plastico-monto strong { font-size: clamp(1.5rem, 11.5cqw, 2.4rem); letter-spacing: -0.03em; }
+body .plastico-chip { width: clamp(28px, 10.5cqw, 40px); }
+body .plastico-pie { margin-top: 2cqw; }
+body .plastico-dato small { opacity: 0.6; }
+body .plastico-dato > span { text-transform: none; letter-spacing: 0.01em; font-weight: 600; }
+body .plastico-titular { letter-spacing: 0.01em; }
+body .plastico-red.visa { font-size: clamp(0.9rem, 6cqw, 1.35rem); }

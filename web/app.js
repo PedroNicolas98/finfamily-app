@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v185';
+const VERSION_APP = 'finfamily-v186';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -758,27 +758,20 @@ function tarjetaVisual(t, comoEnlace = true, opciones = {}) {
   const claseCta = esDeb ? (normalizar(cta.banco) === 'lemon' ? 'TD-lemon' : claseDebito(cta.banco)) : cta ? 'HORMIGA' : t.id;
   if (D?.banco === 'Interbank') { marca = h('span', { class: 'plastico-marca diseno', title: nombre }, 'Benefit'); arriba = svgFijo(LOGO_IBK(D.logo), 'plastico-logo'); }
   else if (D?.banco === 'BCP') marca = h('span', { class: 'plastico-marca diseno bcp-logo', title: nombre }, h('b', {}, '›'), 'BCP', h('b', {}, '›'));
-  else if (D?.banco === 'Sip') marca = h('span', { class: 'plastico-marca diseno oculta' }, nombre);
-  else if (D?.banco === 'Ripley') { marca = h('span', { class: 'plastico-marca diseno oculta' }, nombre); arriba = h('span', { class: 'ripley-logo', 'aria-hidden': 'true' }, 'banco ripley'); }
-  const arte = D ? (ARTE_TC[dis] || ARTE_TC[D.banco] || '') : '';
+  else if (D?.banco === 'Sip' || D?.banco === 'Ripley') marca = h('span', { class: 'plastico-marca diseno', title: nombre }, nombre);
+  // v186: tarjetas limpias, solo el color del banco (sin dibujos, rayas ni logos grandes)
   return h(comoEnlace ? 'a' : 'div', { class: `plastico tc-${claseCta}${esH && !esDeb ? ' hormiga' : ''}${esDeb ? ' debito' : ''}`, href: comoEnlace ? `#tarjeta-${t.id}` : null,
-    'data-diseno': dis, style: D ? `--c1:${D.c[0]};--c2:${D.c[1]};--acento:${D.c[2]}` : null },
-    h('i', { class: 'plastico-brillo', 'aria-hidden': 'true' }),
-    arte ? h('i', { class: 'plastico-arte', 'aria-hidden': 'true' }, svgFijo(arte, 'arte-svg')) : null,
-    D?.banco === 'Ripley' ? h('i', { class: 'plastico-franja', 'aria-hidden': 'true' }) : null,
+    style: D ? `--c1:${D.c[0]};--c2:${D.c[1]};--acento:${D.c[2]}` : null },
     h('span', { class: 'plastico-top' }, marca, arriba),
     h('span', { class: 'plastico-medio' },
       esH && !esDeb ? null : h('span', { class: 'plastico-chip', 'aria-hidden': 'true' }, h('i'), h('i')),
       h('span', { class: 'plastico-monto' },
         h('span', {}, esH ? 'Gastado este mes' : 'Por pagar'),
         h('strong', { 'data-rico': '', 'data-contar': String(t.pendiente || 0) }, soles(0)))),
-    esH ? null : h('span', { class: 'plastico-numero', 'aria-hidden': 'true' },
-      h('b', {}, '••••'), h('b', {}, '••••'), h('b', {}, '••••'), h('b', { class: digitos ? 'real' : '' }, digitos || '••••'),
-      h('i', { class: 'plastico-holo' })),
     h('span', { class: 'plastico-pie' },
       h('span', { class: 'plastico-datos' },
         esDeb ? h('span', { class: 'plastico-dato' }, h('small', {}, 'Titular'), h('span', { class: 'plastico-titular' }, nombreCorto(cta.titular) || '—'))
-          : h('span', { class: 'plastico-dato' }, h('small', {}, esH ? 'Medios de pago' : 'Titular'), h('span', { class: 'plastico-titular' }, cta ? (cta.usos.join(' · ') || cta.nombre) : esH ? 'Yape · Plin · Efectivo' : (d.nombre || duenioTC(t)))),
+          : h('span', { class: 'plastico-dato' }, h('small', {}, esH ? 'Medios de pago' : 'Titular'), h('span', { class: 'plastico-titular' }, cta ? (cta.usos.join(' · ') || cta.nombre) : esH ? 'Yape · Plin · Efectivo' : (`${d.nombre || duenioTC(t)}${digitos ? ` · ${digitos}` : ''}`))),
         esDeb ? h('span', { class: 'plastico-dato' }, h('small', {}, 'Pagos con'), h('span', {}, cta.usos.join(' · ') || 'Sin gastos')) : null,
         e ? h('span', { class: `plastico-dato vence${e.clase ? ` est-${e.clase}` : ''}` }, h('small', {}, rotulo), h('span', {}, valor)) : null),
       esH ? null : marcaRed(redTC(t))));
