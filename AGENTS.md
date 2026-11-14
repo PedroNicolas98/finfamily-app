@@ -96,6 +96,18 @@ incluyas en código, pruebas, ejemplos ni commits. El motor usa la zona horaria 
 - Nunca pises una celda con fórmula (`escribirFila_` y `editarGasto` ya lo cuidan).
 - El lector marca los hilos con la etiqueta de Gmail `FinFamily/Leído`.
 
+## Funciones del motor 1.22–1.27 (qué guardan y dónde)
+
+- **Pagos fijos por correo** (`revisarPagosDeServicios_`, corre dentro de `leerCorreosDeBancos`): `FINFAMILY_PAGOS_FIJOS`
+  (ids leídos 8 días, máx. 100, y pagos por mes/línea; la propiedad no pasa de ~9 KB: `guardarRegistroPagos_` poda),
+  `FINFAMILY_PAGOS_HISTORIA_V2` (lectura única de 75 días), `FINFAMILY_FIJOS_HECHOS` (marcas `correo|…`, `cobro|…`).
+  Las empresas de cada línea viven en `FINFAMILY_FIJOS` (`palabras`); si no hay, `palabrasDeFijo` usa un valor por nombre.
+- **Apartados** (`apartadosDeLineas`): líneas con la cuenta entre paréntesis («Alimentación (BCP-DEB-PE)») que guardan lo que
+  no se gasta; ajuste manual en `FINFAMILY_APARTADOS`. Renombrar o quitar una línea migra estas claves (`migrarClaveLinea_`).
+- Otros: `FINFAMILY_META_ANUAL` (meta de ahorro por año), `FINFAMILY_RECORDATORIO_ANOTAR`.
+- Al pegar el motor en el editor de Apps Script, comprueba que el archivo abierto sea el correcto antes de reemplazarlo
+  (si un clic falla, queda abierto otro archivo) y guarda con el botón de la barra.
+
 ## Probar
 
 - `npm test` antes de cada publicación del motor.

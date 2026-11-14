@@ -1329,11 +1329,11 @@ test('1.23.0: pagos de servicios: qué correo cuenta, a qué línea va y sin con
   assert.deepEqual(L.palabrasDeFijo('Internet', { internet: { concepto: 'Internet', dia: 0, palabras: [] } }), [], 'el usuario lo apagó');
 
   const entel = L.pagoDeServicioDeCorreo({ remitente: 'atencionclientes@entel.example', asunto: 'Hola, Te enviamos el detalle de tu solicitud',
-    cuerpo: 'Se realizó con éxito el cobro de tu recibo a través del Débito Automático Fecha de cobro Cuenta afiliada 13/10/2026 7.01 Importe debitado Número de tarjeta S/ 37.94 4634******0767',
+    cuerpo: 'Se realizó con éxito el cobro de tu recibo a través del Débito Automático Fecha de cobro Cuenta afiliada 13/10/2026 1.00 Importe debitado Número de tarjeta S/ 41.30 4000******1111',
     fechaISO: '2026-10-13' });
-  assert.equal(entel.monto, 37.94);
+  assert.equal(entel.monto, 41.30);
   assert.equal(entel.fecha, '2026-10-13');
-  assert.equal(L.pagoDeServicioDeCorreo({ asunto: 'Tu recibo digital Entel', cuerpo: 'Total a pagar S/ 29.95', fechaISO: '2026-11-05' }), null, 'un recibo por pagar no cuenta');
+  assert.equal(L.pagoDeServicioDeCorreo({ asunto: 'Tu recibo digital Entel', cuerpo: 'Total a pagar S/ 28.40', fechaISO: '2026-11-05' }), null, 'un recibo por pagar no cuenta');
   assert.equal(L.pagoDeServicioDeCorreo({ asunto: 'Detalle', cuerpo: '¡La modificación de tarjeta para el Débito Automático se realizó con éxito!', fechaISO: '2026-10-31' }), null);
   assert.equal(L.pagoDeServicioDeCorreo({ asunto: 'Constancia de pago', cuerpo: 'Tarjeta de crédito Visa Moneda y monto S/ 114.00', fechaISO: '2026-11-08' }), null, 'pagar la tarjeta no es un servicio');
 
@@ -1341,38 +1341,39 @@ test('1.23.0: pagos de servicios: qué correo cuenta, a qué línea va y sin con
   assert.deepEqual(L.lineaDePago(entel.texto, lineas), { clave: 'plan movil', palabra: 'entel' });
   assert.deepEqual(L.lineaDePago('pago claro hogar s/ 80', lineas), { clave: 'internet', palabra: 'claro hogar' }, 'gana la palabra más larga');
   assert.equal(L.lineaDePago('pago en dentelandia', lineas), null, 'solo palabras completas');
-  assert.equal(L.sumaPagosFijo([{ fecha: '2026-11-13', monto: 37.94 }, { fecha: '2026-11-13', monto: 37.94 }, { fecha: '2026-11-14', monto: 29.95 }]), 67.89);
+  assert.equal(L.sumaPagosFijo([{ fecha: '2026-11-13', monto: 41.30 }, { fecha: '2026-11-13', monto: 41.30 }, { fecha: '2026-11-14', monto: 28.40 }]), 69.7);
   assert.equal(L.textoPagadoPorCorreo('2026-11-13'), 'Pagado el 13/11/2026 · automático (correo)');
 });
 
 test('1.25.0: cobros aprendidos (dos recibos de Entel son dos cobros) y subidas de precio', () => {
   const reg = { meses: {
-    '2026-09': { 'plan movil': [{ fecha: '2026-10-13', monto: 37.94, de: 'entel' }, { fecha: '2026-10-13', monto: 37.94, de: 'entel' }, { fecha: '2026-10-05', monto: 29.95, de: 'entel' }] },
+    '2026-09': { 'plan movil': [{ fecha: '2026-10-13', monto: 41.30, de: 'entel' }, { fecha: '2026-10-13', monto: 41.30, de: 'entel' }, { fecha: '2026-10-05', monto: 28.40, de: 'entel' }] },
     '2026-10': { 'plan movil': [{ fecha: '2026-11-12', monto: 38.5, de: 'entel' }] }
   } };
-  assert.deepEqual(L.cobrosAprendidos(reg).map((c) => [c.de, c.dia, c.monto, c.veces]), [['entel', 5, 29.95, 1], ['entel', 12, 38.5, 2]]);
-  // 1.25.2: el recibo de S/ 29.95 no se ve desde el 5 de octubre: el 1 de diciembre ya no se espera.
-  assert.deepEqual(L.cobrosAprendidos(reg, '2026-12-01').map((c) => [c.dia, c.monto]), [[12, 38.5]]);
+  // 1.27.0: un recibo visto una sola vez (el de S/ 28.40) todavía no es un cobro que se repite.
+  assert.deepEqual(L.cobrosAprendidos(reg).map((c) => [c.de, c.dia, c.monto, c.veces]), [['entel', 12, 38.5, 2]]);
+  // 1.25.2: si no se ve hace más de 45 días, ya no se espera.
+  assert.deepEqual(L.cobrosAprendidos(reg, '2027-01-15').map((c) => c.dia), []);
   const antes = reg.meses['2026-09']['plan movil'];
   assert.equal(L.subidaDePrecio(antes, { fecha: '2026-11-12', monto: 38.5 }), null, 'S/ 0.56 es menos del 3 %');
-  assert.deepEqual(JSON.parse(JSON.stringify(L.subidaDePrecio(antes, { fecha: '2026-11-12', monto: 45.94 }))), { antes: 37.94, fechaAntes: '2026-10-13', ahora: 45.94, dif: 8 });
-  assert.equal(L.subidaDePrecio(antes, { fecha: '2026-11-05', monto: 29.95 }), null, 'el otro recibo no subió');
+  assert.deepEqual(JSON.parse(JSON.stringify(L.subidaDePrecio(antes, { fecha: '2026-11-12', monto: 49.30 }))), { antes: 41.30, fechaAntes: '2026-10-13', ahora: 49.30, dif: 8 });
+  assert.equal(L.subidaDePrecio(antes, { fecha: '2026-11-05', monto: 28.40 }), null, 'el otro recibo no subió');
   assert.equal(L.subidaDePrecio(antes, { fecha: '2026-10-20', monto: 50 }), null, 'muy cerca del anterior: no se compara');
-  const t = L.textoSubidaPrecio({ de: 'entel', linea: 'Plan móvil', antes: 37.94, fechaAntes: '2026-10-13', ahora: 45.94, dif: 8 });
+  const t = L.textoSubidaPrecio({ de: 'entel', linea: 'Plan móvil', antes: 41.30, fechaAntes: '2026-10-13', ahora: 49.30, dif: 8 });
   assert.equal(t.asunto, 'FinFamily: Entel subió S/ 8');
-  assert.match(t.cuerpo, /Entel cobró S\/ 45\.94\. La vez anterior \(13\/10\/2026\) fueron S\/ 37\.94\./);
-  assert.equal(L.textoCobrosProximos([{ de: 'entel', monto: 37.94, fecha: '2026-12-13', linea: 'Plan móvil' }]).asunto, 'FinFamily: en 2 días toca Entel');
+  assert.match(t.cuerpo, /Entel cobró S\/ 49\.30\. La vez anterior \(13\/10\/2026\) fueron S\/ 41\.30\./);
+  assert.equal(L.textoCobrosProximos([{ de: 'entel', monto: 41.30, fecha: '2026-12-13', linea: 'Plan móvil' }]).asunto, 'FinFamily: en 2 días toca Entel');
 });
 
 test('1.25.1: un recibo por pagar que invita al débito automático no cuenta; el pie con "YouTube" no confunde la empresa', () => {
   assert.equal(L.pagoDeServicioDeCorreo({ remitente: 'Recibo Claro <recibo@claro.example>', asunto: 'Recibo Claro - Octubre 90010',
     cuerpo: 'Revisa el detalle en tu recibo adjunto. El monto es S/ 37.45. Afíliate al débito automático.', fechaISO: '2026-09-22' }), null);
   assert.equal(L.pagoDeServicioDeCorreo({ remitente: 'WOW <noreply@wow.example>', asunto: '¡Tu Boleta WOW del mes!',
-    cuerpo: 'Se realizó un débito automático S/ 74.90', fechaISO: '2026-09-23' }), null);
+    cuerpo: 'Se realizó un débito automático S/ 800', fechaISO: '2026-09-23' }), null);
   assert.equal(L.pagoDeServicioDeCorreo({ remitente: 'iO <n@io.example>', asunto: 'Pagaste con éxito tu Tarjeta iO',
     cuerpo: 'Pagaste con éxito tu Tarjeta iO Pago exitoso S/ 300.00', fechaISO: '2026-09-30' }), null);
   const entel = L.pagoDeServicioDeCorreo({ remitente: 'atencionclientes@entel.example', asunto: 'Hola, Te enviamos el detalle de tu solicitud',
-    cuerpo: 'Se realizó con éxito el cobro de tu recibo a través del Débito Automático Importe debitado S/ 37.94. Encuéntranos en Facebook Twitter Instagram YouTube',
+    cuerpo: 'Se realizó con éxito el cobro de tu recibo a través del Débito Automático Importe debitado S/ 41.30. Encuéntranos en Facebook Twitter Instagram YouTube',
     fechaISO: '2026-10-13' });
   const lineas = [{ clave: 'plan movil', palabras: ['entel'] }, { clave: 'suscripciones', palabras: ['youtube', 'netflix'] }];
   assert.deepEqual(L.lineaDePago(entel.texto, lineas), { clave: 'plan movil', palabra: 'entel' });
@@ -1390,19 +1391,56 @@ test('1.26.0: apartados por línea: entra lo planeado de los meses pagados, sale
   assert.equal(L.cuentaDeLinea('Pasajes'), null);
   const fila = (concepto, monto, pagado, conceptos) => ({ seccion: 'gastos', concepto, monto, pagado, conceptos, fila: 1 });
   const meses = [
-    { mes: '2026-10', filas: [fila('Alacena (SIP)', 248.79, true, ['Supermercado']), fila('Internet (IBK)', 74.9, true, ['Internet y Telefonía']), fila('Pasajes', 276, true, ['Pasajes'])] },
-    { mes: '2026-11', filas: [fila('Alacena (SIP)', 365.46, true, ['Supermercado'])] }
+    { mes: '2026-10', filas: [fila('Alacena (SIP)', 250, true, ['Supermercado']), fila('Internet (IBK)', 80, true, ['Internet y Telefonía']), fila('Pasajes', 276, true, ['Pasajes'])] },
+    { mes: '2026-11', filas: [fila('Alacena (SIP)', 400, true, ['Supermercado'])] }
   ];
   const consumos = [
     { fecha: '2026-11-11', concepto: 'Supermercado', monto: 174, origen: '', deTarjeta: false },
     { fecha: '2026-11-12', concepto: 'Supermercado', monto: 50, origen: '', deTarjeta: true }, // con tarjeta de crédito: no
-    { fecha: '2026-11-13', concepto: 'Supermercado', monto: 20, origen: 'P:Pedro', deTarjeta: false }, // de su sobrante: no
+    { fecha: '2026-11-13', concepto: 'Supermercado', monto: 20, origen: 'P:PersonaA', deTarjeta: false }, // de su sobrante: no
     { fecha: '2026-10-20', concepto: 'Supermercado', monto: 99, origen: '', deTarjeta: false }, // antes del primer mes: no
     { fecha: '2026-12-05', concepto: 'Supermercado', monto: 30, origen: '', deTarjeta: false }
   ];
   const r = L.apartadosDeLineas(meses, consumos, { fijos: {}, ajustes: { 'alacena (sip)': { ajuste: 10 } } }, '2026-12-10');
   assert.equal(r.length, 1, 'Internet tiene empresas (es un recibo) y Pasajes no tiene cuenta');
   assert.deepEqual(JSON.parse(JSON.stringify(r[0])), { clave: 'alacena (sip)', linea: 'Alacena (SIP)', cuenta: 'Sip', conceptos: ['Supermercado'],
-    depositado: 614.25, gastado: 204, ajuste: 10, saldo: 420.25, desde: '2026-10-31', meses: 2 });
+    depositado: 650, gastado: 204, ajuste: 10, saldo: 456, desde: '2026-10-31', meses: 2, sinMarcar: [] });
   assert.deepEqual(JSON.parse(JSON.stringify(L.apartadosAjustesDesde('{"x":{"ajuste":"5.5"},"y":{"ajuste":"no"}}'))), { x: { ajuste: 5.5 } });
+});
+
+test('1.27.0: empresas por defecto con palabras completas, luz/agua/gas separadas, y una recarga no es una subida', () => {
+  assert.deepEqual(L.palabrasDeFijo('Movilidad (BCP-DEB-PE)', {}), [], 'movilidad no es móvil');
+  assert.deepEqual(L.palabrasDeFijo('Servicio de limpieza', {}), []);
+  assert.deepEqual(L.palabrasDeFijo('Luz', {}), ['luz del sur', 'enel']);
+  assert.deepEqual(L.palabrasDeFijo('Agua', {}), ['sedapal']);
+  assert.deepEqual(L.palabrasDeFijo('Celulares', {}), ['entel', 'claro', 'movistar', 'bitel']);
+  assert.equal(L.cuentaDeLinea('Compras (RIPLEY)'), null, 'tarjeta de crédito: no guarda plata');
+  assert.equal(L.cuentaDeLinea('Compras (OH)'), null);
+  assert.equal(L.cuentaDeLinea('Compras (RIPLEY-DEB)').etiqueta, 'Débito Ripley');
+  assert.equal(L.subidaDePrecio([{ fecha: '2026-10-01', monto: 5 }], { fecha: '2026-11-01', monto: 39.9 }), null, 'una recarga y luego el recibo');
+});
+
+test('1.27.0: apartados avisan los meses sin marcar y se reconocen por tipo de gasto', () => {
+  const fila = (concepto, monto, pagado, conceptos) => ({ seccion: 'gastos', concepto, monto, pagado, conceptos, fila: 1 });
+  const meses = [
+    { mes: '2026-09', filas: [fila('Alacena (SIP)', 100, true, ['Supermercado'])] },
+    { mes: '2026-10', filas: [fila('Alacena (SIP)', 100, false, ['Supermercado'])] },
+    { mes: '2026-11', filas: [fila('Alacena (SIP)', 100, false, ['Supermercado'])] }
+  ];
+  const r = L.apartadosDeLineas(meses, [{ fecha: '2026-10-20', concepto: 'Supermercado', monto: 70, origen: '', deTarjeta: false }], { fijos: {}, ajustes: {} }, '2026-12-10');
+  assert.deepEqual(JSON.parse(JSON.stringify(r[0].sinMarcar)), ['2026-10'], 'octubre ya terminó y no se marcó; noviembre es el ciclo en curso');
+  assert.equal(r[0].saldo, 30);
+  const filas = meses[2].filas;
+  assert.equal(L.lineaConApartadoDeConcepto(filas, 'supermercado', {}), 'Alacena (SIP)');
+  assert.equal(L.lineaConApartadoDeConcepto(filas, 'Delivery', {}), null);
+  assert.equal(L.lineaConApartadoDeConcepto([fila('Internet (IBK)', 80, true, ['Internet y Telefonía'])], 'Internet y Telefonía', {}), null, 'un recibo no es apartado');
+});
+
+test('1.27.0: el registro de pagos se poda a 8 días y a 100 ids', () => {
+  const ids = {};
+  for (let i = 0; i < 150; i++) ids['m:' + i] = '2026-11-' + String(10 + (i % 3)).padStart(2, '0');
+  ids['m:viejo'] = '2026-10-01';
+  const r = L.podarPagosFijos({ ids, meses: {} }, '2026-11-14');
+  assert.ok(!('m:viejo' in r.ids));
+  assert.equal(Object.keys(r.ids).length, 100);
 });

@@ -26,7 +26,7 @@
  *   FINFAMILY_ICONOS               ícono elegido para cada tipo de gasto (motor 1.5.1).
  */
 
-var VERSION = '1.26.0';
+var VERSION = '1.27.0';
 var ZONA_HORARIA = 'America/Lima';
 var DIAS_AVISO = 3;
 var SEGUNDOS_CACHE_TOKEN = 300;
@@ -1952,7 +1952,7 @@ function recibirWebhookWhatsapp_(e) {
   var directo = ['YAPE', 'PLIN', 'EFECTIVO'].indexOf(medio) !== -1;
   var datosGasto = { idCliente: 'whatsapp-' + id, monto: gasto.monto, medio: medio, concepto: concepto,
     descripcion: gasto.descripcion.charAt(0).toUpperCase() + gasto.descripcion.slice(1), nota: 'Anotado por WhatsApp', fecha: hoyServidor_() };
-  if (directo) datosGasto.origen = 'P:' + persona.nombre;
+  if (directo && !conceptoTieneApartado_(concepto)) datosGasto.origen = 'P:' + persona.nombre; // con apartado: sale de ahí (sin origen)
   if (!gasto.medio && parecido && parecido.tarjeta) datosGasto.tarjeta = parecido.tarjeta;
   var r;
   try { r = registrarGasto_(datosGasto, persona.nombre); } catch (err) {
@@ -2063,12 +2063,15 @@ function calcularApartados_() {
   var mesHoy = mesDelCiclo(hoy);
   var rango = obtenerHoja_(HOJA_PRESUPUESTO).getDataRange();
   var display = rango.getDisplayValues(), valores = rango.getValues(), notas = rango.getNotes();
-  var p0 = leerPresupuesto(display, valores, mesHoy, notas);
+  var mesBase = mesHoy;
+  var p0 = leerPresupuesto(display, valores, mesBase, notas);
+  // Si la hoja todavía no tiene la columna del ciclo en curso, se usa el último mes que sí tiene.
+  for (var atras = 1; !p0 && atras <= 3; atras++) { mesBase = sumarMesesClave_(mesHoy, -atras); p0 = leerPresupuesto(display, valores, mesBase, notas); }
   if (!p0) return [];
   var meses = [];
   (p0.meses || []).forEach(function (m) {
     if (m.clave > mesHoy) return;
-    var p = m.clave === mesHoy ? p0 : leerPresupuesto(display, valores, m.clave, notas);
+    var p = m.clave === mesBase ? p0 : leerPresupuesto(display, valores, m.clave, notas);
     if (!p) return;
     anotarConceptosEnFilas_(p.filas);
     meses.push({ mes: m.clave, filas: p.filas });
@@ -2081,28 +2084,54 @@ function accionGuardarApartado_(usuario, datos) {
   var linea = String(datos.linea || '').trim();
   if (!linea) throw errorApp_('datos_invalidos', 'Falta el apartado.');
   var clave = claveLinea(linea);
-  var a = calcularApartados_().filter(function (x) { return x.clave === clave; })[0];
-  if (!a) throw errorApp_('datos_invalidos', 'Esa línea no tiene apartado.');
-  var ajustes = apartadosAjustesDesde(propiedad_(PROPIEDAD_APARTADOS));
-  if (datos.saldo === null || datos.saldo === undefined || datos.saldo === '') {
-    delete ajustes[clave];
-  } else {
-    var saldo = typeof datos.saldo === 'number' ? datos.saldo : parsearMonto(String(datos.saldo));
-    if (saldo === null || !isFinite(saldo) || Math.abs(saldo) > 1000000) throw errorApp_('datos_invalidos', 'Escribe un monto válido.');
-    ajustes[clave] = { ajuste: Math.round((saldo - (a.saldo - a.ajuste)) * 100) / 100 };
+  var candado = tomarCandado_();
+  try {
+    var lista = calcularApartados_();
+    var a = lista.filter(function (x) { return x.clave === clave; })[0];
+    if (!a) throw errorApp_('datos_invalidos', 'Esa línea no tiene apartado.');
+    var ajustes = apartadosAjustesDesde(propiedad_(PROPIEDAD_APARTADOS));
+    var nuevoAjuste = 0;
+    if (datos.saldo === null || datos.saldo === undefined || datos.saldo === '') {
+      delete ajustes[clave];
+    } else {
+      var saldo = typeof datos.saldo === 'number' ? datos.saldo : parsearMonto(String(datos.saldo));
+      if (saldo === null || !isFinite(saldo) || Math.abs(saldo) > 1000000) throw errorApp_('datos_invalidos', 'Escribe un monto válido.');
+      nuevoAjuste = Math.round((saldo - (a.saldo - a.ajuste)) * 100) / 100;
+      ajustes[clave] = { ajuste: nuevoAjuste };
+    }
+    PropertiesService.getScriptProperties().setProperty(PROPIEDAD_APARTADOS, JSON.stringify(ajustes));
+    // Sin volver a leer la hoja: solo cambia el ajuste de este apartado.
+    a.saldo = Math.round((a.saldo - a.ajuste + nuevoAjuste) * 100) / 100;
+    a.ajuste = nuevoAjuste;
+    return { apartados: lista };
+  } finally {
+    candado.releaseLock();
   }
-  PropertiesService.getScriptProperties().setProperty(PROPIEDAD_APARTADOS, JSON.stringify(ajustes));
-  return { apartados: calcularApartados_() };
+}
+
+/** ¿Ese tipo de gasto sale de un apartado (una línea con cuenta)? Para los gastos que entran sin pasar por la app. */
+function conceptoTieneApartado_(concepto) {
+  try {
+    var p = leerPresupuestoDelMes_(mesDelCiclo(hoyServidor_()));
+    if (!p) return false;
+    anotarConceptosEnFilas_(p.filas);
+    return !!lineaConApartadoDeConcepto(p.filas, concepto, leerFijos_());
+  } catch (err) { return false; }
 }
 
 /** Motor 1.24.0: {anio, monto} guarda la meta de ahorro de ese año (0 la quita). Devuelve {metas}. */
 function accionGuardarMetaAnual_(usuario, datos) {
   var v = validarMetaAnual(datos);
   if (v.error) throw errorApp_('datos_invalidos', v.error);
-  var metas = metasAnualesDesde(propiedad_(PROPIEDAD_META_ANUAL));
-  if (v.monto === 0) delete metas[v.anio]; else metas[v.anio] = v.monto;
-  PropertiesService.getScriptProperties().setProperty(PROPIEDAD_META_ANUAL, JSON.stringify(metas));
-  return { metas: metas };
+  var candado = tomarCandado_();
+  try {
+    var metas = metasAnualesDesde(propiedad_(PROPIEDAD_META_ANUAL));
+    if (v.monto === 0) delete metas[v.anio]; else metas[v.anio] = v.monto;
+    PropertiesService.getScriptProperties().setProperty(PROPIEDAD_META_ANUAL, JSON.stringify(metas));
+    return { metas: metas };
+  } finally {
+    candado.releaseLock();
+  }
 }
 
 function accionGuardarMeta_(usuario, datos) {
@@ -3025,19 +3054,37 @@ function consultaPagosServicio_(dias) {
  * (extras: [{id, monto, fecha, texto}] del lector). Cuando lo pagado de una línea llega al 90 % de lo planeado,
  * la marca pagada en el mes del presupuesto que la paga (una sola vez: si alguien la desmarca, no se vuelve a marcar).
  */
+/** Guarda el registro de pagos; si la propiedad (límite ~9 KB) no lo aguanta, suelta los ids más viejos y reintenta. */
+function guardarRegistroPagos_(registro, hoy) {
+  var prop = PropertiesService.getScriptProperties();
+  podarPagosFijos(registro, hoy);
+  for (var intento = 0; intento < 4; intento++) {
+    var texto = JSON.stringify(registro);
+    if (texto.length <= 8500) { prop.setProperty(PROPIEDAD_PAGOS_FIJOS, texto); return true; }
+    var claves = Object.keys(registro.ids).sort(function (a, b) { return registro.ids[a] < registro.ids[b] ? -1 : 1; });
+    claves.slice(0, Math.max(10, Math.ceil(claves.length / 2))).forEach(function (k) { delete registro.ids[k]; });
+  }
+  console.warn('FinFamily pagos fijos: el registro no cabe en la propiedad; no se guardó.');
+  return false;
+}
+
 function revisarPagosDeServicios_(extras, opciones) {
   var op = opciones || {};
   var dias = op.dias || DIAS_CORREOS;
   var hoy = hoyServidor_();
-  var registro = pagosFijosDesde(propiedad_(PROPIEDAD_PAGOS_FIJOS));
+  // nuevoRegistro: la relectura de 75 días arma el registro desde cero y solo reemplaza al viejo al terminar bien.
+  var registro = op.nuevoRegistro ? { ids: {}, meses: {} } : pagosFijosDesde(propiedad_(PROPIEDAD_PAGOS_FIJOS));
   var nuevos = (extras || []).filter(function (p) { return p && p.id && !registro.ids[p.id]; });
   var desde = new Date(parsearFecha(hoy).getTime() - dias * 86400000);
   var recientes = new Date(parsearFecha(hoy).getTime() - DIAS_CORREOS * 86400000);
   var hilos = [];
   var subidas = []; // motor 1.25.0
-  try { hilos = GmailApp.search(consultaPagosServicio_(dias), 0, op.soloRegistrar ? 100 : 50); } catch (err) { console.warn('FinFamily pagos fijos: no se pudo buscar en Gmail: ' + err); }
+  try { hilos = GmailApp.search(consultaPagosServicio_(dias), 0, op.soloRegistrar ? 100 : 25); } catch (err) { console.warn('FinFamily pagos fijos: no se pudo buscar en Gmail: ' + err); }
   hilos.forEach(function (hilo) {
     try {
+      // Un hilo cuyo último correo es anterior a la ventana no trae nada nuevo: no se abre (cuota diaria de lecturas).
+      var ultima = typeof hilo.getLastMessageDate === 'function' ? hilo.getLastMessageDate() : null;
+      if (ultima && ultima.getTime && ultima.getTime() < desde.getTime()) return;
       hilo.getMessages().forEach(function (mensaje) {
         try {
           var id = 'm:' + String(mensaje.getId());
@@ -3057,10 +3104,10 @@ function revisarPagosDeServicios_(extras, opciones) {
   if (nuevos.length) {
     var config = leerFijos_();
     var hechos = {};
-    try { hechos = JSON.parse(propiedad_(PROPIEDAD_FIJOS_HECHOS) || '{}') || {}; } catch (err) { hechos = {}; }
     var hoja = obtenerHoja_(HOJA_PRESUPUESTO);
     var candado = tomarCandado_();
     try {
+      try { hechos = JSON.parse(propiedad_(PROPIEDAD_FIJOS_HECHOS) || '{}') || {}; } catch (err) { hechos = {}; } // dentro del candado: no pisar a otro
       var rango = hoja.getDataRange();
       var display = rango.getDisplayValues(), valores = rango.getValues(), notas = rango.getNotes();
       var porMes = {};
@@ -3069,11 +3116,11 @@ function revisarPagosDeServicios_(extras, opciones) {
       var mesHoy = mesDelCiclo(hoy);
       var pHoy = leerPresupuesto(display, valores, mesHoy, notas);
       nuevos.sort(function (a, b) { return a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0; }).forEach(function (pago) {
-        registro.ids[pago.id] = pago.fecha;
         var mes = mesDelCiclo(pago.fecha);
         if (!porMes.hasOwnProperty(mes)) porMes[mes] = leerPresupuesto(display, valores, mes, notas);
         var p = porMes[mes] || pHoy;
-        if (!p) return;
+        if (!p) return; // sin presupuesto no se da por visto: se reintenta en la próxima pasada
+        registro.ids[pago.id] = pago.fecha;
         var filasG = p.filas.filter(function (f) { return f.seccion === 'gastos' && !f.esTarjeta && f.monto > 0; });
         var lineas = filasG.map(function (f) { return { clave: claveLinea(f.concepto), palabras: palabrasDeFijo(f.concepto, config) }; });
         var l = lineaDePago(pago.texto, lineas) || (pago.textoCuerpo ? lineaDePago(pago.textoCuerpo, lineas) : null);
@@ -3083,7 +3130,10 @@ function revisarPagosDeServicios_(extras, opciones) {
           Object.keys(registro.meses).forEach(function (m) { (registro.meses[m][l.clave] || []).forEach(function (x) { if (x.de === l.palabra) anteriores.push(x); }); });
           var sube = subidaDePrecio(anteriores, pago);
           var fl = filasG.filter(function (f) { return claveLinea(f.concepto) === l.clave; })[0];
-          if (sube) subidas.push(Object.assign({ de: l.palabra, linea: fl ? fl.concepto : l.clave }, sube));
+          // El mismo cobro confirmado por dos correos (procesador y empresa) se avisa una sola vez.
+          if (sube && !subidas.some(function (x) { return x.de === l.palabra && x.ahora === sube.ahora && x.linea === (fl ? fl.concepto : l.clave); })) {
+            subidas.push(Object.assign({ de: l.palabra, linea: fl ? fl.concepto : l.clave }, sube));
+          }
         }
         registro.meses[mes] = registro.meses[mes] || {};
         registro.meses[mes][l.clave] = registro.meses[mes][l.clave] || [];
@@ -3112,7 +3162,7 @@ function revisarPagosDeServicios_(extras, opciones) {
       candado.releaseLock();
     }
   }
-  PropertiesService.getScriptProperties().setProperty(PROPIEDAD_PAGOS_FIJOS, JSON.stringify(podarPagosFijos(registro, hoy)));
+  guardarRegistroPagos_(registro, hoy);
   if (marcados.length) console.log('FinFamily pagos fijos: marcado(s) por el correo: ' + marcados.join(', '));
   // Motor 1.25.0: si un cobro subió frente al anterior de la misma empresa, se avisa (una vez por cobro).
   var avisadas = 0;
@@ -3132,9 +3182,13 @@ function historialPagosServicioUnaVez_() {
   // 1.25.1: si ya corrió la lectura de 1.25.0, se borra lo guardado y se vuelve a leer todo (también los últimos días,
   // que la pasada normal ya marcó) solo para guardar.
   var rehacer = !!propiedad_(PROPIEDAD_PAGOS_HISTORIA_V1);
-  if (rehacer) PropertiesService.getScriptProperties().setProperty(PROPIEDAD_PAGOS_FIJOS, JSON.stringify({ ids: {}, meses: {} }));
-  var r = revisarPagosDeServicios_([], { dias: 75, soloRegistrar: true, conRecientes: rehacer });
-  PropertiesService.getScriptProperties().setProperty(PROPIEDAD_PAGOS_HISTORIA, new Date().toISOString());
+  var r = null;
+  try {
+    r = revisarPagosDeServicios_([], { dias: 75, soloRegistrar: true, conRecientes: rehacer, nuevoRegistro: rehacer });
+  } finally {
+    // Con o sin error se anota: si falla, no se repite cada 10 minutos (la pasada normal sigue aprendiendo sola).
+    PropertiesService.getScriptProperties().setProperty(PROPIEDAD_PAGOS_HISTORIA, new Date().toISOString());
+  }
   return r;
 }
 
@@ -3164,7 +3218,13 @@ function revisarCobrosProximos_(hoy) {
   });
   if (!lista.length) return { motivo: 'nada para avisar' };
   var r = enviarCorreoAUsuarios_(textoCobrosProximos(lista), 'cobros próximos');
-  if (r.enviado) PropertiesService.getScriptProperties().setProperty(PROPIEDAD_FIJOS_HECHOS, JSON.stringify(hechos));
+  if (r.enviado) {
+    // Se vuelve a leer lo guardado justo antes de escribir, para no pisar lo que otra pasada marcó en el medio.
+    var actual = {};
+    try { actual = JSON.parse(propiedad_(PROPIEDAD_FIJOS_HECHOS) || '{}') || {}; } catch (err) { actual = {}; }
+    Object.keys(hechos).forEach(function (k) { if (!actual[k]) actual[k] = hechos[k]; });
+    PropertiesService.getScriptProperties().setProperty(PROPIEDAD_FIJOS_HECHOS, JSON.stringify(actual));
+  }
   return { avisados: lista.length, enviado: r.enviado };
 }
 
@@ -4115,6 +4175,38 @@ function accionAgregarLinea_(usuario, datos) {
 }
 
 /** Acción 'renombrarLinea': {fila, nombre} → {renombrada:true, nombre, lineas…}. Mantiene los conceptos asignados. */
+/**
+ * Motor 1.27.0: cuando una línea cambia de nombre (o se quita), lo que se guardó con su clave la sigue: el ajuste del
+ * apartado, los pagos leídos del correo y las marcas de "ya marcado/avisado". nueva = null: se borra.
+ */
+function migrarClaveLinea_(vieja, nueva) {
+  if (!vieja || vieja === nueva) return;
+  var prop = PropertiesService.getScriptProperties();
+  try {
+    var ajustes = apartadosAjustesDesde(propiedad_(PROPIEDAD_APARTADOS));
+    if (ajustes[vieja]) { if (nueva) ajustes[nueva] = ajustes[vieja]; delete ajustes[vieja]; prop.setProperty(PROPIEDAD_APARTADOS, JSON.stringify(ajustes)); }
+    var reg = pagosFijosDesde(propiedad_(PROPIEDAD_PAGOS_FIJOS));
+    var cambio = false;
+    Object.keys(reg.meses).forEach(function (m) {
+      if (!reg.meses[m][vieja]) return;
+      if (nueva) reg.meses[m][nueva] = (reg.meses[m][nueva] || []).concat(reg.meses[m][vieja]);
+      delete reg.meses[m][vieja];
+      cambio = true;
+    });
+    if (cambio) prop.setProperty(PROPIEDAD_PAGOS_FIJOS, JSON.stringify(reg));
+    var hechos = JSON.parse(propiedad_(PROPIEDAD_FIJOS_HECHOS) || '{}') || {};
+    var cambioH = false;
+    Object.keys(hechos).forEach(function (k) {
+      var partes = k.split('|');
+      if (partes[1] !== vieja) return;
+      delete hechos[k];
+      if (nueva) { partes[1] = nueva; hechos[partes.join('|')] = '1'; }
+      cambioH = true;
+    });
+    if (cambioH) prop.setProperty(PROPIEDAD_FIJOS_HECHOS, JSON.stringify(hechos));
+  } catch (err) { console.warn('FinFamily: no se pudo migrar lo guardado de la línea: ' + err); }
+}
+
 function accionRenombrarLinea_(usuario, datos) {
   var fila = filaLineaValida_(datos.fila);
   var mes = mesValido_(datos.mes);
@@ -4151,6 +4243,7 @@ function accionRenombrarLinea_(usuario, datos) {
       if (fijo.palabras) fijos[claveLinea(nombre)].palabras = fijo.palabras;
       guardarFijos_(fijos);
     }
+    migrarClaveLinea_(claveLinea(linea.concepto), claveLinea(nombre));
     SpreadsheetApp.flush();
     return Object.assign({ renombrada: true, fila: fila, nombre: nombre }, lineasDelMes_(mes));
   } finally {
@@ -4189,6 +4282,7 @@ function accionQuitarLinea_(usuario, datos) {
     if (Object.prototype.hasOwnProperty.call(mapa, claveLinea(linea.concepto))) guardarMapaLineas_(quitarLineaDeMapa(mapa, linea.concepto));
     var fijosQ = leerFijos_();
     if (fijosQ[claveLinea(linea.concepto)]) { delete fijosQ[claveLinea(linea.concepto)]; guardarFijos_(fijosQ); }
+    migrarClaveLinea_(claveLinea(linea.concepto), null);
     var metasQ = leerMetas_();
     if (metasQ[claveLinea(linea.concepto)]) { delete metasQ[claveLinea(linea.concepto)]; guardarMetas_(metasQ); }
     SpreadsheetApp.flush();

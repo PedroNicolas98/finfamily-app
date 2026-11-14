@@ -2415,10 +2415,13 @@ function textoRecordatorioAnotar(r) {
 
 /** Empresas que se reconocen solas según el nombre de la línea (hasta que el usuario elija las suyas). */
 var PALABRAS_FIJO_DEFECTO = [
-  { patron: /movil|celular|telefon/, palabras: ['entel', 'claro', 'movistar', 'bitel'] },
-  { patron: /internet|wifi|fibra/, palabras: ['wow', 'win internet', 'fiberpro', 'mi fibra'] },
-  { patron: /servicio|luz|agua|\bgas\b/, palabras: ['luz del sur', 'enel', 'sedapal', 'calidda'] },
-  { patron: /suscrip|streaming/, palabras: ['netflix', 'spotify', 'youtube', 'disney', 'prime video', 'hbo', 'google one', 'icloud'] }
+  { patron: /\b(movil|moviles|celular|celulares|telefono|telefonia)\b/, palabras: ['entel', 'claro', 'movistar', 'bitel'] },
+  { patron: /\b(internet|wifi|fibra)\b/, palabras: ['wow', 'win internet', 'fiberpro', 'mi fibra'] },
+  { patron: /^(servicios?|luz y agua|agua y luz)$/, palabras: ['luz del sur', 'enel', 'sedapal', 'calidda'] },
+  { patron: /^luz$/, palabras: ['luz del sur', 'enel'] },
+  { patron: /^agua$/, palabras: ['sedapal'] },
+  { patron: /^gas$/, palabras: ['calidda'] },
+  { patron: /\b(suscripcion|suscripciones|streaming)\b/, palabras: ['netflix', 'spotify', 'youtube', 'disney', 'prime video', 'hbo', 'google one', 'icloud'] }
 ];
 var MAXIMO_PALABRAS_FIJO = 8;
 var UMBRAL_PAGADO_FIJO = 0.9; // con el 90 % de lo planeado ya se da por pagado (los recibos varían un poco)
@@ -2550,6 +2553,7 @@ function cobrosAprendidos(registro, hoy) {
       if (mejor) { mejor.veces++; mejor.ultimo = p; } else racimos.push({ ultimo: p, veces: 1 });
     });
     racimos.forEach(function (r) {
+      if (r.veces < 2) return; // un solo pago no es un cobro que se repite (motor 1.27.0)
       if (vigente && r.ultimo.fecha < vigente) return;
       salida.push({ clave: partes[0], de: partes[1], dia: Number(r.ultimo.fecha.slice(8, 10)), monto: r.ultimo.monto, ultima: r.ultimo.fecha, veces: r.veces });
     });
@@ -2571,6 +2575,7 @@ function subidaDePrecio(anteriores, pago) {
   var cerca = previos.reduce(function (a, b) { return Math.abs(b.monto - ahora) < Math.abs(a.monto - ahora) ? b : a; });
   var dif = Math.round((ahora - cerca.monto) * 100) / 100;
   if (dif < Math.max(1, cerca.monto * 0.03)) return null;
+  if (ahora > cerca.monto * 1.6) return null; // otro tipo de cobro (una recarga y luego el recibo), no una subida
   return { antes: cerca.monto, fechaAntes: cerca.fecha, ahora: ahora, dif: dif };
 }
 
@@ -2621,9 +2626,15 @@ function pagosFijosDesde(texto) {
 function podarPagosFijos(registro, hoy) {
   var d = parsearFecha(hoy);
   var limiteMes = d ? fechaISO(new Date(d.getFullYear(), d.getMonth() - 3, 1)).slice(0, 7) : '';
-  var limiteDia = sumarDias_(hoy, -30);
+  var limiteDia = sumarDias_(hoy, -8); // la búsqueda normal mira 3 días: con 8 sobra para no releer un correo
   Object.keys(registro.meses).forEach(function (m) { if (m < limiteMes) delete registro.meses[m]; });
   Object.keys(registro.ids).forEach(function (k) { if (!(registro.ids[k] >= limiteDia)) delete registro.ids[k]; });
+  // Tope: una propiedad de Apps Script guarda unos 9 KB. Se dejan los 100 más recientes.
+  var claves = Object.keys(registro.ids);
+  if (claves.length > 100) {
+    claves.sort(function (a, b) { return registro.ids[a] < registro.ids[b] ? 1 : registro.ids[a] > registro.ids[b] ? -1 : 0; })
+      .slice(100).forEach(function (k) { delete registro.ids[k]; });
+  }
   return registro;
 }
 
@@ -2694,7 +2705,20 @@ function cuentaDeLinea(concepto) {
   var partes = cod.split('-');
   var banco = BANCOS_CODIGO_LINEA[partes[0]];
   if (!banco) return null;
+  if ((partes[0] === 'RIPLEY' || partes[0] === 'OH') && partes.indexOf('DEB') === -1) return null; // solo crédito: no guarda plata
   return { codigo: cod, banco: banco, etiqueta: (partes.indexOf('DEB') !== -1 ? 'Débito ' : '') + banco };
+}
+
+/** La línea de gastos que guarda su plata en una cuenta (apartado) y cuenta ese tipo de gasto, o null. */
+function lineaConApartadoDeConcepto(filas, concepto, fijos) {
+  var k = normalizar(concepto);
+  if (!k) return null;
+  var salida = null;
+  (filas || []).forEach(function (f) {
+    if (salida || f.seccion !== 'gastos' || f.esTarjeta || !cuentaDeLinea(f.concepto) || palabrasDeFijo(f.concepto, fijos).length) return;
+    if ((f.conceptos || []).some(function (c) { return normalizar(c) === k; })) salida = f.concepto;
+  });
+  return salida;
 }
 
 /** Ajustes guardados {claveLinea: {ajuste}} (texto JSON o null), saneados. */
@@ -2734,6 +2758,8 @@ function apartadosDeLineas(meses, consumos, config, hoy) {
         a.depositado += Math.round(Number(f.monto) * 100);
         a.meses++;
         if (!a.desde) a.desde = cicloDelMes(m.mes).desde;
+      } else if (Number(f.monto) > 0) {
+        (a.pendientes = a.pendientes || []).push(m.mes);
       }
     });
   });
@@ -2749,7 +2775,10 @@ function apartadosDeLineas(meses, consumos, config, hoy) {
       });
     }
     var ajuste = Math.round((Number(((cfg.ajustes || {})[k] || {}).ajuste) || 0) * 100);
-    return { clave: k, linea: a.linea, cuenta: a.cuenta, conceptos: a.conceptos, depositado: a.depositado / 100, gastado: gastado / 100,
+    // Meses ya terminados en que se planeó plata y no se marcó como pagada (no entró): avisarlo, no esconderlo.
+    var mesCurso = mesDelCiclo(hoy);
+    var sinMarcar = (a.pendientes || []).filter(function (mm) { return a.desde && mm < mesCurso && cicloDelMes(mm).desde >= a.desde; });
+    return { sinMarcar: sinMarcar, clave: k, linea: a.linea, cuenta: a.cuenta, conceptos: a.conceptos, depositado: a.depositado / 100, gastado: gastado / 100,
       ajuste: ajuste / 100, saldo: (a.depositado - gastado + ajuste) / 100, desde: a.desde, meses: a.meses };
   }).sort(function (x, y) { return x.linea < y.linea ? -1 : x.linea > y.linea ? 1 : 0; });
 }
@@ -3255,6 +3284,7 @@ if (typeof module !== 'undefined') {
     validarDatosTarjeta: validarDatosTarjeta,
     textoGastoGrande: textoGastoGrande,
     cuentaDeLinea: cuentaDeLinea,
+    lineaConApartadoDeConcepto: lineaConApartadoDeConcepto,
     apartadosAjustesDesde: apartadosAjustesDesde,
     apartadosDeLineas: apartadosDeLineas,
     pagosUnicos: pagosUnicos,

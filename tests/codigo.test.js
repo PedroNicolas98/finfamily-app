@@ -382,13 +382,13 @@ test('version: informa 1.7.1 y la lista de acciones; inicio y config traen el ca
     new HojaFalsa('Configuración', [['Conceptos de Gasto', 'Responsable'], ['Limpieza', 'PersonaB']])]) });
   const r = m.llamar('version', {});
   assert.equal(r.ok, true);
-  assert.equal(r.datos.version, '1.26.0');
+  assert.equal(r.datos.version, '1.27.0');
   for (const a of ['desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'marcarPagado', 'inicio',
     'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos', 'datosTarjetas', 'guardarDatosTarjeta']) {
     assert.ok(r.datos.acciones.includes(a), 'falta la acción ' + a);
   }
-  assert.equal(m.llamar('inicio', {}).datos.version, '1.26.0');
-  assert.equal(m.llamar('config', {}).datos.version, '1.26.0');
+  assert.equal(m.llamar('inicio', {}).datos.version, '1.27.0');
+  assert.equal(m.llamar('config', {}).datos.version, '1.27.0');
 });
 
 test('la lista ACCIONES coincide con las acciones que atiende doPost', () => {
@@ -2049,7 +2049,7 @@ test('config: un ícono guardado para un concepto que ya no existe en Configurac
   assert.deepEqual(m.llamar('config', {}).datos.iconos, { Supermercado: 'carrito' });
   const danado = motorCompleto({ propiedades: { FINFAMILY_ICONOS: '{roto' } });
   assert.deepEqual(danado.llamar('config', {}).datos.iconos, {});
-  assert.equal(danado.llamar('version', {}).datos.version, '1.26.0');
+  assert.equal(danado.llamar('version', {}).datos.version, '1.27.0');
   assert.ok(danado.llamar('version', {}).datos.acciones.includes('guardarIconoConcepto'));
 });
 
@@ -2287,7 +2287,7 @@ test('gasto grande con tarjeta prestada: el correo dice quién gastó; versión 
   const m = motorCompleto();
   m.llamar('registrar', Object.assign({}, GASTO_PRESTADO, { monto: 450, descripcion: 'Saga Falabella' }));
   assert.equal(m.correos[0].subject, 'FinFamily: PersonaA registró S/ 450 en Saga Falabella (TC Interbank)');
-  assert.equal(m.llamar('version', {}).datos.version, '1.26.0');
+  assert.equal(m.llamar('version', {}).datos.version, '1.27.0');
 });
 
 // ===========================================================================
@@ -2567,7 +2567,7 @@ test('bolsas con un solo usuario (N = 1): todo el saldo de los meses anteriores 
 test('versión 1.7.0: la acción bolsas está en la lista y presupuesto no cambió', () => {
   const m = motorBolsas();
   const v = m.llamar('version', {}).datos;
-  assert.equal(v.version, '1.26.0');
+  assert.equal(v.version, '1.27.0');
   assert.ok(v.acciones.includes('bolsas'));
   const p = m.llamar('presupuesto', { mes: '2026-11' }).datos;
   assert.equal(p.totales.saldo, 985.57);
@@ -3667,7 +3667,7 @@ test('1.25.0: con el aviso de subidas apagado no se manda nada', () => {
 test('1.25.1: si ya corrió la lectura de 1.25.0, se borra lo guardado y se vuelve a leer una vez (sin marcar ni avisar)', () => {
   const pago = (id, dia, mes, monto) => ({ id, de: 'WOW Perú <noreply@wow.example>', asunto: 'Detalle de tu pago',
     cuerpo: 'Se realizó con éxito el cobro de tu recibo a través del Débito Automático Importe debitado S/ ' + monto, fecha: new Date(2026, mes - 1, dia, 9, 0) });
-  const viejo = JSON.stringify({ ids: { 'm:x': '2026-10-13' }, meses: { '2026-09': { suscripciones: [{ id: 'm:x', fecha: '2026-10-13', monto: 37.94, de: 'youtube' }] } } });
+  const viejo = JSON.stringify({ ids: { 'm:x': '2026-10-13' }, meses: { '2026-09': { suscripciones: [{ id: 'm:x', fecha: '2026-10-13', monto: 41.30, de: 'youtube' }] } } });
   const m = motorCompleto({ hoy: '2026-11-14', hilos: [{ mensajes: [pago('wow-oct', 13, 10, '60.00')] }, { mensajes: [pago('wow-nov', 13, 11, '75.00')] }],
     propiedades: { FINFAMILY_PAGOS_HISTORIA: '2026-11-11T00:00:00Z', FINFAMILY_PAGOS_FIJOS: viejo } });
   m.contexto.leerCorreosDeBancos();
@@ -3683,4 +3683,49 @@ test('1.26.0: apartados y guardarApartado responden con la hoja (sin líneas con
   const m = motorCompleto({ hoy: '2026-11-14' });
   assert.deepEqual(JSON.parse(JSON.stringify(m.llamar('apartados', {}))), { ok: true, datos: { apartados: [] } });
   assert.deepEqual(m.llamar('guardarApartado', { linea: 'Luz', saldo: 50 }), { ok: false, codigo: 'datos_invalidos', error: 'Esa línea no tiene apartado.' });
+});
+
+test('1.27.0: renombrar o quitar una línea se lleva el ajuste del apartado, los pagos del correo y las marcas', () => {
+  const m = motorPresupuestoReal({ hoy: '2026-11-14' });
+  m.propiedades.FINFAMILY_APARTADOS = JSON.stringify({ 'limpieza (sip)': { ajuste: 12.5 } });
+  m.propiedades.FINFAMILY_PAGOS_FIJOS = JSON.stringify({ ids: {}, meses: { '2026-10': { 'limpieza (sip)': [{ id: 'm:1', fecha: '2026-11-01', monto: 30, de: 'x' }] } } });
+  m.propiedades.FINFAMILY_FIJOS_HECHOS = JSON.stringify({ 'correo|limpieza (sip)|2026-10': '2026-11-02', 'auto|otra|2026-10': '2026-11-02' });
+  const r = m.llamar('renombrarLinea', { fila: 13, nombre: 'Limpieza hogar' });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual(JSON.parse(m.propiedades.FINFAMILY_APARTADOS), { 'limpieza hogar': { ajuste: 12.5 } });
+  assert.deepEqual(Object.keys(JSON.parse(m.propiedades.FINFAMILY_PAGOS_FIJOS).meses['2026-10']), ['limpieza hogar']);
+  assert.deepEqual(JSON.parse(m.propiedades.FINFAMILY_FIJOS_HECHOS), { 'auto|otra|2026-10': '2026-11-02', 'correo|limpieza hogar|2026-10': '1' });
+  const q = m.llamar('quitarLinea', { fila: 13, nombre: 'Limpieza hogar', forzar: true });
+  assert.equal(q.ok, true, JSON.stringify(q));
+  assert.deepEqual(JSON.parse(m.propiedades.FINFAMILY_APARTADOS), {});
+  assert.deepEqual(JSON.parse(m.propiedades.FINFAMILY_PAGOS_FIJOS).meses['2026-10'], {});
+});
+
+test('1.27.0: el registro de pagos nunca pasa del límite de la propiedad ni deja de guardarse', () => {
+  const pago = (id, dia) => ({ id, de: 'WOW Perú <noreply@wow.example>', asunto: 'Detalle',
+    cuerpo: 'Se realizó con éxito el cobro de tu recibo a través del Débito Automático Importe debitado S/ 60.00', fecha: new Date(2026, 10, dia, 9, 0) });
+  const hilos = [];
+  for (let i = 0; i < 25; i++) hilos.push({ mensajes: [pago('wow-' + i, 12 + (i % 3))] });
+  const m = motorCompleto({ hoy: '2026-11-14', hilos });
+  m.contexto.leerCorreosDeBancos();
+  assert.ok(m.propiedades.FINFAMILY_PAGOS_FIJOS.length <= 8500, 'cabe en una propiedad');
+});
+
+test('1.27.0: un cobro confirmado por dos correos avisa la subida una sola vez', () => {
+  const mail = (id, de, asunto, cuerpo, mes, dia) => ({ id, de, asunto, cuerpo, fecha: new Date(2026, mes - 1, dia, 9, 0) });
+  const viejo = mail('a', 'WOW Perú <noreply@wow.example>', 'Detalle', 'Se realizó con éxito el cobro de tu recibo a través del Débito Automático Importe debitado S/ 60.00', 10, 13);
+  const n1 = mail('b', 'WOW Perú <noreply@wow.example>', 'Detalle', 'Se realizó con éxito el cobro de tu recibo a través del Débito Automático Importe debitado S/ 70.00', 11, 13);
+  const n2 = mail('c', 'Pagos <payments@pagos.example>', 'Se realizó un débito automático en "WOW"', 'Se ha procesado un débito automático en el comercio WOW : Pago exitoso S/. 70.00', 11, 13);
+  const m = motorCompleto({ hoy: '2026-11-14', hilos: [{ mensajes: [viejo] }, { mensajes: [n1] }, { mensajes: [n2] }] });
+  m.contexto.leerCorreosDeBancos();
+  assert.equal(m.correos.filter((c) => /subió/.test(c.subject)).length, 1);
+});
+
+test('1.27.0: una relectura que falla no se repite en cada pasada ni toca el registro viejo', () => {
+  const viejo = JSON.stringify({ ids: {}, meses: { '2026-10': { internet: [{ id: 'm:x', fecha: '2026-11-05', monto: 60, de: 'wow' }] } } });
+  const m = motorCompleto({ hoy: '2026-11-14', propiedades: { FINFAMILY_PAGOS_HISTORIA: '2026-11-11T00:00:00Z', FINFAMILY_PAGOS_FIJOS: viejo } });
+  m.contexto.revisarPagosDeServicios_ = () => { throw new Error('falla simulada'); };
+  m.contexto.leerCorreosDeBancos();
+  assert.ok(m.propiedades.FINFAMILY_PAGOS_HISTORIA_V2, 'se anota aunque haya fallado');
+  assert.equal(m.propiedades.FINFAMILY_PAGOS_FIJOS, viejo, 'el registro viejo sigue ahí');
 });
