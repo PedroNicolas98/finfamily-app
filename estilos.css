@@ -5208,3 +5208,7 @@ body .plastico-dato small { opacity: 0.6; }
 body .plastico-dato > span { text-transform: none; letter-spacing: 0.01em; font-weight: 600; }
 body .plastico-titular { letter-spacing: 0.01em; }
 body .plastico-red.visa { font-size: clamp(0.9rem, 6cqw, 1.35rem); }
+
+/* v187: el monto y el chip van en la misma fila (la tarjeta se cortaba por abajo en tamaños chicos) */
+body .plastico-medio, body .plastico.hormiga .plastico-medio { flex-direction: row-reverse; justify-content: space-between; align-items: flex-end; gap: 3cqw; margin-top: 1cqw; }
+body .plastico-chip { align-self: flex-start; }
