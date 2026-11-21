@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v191';
+const VERSION_APP = 'finfamily-v192';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -4683,7 +4683,7 @@ function botonBuscarCompras() {
       estadoBusqueda.textContent = mensajeError(error, 'No se pudo buscar compras en Gmail.');
     } finally { liberarBoton(boton, 'Buscar compras del banco'); }
   } }, 'Buscar compras del banco');
-  return h('div', { class: 'acciones' }, boton, estadoBusqueda);
+  return h('div', { class: 'acciones buscar-compras' }, boton, estadoBusqueda);
 }
 
 function avisoPendientes(cuantos) {
@@ -4856,6 +4856,10 @@ async function abrirPendientes() {
     const nota = p._nota || (dolar ? 'Está en dólares: regístralo a mano con el monto en soles y descarta este.' : '');
     const chips = h('div', { class: 'elige-tipo' }, conceptos.map((c) => h('button', { type: 'button', class: 'opcion chica', disabled: dolar, 'aria-pressed': String(c === sugerido), onclick: () => confirmar(c) },
       catIco(c), h('span', { class: 'opcion-texto' }, c))));
+    const tipoMovil = h('label', { class: 'campo pend-tipo-movil' }, 'Tipo de gasto',
+      h('select', { disabled: dolar, onchange: (e) => { p._concepto = e.target.value; pintar(); } },
+        h('option', { value: '', selected: !sugerido }, 'Elige el tipo de gasto'),
+        ...conceptos.map((c) => h('option', { value: c, selected: c === sugerido }, c))));
     const botonesP = personas.length > 1 ? personas.map((n) => h('button', { type: 'button', class: 'opcion quien chica', title: nombreCorto(n), 'aria-pressed': String(n === quienDe(p)), onclick: () => {
       p._quien = n; botonesP.forEach((b) => b.setAttribute('aria-pressed', String(b.title === nombreCorto(n))));
     } }, avatar(n, 'mini'), h('span', { class: 'opcion-texto' }, nombreCorto(n)))) : [];
@@ -4874,7 +4878,8 @@ async function abrirPendientes() {
       nota ? h('p', { class: 'mensaje pend-nota' }, nota) : null,
       h('p', { class: 'etq pend-pregunta' }, dolar || credito ? 'Tipo de gasto' : 'Toca el tipo de gasto y queda confirmado'),
       chips,
-      candidatas.length > 1 ? h('label', { class: 'campo' }, 'Tarjeta de la compra',
+      tipoMovil,
+      candidatas.length > 1 ? h('label', { class: 'campo pend-tarjeta' }, 'Tarjeta de la compra',
         h('select', { onchange: (e) => { p._tarjeta = e.target.value; pintar(); } },
           h('option', { value: '', selected: !p._tarjeta }, 'Elige la tarjeta'),
           ...candidatas.map((t) => h('option', { value: t.id, selected: p._tarjeta === t.id }, nombreTC(t.id))))) : null,
