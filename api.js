@@ -277,7 +277,7 @@ export async function renderBoton(elemento, ancho = 280) {
 async function enviar(accion, datos, soloGoogle = false) {
   // Con señal débil fetch() puede quedarse colgado: se corta a los 15 s y se trata como sin conexión.
   const control = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const limite = setTimeout(() => control?.abort(), LIMITE_ENVIO_MS);
+  const limite = setTimeout(() => control?.abort(), accion === 'buscarCompras' ? 60000 : LIMITE_ENVIO_MS);
   try {
     let resp;
     try {
