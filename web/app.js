@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v189';
+const VERSION_APP = 'finfamily-v190';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -1135,7 +1135,7 @@ function filaMov(c, derecha, sinFecha = false) {
   return h('li', { class: 'mov', title: c.descripcion },
     catIco(c.concepto),
     h('span', { class: 'mov-texto' }, h('span', {}, limpiarComercio(c.descripcion)),
-      h('span', { class: 'suave' }, [sinFecha ? '' : fechaCorta(c.fecha), c.concepto].filter(Boolean).join(' · '), c.origen ? h('em', { class: 'de-donde' }, textoOrigen(c.origen)) : null)),
+      h('span', { class: 'suave' }, marcaGasto(c.origen), [sinFecha ? '' : fechaCorta(c.fecha), c.concepto].filter(Boolean).join(' · '))),
     h('span', { class: 'mov-der' }, h('strong', {}, soles(c.monto)), derecha ? h('span', { class: 'suave' }, derecha) : null));
 }
 
@@ -3232,7 +3232,7 @@ function editarConsumo(t, c) {
   const inNota = h('input', { id: 'ed-nota', type: 'text', maxlength: '200', autocomplete: 'off', placeholder: 'Opcional', value: c.nota || '' });
   const apartEd = t.id === 'HORMIGA' ? apartadoDeConcepto(c.concepto) : null; // pagado en directo con un tipo que tiene apartado
   const opsOrigen = motorBolsas() ? opcionesOrigen(c.responsable || usuarioActual()?.nombre || '', false, '', null, apartEd) : [];
-  if (c.origen && !opsOrigen.some((o) => o.valor === c.origen)) opsOrigen.push({ valor: c.origen, etiqueta: textoOrigen(c.origen) || c.origen });
+  if (c.origen && !opsOrigen.some((o) => o.valor === c.origen)) opsOrigen.push({ valor: c.origen, etiqueta: `${tipoDeGasto(c.origen)} · ${textoOrigen(c.origen) || c.origen}` });
   const selOrigen = h('select', { id: 'ed-origen' }, opsOrigen.map((o) => h('option', { value: o.valor, selected: o.valor === (c.origen || '') }, o.etiqueta)));
   // "Pagué con" (motor 1.9): cada tarjeta compartida aparece por separado, como al registrar.
   const mediosCfg = leerCache('config')?.datos?.medios || MEDIOS_LOCAL;
@@ -3425,8 +3425,7 @@ async function vistaInicio() {
   ]);
   marcarDatos(r);
   const d = r.datos;
-  const pHoja = esHoy ? d.presupuesto : (rf?.datos?.totales || null);
-  // Con bolsas (motor 1.7), del saldo del mes no se descuenta lo pagado con sobrantes personales o ahorros.
+  const p = esHoy ? d.presupuesto : (rf?.datos?.totales || null);
   const bolsasDatos = d.bolsas?.comun ? d.bolsas : (leerCache('bolsas')?.datos?.comun ? leerCache('bolsas').datos : null);
   const bolsas = esHoy && motorBolsas() ? bolsasDatos : null;
   if (esHoy && motorBolsas() && !bolsasDatos && !estado.pidioBolsas && emailSesion()) {
@@ -3434,8 +3433,6 @@ async function vistaInicio() {
     estado.pidioBolsas = true;
     cargar('bolsas', {}, 'bolsas').then(() => navegar({ silencioso: true })).catch(() => { /* se verá al refrescar */ });
   }
-  const p = bolsas && pHoja ? { ...pHoja, saldo: bolsas.comun.saldo, gastos: Math.max(0, (pHoja.gastos || 0) - (bolsas.comun.fuera || 0)),
-    saldoPersonal: bolsas.comun.saldo / Math.max(1, (bolsas.personas || []).length || 2) } : pHoja;
   if (rf?.datos?.meses?.length) guardarCache('meses', rf.datos.meses);
   const mesesLista = rf?.datos?.meses || leerCache('meses')?.datos || [];
   const nombre = (d.usuario?.nombre || '').split(' ')[0];
@@ -3571,23 +3568,10 @@ async function vistaInicio() {
   } else if (p) {
     const pct = Math.max(0, Math.min(100, Math.round((p.gastos / p.ingresos) * 100)));
     const falta = p.saldo < 0;
-    // v162: cuánto le toca a cada uno al cobrar, ya sin lo que separó para su tarjeta (antes decía "Tarjeta nov").
-    const prox0 = esHoy && !falta ? bolsas?.proximos?.find((x) => x.mes === mes) : null;
-    const diaCobro = fechaCorta(iso(new Date(hoy.getFullYear(), hoy.getMonth(), ultimoDia)));
-    const personal = prox0?.personas?.length
-      ? h('div', { class: 'hero-personas' },
-        h('span', { class: 'hp-lead' }, `Al cobrar (${diaCobro}) a cada uno le toca:`),
-        h('span', { class: 'hp-lista' }, prox0.personas.map((y) => h('span', { class: 'hp-persona' },
-          avatar(y.nombre),
-          h('span', { class: 'hp-datos' }, h('span', { class: 'hp-nombre' }, nombreCorto(y.nombre)), h('strong', {}, soles(y.queda)),
-            y.apartado > 0 ? h('small', {}, `ya sin ${soles(y.apartado)} de tarjeta`) : null)))))
-      : h('p', { class: 'hero-personal' }, h('span', { class: 'avatares' }, responsables().map((nombre) => avatar(nombre))),
-        h('span', {}, h('strong', {}, soles(Math.abs(p.saldoPersonal))), ' para cada uno'));
     hero.append(
       h('div', { class: 'hero-principal' + (falta ? ' en-falta' : '') },
-        h('p', { class: 'hero-etq' }, falta ? [icono('alerta'), ` ${esHoy ? 'Te va a faltar' : 'Faltó'} en ${mesNombre}`] : `${esHoy ? 'Te va a sobrar' : 'Sobra'} en ${mesNombre}`),
-        h('p', { class: 'hero-monto', 'data-rico': '', 'data-contar': String(Math.abs(p.saldo)) }, soles(0)),
-        personal),
+        h('p', { class: 'hero-etq' }, falta ? [icono('alerta'), ` Faltante general de ${mesNombre}`] : `Saldo general de ${mesNombre}`),
+        h('p', { class: 'hero-monto', 'data-rico': '', 'data-contar': String(Math.abs(p.saldo)) }, soles(0))),
       anillo(pct, 'en gastos'));
   } else {
     hero.append(h('div', { class: 'hero-principal' },
@@ -3628,21 +3612,13 @@ async function vistaInicio() {
       h('ul', { class: 'hero-datos' },
         dato('sube', 'Entra', soles(p.ingresos)),
         dato('baja', 'Se va en gastos', soles(p.gastos)),
-        dato('billetera', 'Ahorro', soles(p.ahorros || 0)),
-        dato('check', 'Sobra', soles(libre))));
+        dato('billetera', 'Ahorro', soles(p.ahorros || 0))));
   }
   if (p && esHoy) {
-    const libre = Math.max(p.saldo, 0);
     hero.append(h('ul', { class: 'hero-datos' },
       dato('sube', 'Entra este mes', soles(p.ingresos), h('small', { class: 'hero-dato-extra' }, 'los sueldos')),
       dato('baja', 'Se va en gastos', soles(p.gastos), h('small', { class: 'hero-dato-extra' }, 'según tu presupuesto')),
-      bolsas ? (() => {
-        const { mio, otros } = enManoPorPersona(bolsas);
-        if (!mio) return dato('billetera', 'Plata en mano', soles(enMano(bolsas)));
-        // Lo que tiene cada uno hoy (de meses ya cobrados). Lo del próximo cobro va arriba, junto al saldo.
-        return dato('billetera', 'Tu plata hoy', soles(mio.monto),
-          otros.length ? h('small', { class: 'hero-dato-extra' }, otros.map((x) => `${x.nombre} tiene ${soles(x.monto)}`).join(' · ')) : null);
-      })() : dato('billetera', 'Libre por día', soles(diasQuedan > 0 ? libre / diasQuedan : libre)),
+      dato('billetera', 'Ahorro', soles(p.ahorros || 0)),
       dato('calendario', 'Día de cobro', diasQuedan === 0 ? 'Hoy' : diasQuedan === 1 ? 'Mañana' : `En ${diasQuedan} días`,
         h('span', { class: 'hero-dato-extra hero-dato-cobro' },
           h('small', {}, (() => { const t = `${new Date(hoy.getFullYear(), hoy.getMonth(), ultimoDia).toLocaleDateString('es-PE', { weekday: 'long' })} ${diaCobro2()}`; return t.charAt(0).toUpperCase() + t.slice(1); })()),
@@ -4867,8 +4843,8 @@ async function abrirPendientes() {
       faltaOrigen(p) ? (cajaElige = h('div', { class: 'pend-elige-origen' },
         h('span', {}, `Pagaste con ${deb ? 'débito' : directo === 'YAPE' ? 'Yape (cuenta BCP)' : 'Plin (cuenta Interbank)'}. ¿De dónde sale?`),
         h('div', { class: 'pend-pase-botones' },
-          h('button', { type: 'button', class: 'boton chico', onclick: () => { p._origen = ''; p._origenManual = true; pintar(); } }, icono('inicio'), 'Presupuesto'),
-          h('button', { type: 'button', class: 'boton chico', onclick: () => { p._origen = 'P'; p._origenManual = true; pintar(); } }, avatar(quienDe(p), 'mini'), `Sobrante de ${nombreCorto(quienDe(p))}`)))) : motorBolsas() ? (() => {
+          h('button', { type: 'button', class: 'boton chico', onclick: () => { p._origen = ''; p._origenManual = true; pintar(); } }, icono('inicio'), 'Compartido'),
+          h('button', { type: 'button', class: 'boton chico', onclick: () => { p._origen = 'P'; p._origenManual = true; pintar(); } }, avatar(quienDe(p), 'mini'), `Personal · ${nombreCorto(quienDe(p))}`)))) : motorBolsas() ? (() => {
         const apartP = (directoDe(p) || deb) && !lineaDeBilletera(directoDe(p)) ? apartadoDeConcepto(sugerido) : null;
         const ops = () => opcionesOrigen(quienDe(p), !!directoDe(p) || !!deb, '', lineaDeBilletera(directoDe(p)) ? directoDe(p) : null, apartP);
         const actual = () => (apartP && !p._origenManual ? ops()[0] : ops().find((o) => (o.valor.startsWith('P:') ? 'P' : o.valor) === (p._origen || '')) || ops()[0]);
@@ -6416,6 +6392,11 @@ function textoOrigen(o) {
   if (t.startsWith('A:')) return nombreLinea(t.slice(2));
   return '';
 }
+function tipoDeGasto(origen) { return String(origen || '').startsWith('P:') ? 'Personal' : 'Compartido'; }
+function marcaGasto(origen) {
+  const detalle = textoOrigen(origen);
+  return h('em', { class: 'de-donde', title: detalle || 'Fondo común' }, tipoDeGasto(origen));
+}
 // Opciones de "De dónde sale" para un gasto de `quien` (nombre de la persona que gastó).
 // El ingreso del mes se cobra a fin de mes: lo que se paga HOY en directo (Yape, Plin, efectivo) solo puede salir
 // de lo que ya se tiene (sobrantes de meses cobrados o ahorros). La tarjeta sí va al fondo común: se paga al cobrar.
@@ -6475,7 +6456,7 @@ function opcionesOrigen(quien, soloEnMano = false, mesPago = '', billetera = nul
   if (quien) ops.push({ valor: `P:${persona?.nombre || quien}`, etiqueta: `Sobrante de ${nombreCorto(quien)}`, ico: 'personas',
     disponible: para ? para.tiene : null, deMes: para?.mes || null, nota: para ? undefined : (soloEnMano ? undefined : 'del mes que se paga') });
   for (const a of (b?.ahorros || []).filter((x) => x.disponible > 0)) ops.push({ valor: `A:${a.meta}`, etiqueta: nombreLinea(a.meta), ico: 'billetera', disponible: a.disponible });
-  return ops;
+  return ops.map((o) => ({ ...o, etiqueta: `${tipoDeGasto(o.valor)} · ${o.etiqueta}` }));
 }
 function motorAdmin() { const v = versionMotor(); return v.a > 1 || (v.a === 1 && v.b >= 4); }
 
@@ -6775,7 +6756,7 @@ async function vistaRegistrar() {
       const corto = o.disponible !== null && o.disponible !== undefined && monto > 0 && monto > o.disponible;
       return h('button', { type: 'button', class: 'opcion origen', 'aria-pressed': String(!faltaElegir && (f.origen || '') === clave), onclick: () => { f.origen = clave; f.origenManual = true; limpiarError(campoOrigen); pintarOrigen(); } },
         h('span', { class: 'origen-ico' }, o.persona ? avatar(o.persona, 'mini') : icono(o.ico)),
-        h('span', { class: 'origen-texto' }, h('span', {}, o.etiqueta),
+        h('span', { class: 'origen-texto' }, h('span', {}, `${tipoDeGasto(o.valor)} · ${o.etiqueta}`),
           o.disponible === null || o.disponible === undefined ? (o.nota ? h('small', {}, o.nota) : null)
             : h('small', { class: corto || o.disponible < 0 ? 'mal' : '' }, corto ? `No alcanza · tiene ${soles(Math.max(0, o.disponible))}`
               : `${o.disponible < 0 ? '−' : ''}${soles(Math.abs(o.disponible))}${o.deMes ? ' de ' + mesMinuscula(o.deMes) : ''}`)));
@@ -7507,7 +7488,7 @@ async function vistaTarjeta(id) {
             // En pantallas táctiles no hay lápiz: tocar el nombre abre la edición.
             if (enEspera(c) || !matchMedia('(hover: none)').matches) return;
             ev.preventDefault(); editarConsumo(t.base || t, c);
-          } }, h('span', {}, limpiarComercio(c.descripcion)), h('span', { class: 'suave' }, sub, c.origen ? h('em', { class: 'de-donde' }, textoOrigen(c.origen)) : null)),
+          } }, h('span', {}, limpiarComercio(c.descripcion)), h('span', { class: 'suave' }, marcaGasto(c.origen), sub)),
           enEspera(c) ? null : h('button', { type: 'button', class: 'boton-editar', title: 'Editar', 'aria-label': `Editar ${limpiarComercio(c.descripcion)}`,
             onclick: (ev) => { ev.preventDefault(); ev.stopPropagation(); editarConsumo(t.base || t, c); } }, icono('lapiz')),
           h('div', { class: 'derecha' }, h('strong', {}, soles(c.monto)),
