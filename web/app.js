@@ -6,7 +6,7 @@ import { API_URL } from './config.js';
 // La app aparte para registrar gastos (gasto.html) usa este mismo código en modo "gasto".
 const SOLO_GASTO = document.documentElement.dataset.app === 'gasto';
 // Versión de esta copia de la app: se sube junto con la de sw.js en cada publicación (ver revisarVersionPublicada).
-const VERSION_APP = 'finfamily-v190';
+const VERSION_APP = 'finfamily-v191';
 // Gasto rápido en computadora: abre la misma pantalla "Nuevo gasto" de la app (pedido del usuario, v151).
 // Solo en una computadora de verdad (mouse, sin pantalla táctil) y nunca en la app instalada: en el celular, aunque
 // sea ancho o esté en modo escritorio, gasto.html se queda para poder instalarse como app de gastos rápidos.
@@ -3625,7 +3625,10 @@ async function vistaInicio() {
           h('i', { class: 'mes-barra', title: `Día ${hoy.getDate()} de ${ultimoDia}` }, h('b', { 'data-w': `${Math.round((hoy.getDate() / ultimoDia) * 100)}%` }))))));
   }
   raiz.append(hero);
-  if (esHoy && motorLector() && emailSesion()) raiz.append(avisoPendientes(r?.datos?.pendientes));
+  if (esHoy && motorLector() && emailSesion()) {
+    if (r?.datos?.puedeBuscarCompras && r.datos.usuario?.email === emailSesion()) raiz.append(botonBuscarCompras());
+    raiz.append(avisoPendientes(r?.datos?.pendientes));
+  }
   if (esHoy && motorReenvio() && emailSesion()) raiz.append(avisoConectar());
   // v164: sin el panel "Tu plata" (lo dice el resumen) ni el carrusel de tarjetas (está en Tarjetas): Inicio no repite.
 
@@ -4659,6 +4662,30 @@ function panelBolsas(b, mesNombre) {
 }
 
 // Aviso compacto en Inicio: cuántos consumos esperan y cuánto suman; lleva a la pantalla Por confirmar.
+function botonBuscarCompras() {
+  const estadoBusqueda = h('span', { class: 'suave', 'aria-live': 'polite' });
+  const boton = h('button', { type: 'button', class: 'boton primario', onclick: async () => {
+    ocuparBoton(boton, 'Buscando compras…');
+    estadoBusqueda.textContent = '';
+    try {
+      const r = await llamarApi('buscarCompras', {}, { email: emailSesion() });
+      if (r.motivo === 'ocupado') {
+        estadoBusqueda.textContent = 'El lector está ocupado. Intenta de nuevo en un momento.';
+        return;
+      }
+      borrarCaches(['pendientes']);
+      const bandeja = await cargar('pendientes', {}, 'pendientes');
+      estado.ultimosPendientes = bandeja.datos.pendientes || [];
+      estadoBusqueda.textContent = !r.agregados ? 'No encontré compras nuevas.'
+        : r.agregados === 1 ? 'Encontré una compra nueva.' : `Encontré ${r.agregados} compras nuevas.`;
+      if (estado.ultimosPendientes.length) await abrirPendientes();
+    } catch (error) {
+      estadoBusqueda.textContent = mensajeError(error, 'No se pudo buscar compras en Gmail.');
+    } finally { liberarBoton(boton, 'Buscar compras del banco'); }
+  } }, 'Buscar compras del banco');
+  return h('div', { class: 'acciones' }, boton, estadoBusqueda);
+}
+
 function avisoPendientes(cuantos) {
   const texto = h('strong', {});
   const total = h('span', { class: 'aviso-pend-total' });
@@ -4718,7 +4745,7 @@ async function abrirPendientes() {
       h('button', { type: 'button', class: 'boton', 'aria-label': 'Cerrar', onclick: cerrar }, icono('cerrar'))),
     paso));
 
-  const idDe = (p) => idTarjetaDePendiente(p);
+  const idDe = (p) => p._tarjeta || (catalogoTC().some((t) => t.id === p.tarjeta) ? p.tarjeta : idTarjetaDePendiente(p));
   const directoDe = (p) => (['PLIN', 'YAPE', 'EFECTIVO', 'LEMON'].includes(String(p.medioSugerido || '').toUpperCase()) ? String(p.medioSugerido).toUpperCase() : null);
   const enDolares = (p) => p.moneda && p.moneda !== 'PEN';
   const sugeridoDe = (p) => (p._concepto !== undefined ? p._concepto : (p._concepto = conceptoParaComercio(p.comercio) || ''));
@@ -4727,9 +4754,12 @@ async function abrirPendientes() {
   const montoDe = (p) => (enDolares(p) ? `US$ ${Number(p.monto).toFixed(2)}` : soles(p.monto));
   const debitoDe = (p) => (/^TD_/.test(String(p.medioSugerido || '')) ? (leerCache('config')?.datos?.medios || []).find((m) => m.id === p.medioSugerido) || { id: p.medioSugerido, etiqueta: 'Débito' } : null);
   // Débito, Yape o Plin: se pregunta cada vez, salvo que el tipo de gasto tenga su apartado (sale de ahí).
-  const faltaOrigen = (p, concepto) => motorBolsas() && (!!debitoDe(p) || !!CUENTA_DE_MEDIO[directoDe(p)]) && p._origen === undefined
-    && !apartadoDeConcepto(concepto !== undefined ? concepto : sugeridoDe(p));
-  const listos = () => cola.filter((p) => sugeridoDe(p) && !enDolares(p) && !faltaOrigen(p));
+  const creditoDe = (p) => /^TC_/.test(String(p.medioSugerido || ''));
+  const tarjetasDe = (p) => creditoDe(p) ? catalogoTC().filter((t) => t.medio === p.medioSugerido) : [];
+  const faltaTarjeta = (p) => tarjetasDe(p).length > 1 && !p._tarjeta;
+  const faltaOrigen = (p, concepto) => motorBolsas() && p._origen === undefined
+    && (creditoDe(p) || ((!!debitoDe(p) || !!CUENTA_DE_MEDIO[directoDe(p)]) && !apartadoDeConcepto(concepto ?? sugeridoDe(p))));
+  const listos = () => cola.filter((p) => sugeridoDe(p) && !enDolares(p) && !faltaOrigen(p) && !faltaTarjeta(p));
   const sacarDeMemoria = (p) => { if (Array.isArray(estado.ultimosPendientes)) estado.ultimosPendientes = estado.ultimosPendientes.filter((x) => x.id !== p.id); borrarCaches(['pendientes']); };
   const devolver = (p, nota) => { p._nota = nota; cola.push(p); if (!cerrado && cola.length === 1) pintar(); else if (!cerrado) refrescarProgreso(); };
 
@@ -4739,6 +4769,7 @@ async function abrirPendientes() {
     const datos = { idCliente: uuid(), id: p.id, concepto, descripcion: comercioDe(p) };
     if (quienDe(p) && quienDe(p) !== yo) datos.responsable = quienDe(p);
     if (directoDe(p)) datos.medio = directoDe(p);
+    if (p._tarjeta) datos.tarjeta = p._tarjeta;
     if (p._repetido) datos.confirmarDuplicado = true;
     const conApartado = !p._origenManual && (directoDe(p) || debitoDe(p)) && !lineaDeBilletera(directoDe(p)) && !!apartadoDeConcepto(concepto);
     const origenP = conApartado ? '' : p._origen === undefined && directoDe(p) && !lineaDeBilletera(directoDe(p)) ? 'P' : p._origen;
@@ -4804,6 +4835,8 @@ async function abrirPendientes() {
     const hora = (p.fechaCorreo || '').slice(11, 16);
     const deBilletera = ['YAPE', 'LEMON'].includes(String(p.banco || '').toUpperCase()); // leído del correo de Yape o Lemon
     const deb = debitoDe(p);
+    const credito = creditoDe(p);
+    const candidatas = tarjetasDe(p);
     const emisor = deb ? deb.etiqueta : directo ? (deBilletera ? (directo === 'LEMON' ? 'Lemon' : 'Yape') : `${directo === 'PLIN' ? 'Plin' : directo === 'YAPE' ? 'Yape' : directo === 'LEMON' ? 'Lemon' : 'Efectivo'} · débito BCP`) : nombreTC(id);
     const ticket = h('article', { class: `pend voucher compacto tc-${deb ? claseDebito(deb.banco) : directo ? 'HORMIGA' : id}` },
       h('span', { class: 'sello', 'aria-hidden': 'true', hidden: true }, 'Confirmado'),
@@ -4816,6 +4849,7 @@ async function abrirPendientes() {
     let cajaElige = null;
     const confirmar = (c) => {
       if (paso.classList.contains('ocupado')) return;
+      if (faltaTarjeta(p) || (credito && faltaOrigen(p, c))) { p._concepto = c; pintar(); return; }
       if (faltaOrigen(p, c)) { p._concepto = c; cajaElige?.classList.remove('tiembla'); void cajaElige?.offsetWidth; cajaElige?.classList.add('tiembla'); return; }
       cola.shift(); enviar(p, c); avanzar(ticket, 'confirmado');
     };
@@ -4827,7 +4861,7 @@ async function abrirPendientes() {
     } }, avatar(n, 'mini'), h('span', { class: 'opcion-texto' }, nombreCorto(n)))) : [];
     const nListos = listos().length;
     const btnPrincipal = sugerido && !dolar
-      ? h('button', { type: 'button', class: 'boton primario pend-ok', onclick: () => confirmar(sugerido) }, icono('check'), `Confirmar · ${sugerido}`)
+      ? h('button', { type: 'button', class: 'boton primario pend-ok', disabled: credito && (faltaOrigen(p) || faltaTarjeta(p)), onclick: () => confirmar(sugerido) }, icono('check'), `Confirmar · ${sugerido}`)
       : null;
     const btnTodos = nListos >= 2 ? h('button', { type: 'button', class: 'boton pend-todos', onclick: () => {
       if (paso.classList.contains('ocupado')) return;
@@ -4838,8 +4872,17 @@ async function abrirPendientes() {
     paso.replaceChildren(...[
       ticket,
       nota ? h('p', { class: 'mensaje pend-nota' }, nota) : null,
-      h('p', { class: 'etq pend-pregunta' }, dolar ? 'Tipo de gasto' : 'Toca el tipo de gasto y queda confirmado'),
+      h('p', { class: 'etq pend-pregunta' }, dolar || credito ? 'Tipo de gasto' : 'Toca el tipo de gasto y queda confirmado'),
       chips,
+      candidatas.length > 1 ? h('label', { class: 'campo' }, 'Tarjeta de la compra',
+        h('select', { onchange: (e) => { p._tarjeta = e.target.value; pintar(); } },
+          h('option', { value: '', selected: !p._tarjeta }, 'Elige la tarjeta'),
+          ...candidatas.map((t) => h('option', { value: t.id, selected: p._tarjeta === t.id }, nombreTC(t.id))))) : null,
+      credito && motorBolsas() ? h('div', { class: 'pend-elige-origen' },
+        h('span', {}, 'Clasifica la compra'),
+        h('div', { class: 'pend-pase-botones' }, ...[['', 'Compartido'], ['P', 'Personal']].map(([valor, texto]) =>
+          h('button', { type: 'button', class: `boton chico${p._origen === valor ? ' primario' : ''}`,
+            'aria-pressed': String(p._origen === valor), onclick: () => { p._origen = valor; pintar(); } }, texto)))) :
       faltaOrigen(p) ? (cajaElige = h('div', { class: 'pend-elige-origen' },
         h('span', {}, `Pagaste con ${deb ? 'débito' : directo === 'YAPE' ? 'Yape (cuenta BCP)' : 'Plin (cuenta Interbank)'}. ¿De dónde sale?`),
         h('div', { class: 'pend-pase-botones' },

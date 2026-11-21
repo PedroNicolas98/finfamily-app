@@ -12,6 +12,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const crypto = require('node:crypto');
+const idDeCorreo = (id) => 'APP:correo-' + crypto.createHash('sha256').update(id).digest('hex').slice(0, 48);
 
 const CARPETA = path.join(__dirname, '..', 'apps-script');
 const FUENTE_LOGICA = fs.readFileSync(path.join(CARPETA, 'Logica.gs'), 'utf8');
@@ -190,6 +191,7 @@ function crearMotor(config) {
   const cache = {};
   const estado = { hoy: c.hoy || '2026-11-06', cuotaCorreo: c.cuotaCorreo === undefined ? 100 : c.cuotaCorreo, idsHojaAbiertos: [] };
   const avisosConsola = [];
+  const registrosConsola = [];
 
   // Gmail imitado: c.hilos = [{ mensajes: [{ id, de, asunto, cuerpo, fecha }] }]
   const etiquetasGmail = {};
@@ -231,7 +233,7 @@ function crearMotor(config) {
   }
 
   const servicios = {
-    console: { log() {}, warn(m) { avisosConsola.push(String(m)); }, error() {} },
+    console: { log(m) { registrosConsola.push(String(m)); }, warn(m) { avisosConsola.push(String(m)); }, error() {} },
     SpreadsheetApp: {
       openById: (id) => {
         estado.idsHojaAbiertos.push(id);
@@ -360,7 +362,7 @@ function crearMotor(config) {
   vm.runInContext(FUENTE_CODIGO, contexto, { filename: 'Codigo.gs' });
 
   return {
-    contexto, propiedades, correos, whatsapps, metaLlamadas, greenLlamadas, activadores, estado, hojas, hilos, etiquetasGmail, consultasGmail, eventos, avisosConsola,
+    contexto, propiedades, correos, whatsapps, metaLlamadas, greenLlamadas, activadores, estado, hojas, hilos, etiquetasGmail, consultasGmail, eventos, avisosConsola, registrosConsola,
     // Llama al motor igual que la web: POST con {accion, token, datos}.
     llamar(accion, datos, token) {
       const cuerpo = JSON.stringify({ accion, token: token === undefined ? TOKEN_PERSONA_A : token, datos });
@@ -382,13 +384,13 @@ test('version: informa 1.7.1 y la lista de acciones; inicio y config traen el ca
     new HojaFalsa('Configuración', [['Conceptos de Gasto', 'Responsable'], ['Limpieza', 'PersonaB']])]) });
   const r = m.llamar('version', {});
   assert.equal(r.ok, true);
-  assert.equal(r.datos.version, '1.27.0');
+  assert.equal(r.datos.version, '1.28.0');
   for (const a of ['desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'marcarPagado', 'inicio',
     'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos', 'datosTarjetas', 'guardarDatosTarjeta']) {
     assert.ok(r.datos.acciones.includes(a), 'falta la acción ' + a);
   }
-  assert.equal(m.llamar('inicio', {}).datos.version, '1.27.0');
-  assert.equal(m.llamar('config', {}).datos.version, '1.27.0');
+  assert.equal(m.llamar('inicio', {}).datos.version, '1.28.0');
+  assert.equal(m.llamar('config', {}).datos.version, '1.28.0');
 });
 
 test('la lista ACCIONES coincide con las acciones que atiende doPost', () => {
@@ -927,7 +929,19 @@ test('leerCorreosDeBancos: crea "Por confirmar", agrega solo los consumos, etiqu
   assert.match(q, /subject:consumo/);
   assert.ok(m.etiquetasGmail['FinFamily/Leído'], 'la etiqueta se creó');
   m.hilos.forEach((h) => assert.equal(h.etiquetas.length, 1, 'todos los hilos quedan etiquetados'));
-  assert.ok(m.avisosConsola.some((t) => /cuerpo ilegible simulado/.test(t)));
+  const registros = m.registrosConsola.filter((t) => t.startsWith('{"lector":')).map((t) => JSON.parse(t));
+  const errores = m.avisosConsola.filter((t) => t.startsWith('{"lector":')).map((t) => JSON.parse(t));
+  const buscar = (paso, evento) => registros.find((r) => r.paso === paso && r.evento === evento);
+  assert.equal(buscar('consumos.buscar', 'fin').cantidad, m.hilos.length);
+  assert.equal(buscar('consumos.escribir_pendientes', 'inicio').filas, 3);
+  assert.ok(buscar('consumos.aplicar_cambios', 'fin').duracion_ms >= 0);
+  assert.ok(buscar('pagos.historial.buscar', 'fin'));
+  assert.ok(buscar('pagos.habitual.guardar_registro', 'fin'));
+  assert.equal(errores[0].paso, 'consumos.leer_cuerpo');
+  assert.equal(errores[0].evento, 'error');
+  assert.ok(errores[0].hilo > 0 && errores[0].mensaje > 0);
+  assert.equal(new Set([...registros, ...errores].map((r) => r.lector)).size, 1);
+  assert.doesNotMatch([...m.registrosConsola, ...m.avisosConsola].join('\n'), /cuerpo ilegible simulado|msg-bcp-1|PLAZA VEA|5566|Realizaste un consumo/i);
 
   const hoja = hojaDe(m, 'Por confirmar');
   assert.deepEqual(hoja.valores[0], ['Id', 'Fecha', 'Banco', 'Tarjeta', 'Comercio', 'Monto', 'Moneda', 'Últimos 4',
@@ -987,7 +1001,7 @@ test('confirmarPendiente: registra el gasto como "registrar" y marca la fila com
   assert.equal(bcp.valores[2][5], 85.9);
   assert.equal(bcp.valores[2][2].getDate(), 8, 'la fecha es la del consumo');
   assert.equal(bcp.valores[2][8], 'Pendiente');
-  assert.equal(bcp.valores[2][10], 'APP:' + ID);
+  assert.equal(bcp.valores[2][10], idDeCorreo('msg-bcp-1'));
   assert.equal(hojaDe(m, 'Por confirmar').valores[1][9], 'Confirmado');
   assert.equal(m.llamar('pendientes', {}).datos.total, 2);
 
@@ -1003,6 +1017,32 @@ test('confirmarPendiente: registra el gasto como "registrar" y marca la fila com
   const ibk = hojaDe(m, 'TC IBK');
   assert.deepEqual([ibk.valores[2][0], ibk.valores[2][4], ibk.valores[2][9], ibk.valores[2][7].getDate()], ['PersonaB', 'Compras Tottus', 'del correo', 20]);
   assert.equal(m.correos.length, 0, 'ninguno llega al umbral de gasto grande');
+});
+
+test('búsqueda manual y lector automático comparten avisos y guardan cada compra de tarjeta una sola vez', () => {
+  const m = motorConCorreos({ propiedades: { CORREO_LECTOR: 'persona-a@example.test' } });
+  assert.equal(m.llamar('inicio', {}).datos.puedeBuscarCompras, true);
+  assert.equal(m.llamar('buscarCompras', {}).datos.agregados, 3);
+  assert.equal(m.hilos.flatMap((hilo) => hilo.etiquetas).length, 0);
+  const personal = { idCliente: ID, id: 'msg-bcp-1', concepto: 'Supermercado', origen: 'P:PersonaA' };
+  const compartido = { idCliente: ID, id: 'msg-ibk-1', concepto: 'Supermercado', origen: '' };
+  assert.equal(m.llamar('confirmarPendiente', personal).datos.confirmado, true);
+  assert.equal(m.llamar('confirmarPendiente', compartido).datos.confirmado, true);
+  assert.equal(m.llamar('confirmarPendiente', { ...personal, idCliente: 'prueba-0002' }).datos.yaEstaba, true);
+  assert.equal(m.contexto.leerCorreosDeBancos().agregados, 0);
+  assert.equal(m.llamar('buscarCompras', {}).datos.agregados, 0);
+  assert.equal(m.llamar('pendientes', {}).datos.total, 1);
+  const tarjetas = m.llamar('tarjetas', {}).datos.tarjetas;
+  const consumos = (id) => tarjetas.find((t) => t.id === id).estados.flatMap((grupo) => grupo.consumos);
+  assert.deepEqual(consumos('BCP').map((c) => c.origen), ['P:PersonaA']);
+  assert.deepEqual(consumos('IBK_P').map((c) => c.origen || ''), ['']);
+});
+
+test('una cuenta distinta de la del lector no inicia la búsqueda manual', () => {
+  const m = motorConCorreos({ propiedades: { CORREO_LECTOR: 'otra-cuenta@example.test' } });
+  assert.equal(m.llamar('inicio', {}).datos.puedeBuscarCompras, false);
+  assert.equal(m.llamar('buscarCompras', {}).ok, false);
+  assert.equal(m.consultasGmail.length, 0);
 });
 
 test('confirmarPendiente: dólares, concepto desconocido, medio que no es tarjeta e id inexistente se rechazan', () => {
@@ -2049,7 +2089,7 @@ test('config: un ícono guardado para un concepto que ya no existe en Configurac
   assert.deepEqual(m.llamar('config', {}).datos.iconos, { Supermercado: 'carrito' });
   const danado = motorCompleto({ propiedades: { FINFAMILY_ICONOS: '{roto' } });
   assert.deepEqual(danado.llamar('config', {}).datos.iconos, {});
-  assert.equal(danado.llamar('version', {}).datos.version, '1.27.0');
+  assert.equal(danado.llamar('version', {}).datos.version, '1.28.0');
   assert.ok(danado.llamar('version', {}).datos.acciones.includes('guardarIconoConcepto'));
 });
 
@@ -2151,7 +2191,7 @@ test('confirmarPendiente hereda la tarjeta que identificó el lector: correo de 
   const r = m.llamar('confirmarPendiente', { idCliente: ID, id: 'msg-ibk-1', concepto: 'Delivery' }); // responsable: PersonaA (sesión)
   assert.deepEqual(r.datos, { confirmado: true, hoja: 'TC IBK', fila: 3, tarjeta: 'IBK_B', prestada: true });
   const f = hojaDe(m, 'TC IBK').valores[2];
-  assert.deepEqual([f[0], f[COL_ID_FORM], f[7].getDate()], ['PersonaA', 'APP:' + ID + '|TC:IBK_B', 20]);
+  assert.deepEqual([f[0], f[COL_ID_FORM], f[7].getDate()], ['PersonaA', idDeCorreo('msg-ibk-1') + '|TC:IBK_B', 20]);
   const ibkB = m.llamar('tarjetas', {}).datos.tarjetas.find((t) => t.id === 'IBK_B');
   assert.equal(ibkB.pendiente, 45);
   assert.equal(ibkB.estados[0].consumos[0].prestada, true);
@@ -2168,11 +2208,11 @@ test('confirmarPendiente: si el lector solo adivinó la tarjeta (dígitos descon
   const r = m.llamar('confirmarPendiente', { idCliente: ID, id: 'msg-ibk-x', concepto: 'Delivery', responsable: 'PersonaB' });
   assert.deepEqual(r.datos, { confirmado: true, hoja: 'TC IBK', fila: 3 });
   const ibk = hojaDe(m, 'TC IBK');
-  assert.deepEqual([ibk.valores[2][0], ibk.valores[2][COL_ID_FORM], ibk.valores[2][7].getDate()], ['PersonaB', 'APP:' + ID, 20]);
+  assert.deepEqual([ibk.valores[2][0], ibk.valores[2][COL_ID_FORM], ibk.valores[2][7].getDate()], ['PersonaB', idDeCorreo('msg-ibk-x'), 20]);
   // Tarjeta explícita al confirmar: PersonaB con la tarjeta de PersonaA.
   const r2 = m.llamar('confirmarPendiente', { idCliente: 'prueba-0002', id: 'msg-ibk-1', concepto: 'Delivery', responsable: 'PersonaB', tarjeta: 'IBK_P' });
   assert.deepEqual(r2.datos, { confirmado: true, hoja: 'TC IBK', fila: 4, tarjeta: 'IBK_P', prestada: true });
-  assert.deepEqual([ibk.valores[3][0], ibk.valores[3][COL_ID_FORM], ibk.valores[3][7].getDate()], ['PersonaB', 'APP:prueba-0002|TC:IBK_P', 15]);
+  assert.deepEqual([ibk.valores[3][0], ibk.valores[3][COL_ID_FORM], ibk.valores[3][7].getDate()], ['PersonaB', idDeCorreo('msg-ibk-1') + '|TC:IBK_P', 15]);
   // Tarjeta que no es del medio: error y el pendiente sigue pendiente.
   assert.equal(m.llamar('confirmarPendiente', { idCliente: 'prueba-0003', id: 'msg-bcp-1', concepto: 'Supermercado', tarjeta: 'IBK_B' }).error,
     'Esa tarjeta no corresponde al medio de pago.');
@@ -2287,7 +2327,7 @@ test('gasto grande con tarjeta prestada: el correo dice quién gastó; versión 
   const m = motorCompleto();
   m.llamar('registrar', Object.assign({}, GASTO_PRESTADO, { monto: 450, descripcion: 'Saga Falabella' }));
   assert.equal(m.correos[0].subject, 'FinFamily: PersonaA registró S/ 450 en Saga Falabella (TC Interbank)');
-  assert.equal(m.llamar('version', {}).datos.version, '1.27.0');
+  assert.equal(m.llamar('version', {}).datos.version, '1.28.0');
 });
 
 // ===========================================================================
@@ -2402,11 +2442,11 @@ test('confirmarPendiente con origen: el consumo del correo queda anotado como de
   assert.equal(m.llamar('pendientes', {}).datos.pendientes.some((p) => p.id === 'msg-bcp-1'), true, 'sigue pendiente');
   const r = m.llamar('confirmarPendiente', { idCliente: ID, id: 'msg-bcp-1', concepto: 'Supermercado', origen: 'P:PersonaA' });
   assert.deepEqual(r.datos, { confirmado: true, hoja: 'TC BCP', fila: 3, origen: 'P:PersonaA' });
-  assert.equal(hojaDe(m, 'TC BCP').valores[2][COL_ID_FORM], 'APP:' + ID + OR_PERSONA_A);
+  assert.equal(hojaDe(m, 'TC BCP').valores[2][COL_ID_FORM], idDeCorreo('msg-bcp-1') + OR_PERSONA_A);
   // Tarjeta heredada del lector + origen ahorro en el mismo consumo.
   const r2 = m.llamar('confirmarPendiente', { idCliente: 'prueba-0002', id: 'msg-ibk-1', concepto: 'Delivery', origen: 'A:Fondo de emergencia' });
   assert.deepEqual(r2.datos, { confirmado: true, hoja: 'TC IBK', fila: 3, tarjeta: 'IBK_B', prestada: true, origen: 'A:Fondo de Emergencia' });
-  assert.equal(hojaDe(m, 'TC IBK').valores[2][COL_ID_FORM], 'APP:prueba-0002|TC:IBK_B|OR:A%3AFondo%20de%20Emergencia');
+  assert.equal(hojaDe(m, 'TC IBK').valores[2][COL_ID_FORM], idDeCorreo('msg-ibk-1') + '|TC:IBK_B|OR:A%3AFondo%20de%20Emergencia');
 });
 
 test('editarGasto con origen: ida y vuelta, vale como único cambio y conserva el sufijo de tarjeta', () => {
@@ -2567,7 +2607,7 @@ test('bolsas con un solo usuario (N = 1): todo el saldo de los meses anteriores 
 test('versión 1.7.0: la acción bolsas está en la lista y presupuesto no cambió', () => {
   const m = motorBolsas();
   const v = m.llamar('version', {}).datos;
-  assert.equal(v.version, '1.27.0');
+  assert.equal(v.version, '1.28.0');
   assert.ok(v.acciones.includes('bolsas'));
   const p = m.llamar('presupuesto', { mes: '2026-11' }).datos;
   assert.equal(p.totales.saldo, 985.57);

@@ -26,7 +26,7 @@
  *   FINFAMILY_ICONOS               ícono elegido para cada tipo de gasto (motor 1.5.1).
  */
 
-var VERSION = '1.27.0';
+var VERSION = '1.28.0';
 var ZONA_HORARIA = 'America/Lima';
 var DIAS_AVISO = 3;
 var SEGUNDOS_CACHE_TOKEN = 300;
@@ -72,7 +72,7 @@ var DIAS_CORREOS = 3; // cuántos días hacia atrás busca el lector
 /** Acciones que entiende este motor (la acción 'version' las devuelve). */
 var ACCIONES = ['inicio', 'tarjetas', 'presupuesto', 'config', 'registrar', 'marcarPagado', 'marcarFijo',
   'editarGasto', 'borrarGasto', 'personas', 'desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'abrirSesion', 'cerrarSesion', 'reenvio', 'pasarACuotas', 'fijosAuto', 'guardarFijoAuto', 'cuentas', 'anotarCuenta', 'borrarCuenta', 'guardarMeta', 'cuadres', 'guardarCuadre', 'whatsapp', 'guardarWhatsapp', 'probarWhatsapp', 'guardarWhatsappMeta', 'guardarWhatsappGreen', 'antojos', 'guardarAntojos', 'registroWhatsapp',
-  'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos',
+  'pendientes', 'buscarCompras', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos',
   'datosTarjetas', 'guardarDatosTarjeta',
   'agregarTarjeta', 'editarTarjeta', 'quitarTarjeta', 'restaurarTarjeta',
   'agregarConcepto', 'renombrarConcepto', 'quitarConcepto',
@@ -183,6 +183,7 @@ function doPost(e) {
       case 'guardarAntojos': resultado = accionGuardarAntojos_(usuario, datos); break;
       case 'registroWhatsapp': resultado = accionRegistroWhatsapp_(usuario, datos); break;
       case 'pendientes': resultado = accionPendientes_(usuario, datos); break;
+      case 'buscarCompras': resultado = accionBuscarCompras_(usuario); break;
       case 'confirmarPendiente': resultado = accionConfirmarPendiente_(usuario, datos); break;
       case 'descartarPendiente': resultado = accionDescartarPendiente_(usuario, datos); break;
       case 'ajustesAvisos': resultado = accionAjustesAvisos_(usuario, datos); break;
@@ -737,6 +738,7 @@ function accionInicio_(usuario, datos) {
     alertas: alertas(resumen, hoy, DIAS_AVISO),
     totalPorPagar: Math.round(totalPorPagar * 100) / 100,
     pendientes: contarPendientes_(),
+    puedeBuscarCompras: puedeBuscarCompras_(usuario),
     bolsas: bolsas
   };
 }
@@ -915,7 +917,7 @@ function tarjetaPedida_(idPedido, idMedio, catalogo) {
  * nombre de `responsable`. Devuelve lo mismo que la acción 'registrar' más, cuando se
  * guardó, `gasto` = {responsable, monto, descripcion, concepto, medio, fecha} para los avisos.
  */
-function registrarGasto_(datos, responsable) {
+function registrarGasto_(datos, responsable, conCandado) {
   // --- Validación ---
   var idCliente = validarIdCliente_(datos.idCliente);
   var monto = typeof datos.monto === 'number' ? datos.monto : parsearMonto(String(datos.monto || ''));
@@ -973,7 +975,7 @@ function registrarGasto_(datos, responsable) {
 
   // --- Escritura con candado ---
   var hoja = obtenerHoja_(nombreHoja);
-  var candado = tomarCandado_();
+  var candado = conCandado ? null : tomarCandado_();
   try {
     var h = leerHojaConEncabezado_(hoja);
     var valores = h.valores, cols = h.cols, idxEnc = h.idxEnc;
@@ -1069,7 +1071,7 @@ function registrarGasto_(datos, responsable) {
     if (origen) resultado.origen = origen;
     return resultado;
   } finally {
-    candado.releaseLock();
+    if (candado) candado.releaseLock();
   }
 }
 
@@ -2865,7 +2867,7 @@ function repararHuellas() {
     if (n) { porHoja[nombre] = n; total += n; }
   });
   if (total) SpreadsheetApp.flush();
-  console.log('FinFamily huellas: ' + total + ' fila(s) corregida(s). ' + JSON.stringify(porHoja));
+  console.log('FinFamily huellas: ' + total + ' fila(s) corregida(s).');
   return { reparadas: total, porHoja: porHoja };
 }
 
@@ -2951,7 +2953,7 @@ function pasarDebitosAEfectivo() {
     }
     detalle.push(m.datos.descripcion + ' ' + m.datos.monto);
   });
-  console.log('FinFamily débitos: ' + detalle.length + ' gasto(s) pasados a efectivo. ' + detalle.join(', '));
+  console.log('FinFamily débitos: ' + detalle.length + ' gasto(s) pasados a efectivo.');
   return { movidos: detalle.length, detalle: detalle };
 }
 
@@ -3026,7 +3028,7 @@ function corregirFechasDeLaApp() {
     if (n) { porHoja[nombre] = n; total += n; }
   });
   if (total) SpreadsheetApp.flush();
-  console.log('FinFamily fechas: ' + total + ' fecha(s) corregida(s). ' + JSON.stringify(porHoja));
+  console.log('FinFamily fechas: ' + total + ' fecha(s) corregida(s).');
   return { corregidas: total, porHoja: porHoja };
 }
 
@@ -3068,8 +3070,9 @@ function guardarRegistroPagos_(registro, hoy) {
   return false;
 }
 
-function revisarPagosDeServicios_(extras, opciones) {
+function revisarPagosDeServicios_(extras, opciones, paso) {
   var op = opciones || {};
+  var etapa = op.soloRegistrar ? 'pagos.historial' : 'pagos.habitual';
   var dias = op.dias || DIAS_CORREOS;
   var hoy = hoyServidor_();
   // nuevoRegistro: la relectura de 75 días arma el registro desde cero y solo reemplaza al viejo al terminar bien.
@@ -3079,13 +3082,21 @@ function revisarPagosDeServicios_(extras, opciones) {
   var recientes = new Date(parsearFecha(hoy).getTime() - DIAS_CORREOS * 86400000);
   var hilos = [];
   var subidas = []; // motor 1.25.0
-  try { hilos = GmailApp.search(consultaPagosServicio_(dias), 0, op.soloRegistrar ? 100 : 25); } catch (err) { console.warn('FinFamily pagos fijos: no se pudo buscar en Gmail: ' + err); }
-  hilos.forEach(function (hilo) {
+  try {
+    hilos = paso(etapa + '.buscar', function () {
+      return GmailApp.search(consultaPagosServicio_(dias), 0, op.soloRegistrar ? 100 : 25);
+    });
+  } catch (err) { /* La búsqueda falló y el paso ya lo registró. */ }
+  hilos.forEach(function (hilo, indiceHilo) {
+    var avanceHilo = { hilo: indiceHilo + 1 };
     try {
       // Un hilo cuyo último correo es anterior a la ventana no trae nada nuevo: no se abre (cuota diaria de lecturas).
-      var ultima = typeof hilo.getLastMessageDate === 'function' ? hilo.getLastMessageDate() : null;
+      var ultima = paso(etapa + '.fecha_hilo', function () {
+        return typeof hilo.getLastMessageDate === 'function' ? hilo.getLastMessageDate() : null;
+      }, avanceHilo);
       if (ultima && ultima.getTime && ultima.getTime() < desde.getTime()) return;
-      hilo.getMessages().forEach(function (mensaje) {
+      var mensajes = paso(etapa + '.abrir_hilo', function () { return hilo.getMessages(); }, avanceHilo);
+      mensajes.forEach(function (mensaje, indiceMensaje) {
         try {
           var id = 'm:' + String(mensaje.getId());
           if (registro.ids[id]) return;
@@ -3093,23 +3104,28 @@ function revisarPagosDeServicios_(extras, opciones) {
           if (fechaCorreo && fechaCorreo.getTime && fechaCorreo.getTime() < desde.getTime()) return;
           // El historial deja los de los últimos días para la pasada normal (esos sí marcan y avisan).
           if (op.soloRegistrar && !op.conRecientes && fechaCorreo && fechaCorreo.getTime && fechaCorreo.getTime() >= recientes.getTime()) return;
-          var pago = pagoDeServicioDeCorreo({ remitente: mensaje.getFrom(), asunto: mensaje.getSubject(),
-            cuerpo: mensaje.getPlainBody(), fechaISO: fechaISO(fechaCorreo) });
+          var pago = paso(etapa + '.leer_mensaje', function () {
+            return pagoDeServicioDeCorreo({ remitente: mensaje.getFrom(), asunto: mensaje.getSubject(),
+              cuerpo: mensaje.getPlainBody(), fechaISO: fechaISO(fechaCorreo) });
+          }, { hilo: indiceHilo + 1, mensaje: indiceMensaje + 1 });
           if (pago) { pago.id = id; nuevos.push(pago); } else registro.ids[id] = hoy; // no era un pago: no se vuelve a leer
-        } catch (errMensaje) { console.warn('FinFamily pagos fijos: no se pudo leer un correo: ' + errMensaje); }
+        } catch (errMensaje) { console.warn('FinFamily pagos fijos: no se pudo leer un correo.'); }
       });
-    } catch (errHilo) { console.warn('FinFamily pagos fijos: no se pudo leer un hilo: ' + errHilo); }
+    } catch (errHilo) { console.warn('FinFamily pagos fijos: no se pudo leer un hilo.'); }
   });
   var marcados = [];
   if (nuevos.length) {
     var config = leerFijos_();
     var hechos = {};
-    var hoja = obtenerHoja_(HOJA_PRESUPUESTO);
-    var candado = tomarCandado_();
+    var hoja = paso(etapa + '.abrir_presupuesto', function () { return obtenerHoja_(HOJA_PRESUPUESTO); });
+    var candado = paso(etapa + '.bloqueo', tomarCandado_);
     try {
       try { hechos = JSON.parse(propiedad_(PROPIEDAD_FIJOS_HECHOS) || '{}') || {}; } catch (err) { hechos = {}; } // dentro del candado: no pisar a otro
-      var rango = hoja.getDataRange();
-      var display = rango.getDisplayValues(), valores = rango.getValues(), notas = rango.getNotes();
+      var datosPresupuesto = paso(etapa + '.leer_presupuesto', function () {
+        var rango = hoja.getDataRange();
+        return { display: rango.getDisplayValues(), valores: rango.getValues(), notas: rango.getNotes() };
+      });
+      var display = datosPresupuesto.display, valores = datosPresupuesto.valores, notas = datosPresupuesto.notas;
       var porMes = {};
       var tocadas = {};
       // Para los meses que la hoja no tiene (cobros viejos), las líneas del mes en curso sirven para reconocerlos.
@@ -3149,42 +3165,48 @@ function revisarPagosDeServicios_(extras, opciones) {
         p.filas.forEach(function (f) { if (f.seccion === 'gastos' && !f.esTarjeta && claveLinea(f.concepto) === t.clave) linea = f; });
         if (!linea || linea.pagado || hechos['correo|' + t.clave + '|' + t.mes]) return;
         if (sumaPagosFijo(registro.meses[t.mes][t.clave]) < linea.monto * UMBRAL_PAGADO_FIJO) return;
-        var celda = hoja.getRange(linea.fila, p.columna);
-        celda.setNote(ponerNotaPagado(celda.getNote(), textoPagadoPorCorreo(t.fecha)));
+        paso(etapa + '.marcar_pago', function () {
+          var celda = hoja.getRange(linea.fila, p.columna);
+          celda.setNote(ponerNotaPagado(celda.getNote(), textoPagadoPorCorreo(t.fecha)));
+        });
         hechos['correo|' + t.clave + '|' + t.mes] = hoy;
         marcados.push(linea.concepto);
       });
       if (marcados.length) {
-        SpreadsheetApp.flush();
-        PropertiesService.getScriptProperties().setProperty(PROPIEDAD_FIJOS_HECHOS, JSON.stringify(hechos));
+        paso(etapa + '.aplicar_cambios', function () { SpreadsheetApp.flush(); }, { filas: marcados.length });
+        paso(etapa + '.guardar_marcas', function () {
+          PropertiesService.getScriptProperties().setProperty(PROPIEDAD_FIJOS_HECHOS, JSON.stringify(hechos));
+        });
       }
     } finally {
       candado.releaseLock();
     }
   }
-  guardarRegistroPagos_(registro, hoy);
-  if (marcados.length) console.log('FinFamily pagos fijos: marcado(s) por el correo: ' + marcados.join(', '));
+  paso(etapa + '.guardar_registro', function () { return guardarRegistroPagos_(registro, hoy); });
+  if (marcados.length) console.log('FinFamily pagos fijos: ' + marcados.length + ' pago(s) marcado(s) por correo.');
   // Motor 1.25.0: si un cobro subió frente al anterior de la misma empresa, se avisa (una vez por cobro).
   var avisadas = 0;
   if (subidas.length) {
     try {
       if (leerAjustesAvisos_().subidas !== false) {
-        subidas.forEach(function (x) { if (enviarCorreoAUsuarios_(textoSubidaPrecio(x), 'subida de precio').enviado) avisadas++; });
+        paso(etapa + '.avisar_subidas', function () {
+          subidas.forEach(function (x) { if (enviarCorreoAUsuarios_(textoSubidaPrecio(x), 'subida de precio').enviado) avisadas++; });
+        });
       }
-    } catch (err) { console.warn('FinFamily subidas: ' + err); }
+    } catch (err) { console.warn('FinFamily subidas: no se pudo revisar o enviar el aviso.'); }
   }
   return { pagos: nuevos.length, marcados: marcados.length, subidas: avisadas };
 }
 
 /** Una sola vez: guarda los cobros de servicios de los últimos 75 días (sin marcar ni avisar) para aprender sus días. */
-function historialPagosServicioUnaVez_() {
+function historialPagosServicioUnaVez_(paso) {
   if (propiedad_(PROPIEDAD_PAGOS_HISTORIA)) return null;
   // 1.25.1: si ya corrió la lectura de 1.25.0, se borra lo guardado y se vuelve a leer todo (también los últimos días,
   // que la pasada normal ya marcó) solo para guardar.
   var rehacer = !!propiedad_(PROPIEDAD_PAGOS_HISTORIA_V1);
   var r = null;
   try {
-    r = revisarPagosDeServicios_([], { dias: 75, soloRegistrar: true, conRecientes: rehacer, nuevoRegistro: rehacer });
+    r = revisarPagosDeServicios_([], { dias: 75, soloRegistrar: true, conRecientes: rehacer, nuevoRegistro: rehacer }, paso);
   } finally {
     // Con o sin error se anota: si falla, no se repite cada 10 minutos (la pasada normal sigue aprendiendo sola).
     PropertiesService.getScriptProperties().setProperty(PROPIEDAD_PAGOS_HISTORIA, new Date().toISOString());
@@ -3228,34 +3250,85 @@ function revisarCobrosProximos_(hoy) {
   return { avisados: lista.length, enviado: r.enviado };
 }
 
-function leerCorreosDeBancos() {
-  var extras = [];
-  var r = leerCorreosDeBancosNucleo_(extras);
-  // Motor 1.23.0: fuera del candado del lector (marcar pagado toma el suyo).
-  try { historialPagosServicioUnaVez_(); } catch (err) { console.warn('FinFamily historial de cobros: ' + err); }
-  try { revisarPagosDeServicios_(extras); } catch (err) { console.warn('FinFamily pagos fijos: ' + err); }
-  return r;
+/** Registra solo etapas internas, tiempos y cantidades. Nunca escribe resultados ni mensajes de error completos. */
+function crearRegistroLector_() {
+  var ejecucion = Utilities.getUuid();
+  return function (etapa, operacion, avance) {
+    var registro = { lector: ejecucion, paso: etapa, evento: 'inicio' };
+    if (avance) Object.assign(registro, avance); // Solo posiciones dentro del lote o conteos.
+    var inicio = Date.now();
+    console.log(JSON.stringify(registro));
+    try {
+      var resultado = operacion();
+      registro.evento = 'fin';
+      registro.duracion_ms = Date.now() - inicio;
+      if (Array.isArray(resultado)) registro.cantidad = resultado.length;
+      console.log(JSON.stringify(registro));
+      return resultado;
+    } catch (err) {
+      registro.evento = 'error';
+      registro.duracion_ms = Date.now() - inicio;
+      console.warn(JSON.stringify(registro));
+      throw err;
+    }
+  };
 }
 
-function leerCorreosDeBancosNucleo_(extras) {
+function leerCorreosDeBancos() {
+  var paso = crearRegistroLector_();
+  return paso('ejecucion', function () {
+    var extras = [];
+    var r = paso('consumos', function () { return leerCorreosDeBancosNucleo_(extras, paso); });
+    // La revisión de pagos toma su propio candado después de liberar el de consumos.
+    try {
+      paso('pagos.historial', function () { return historialPagosServicioUnaVez_(paso); });
+    } catch (err) { /* El paso ya registró el fallo. */ }
+    try {
+      paso('pagos.habitual', function () { return revisarPagosDeServicios_(extras, {}, paso); });
+    } catch (err) { /* El paso ya registró el fallo. */ }
+    return r;
+  });
+}
+
+function puedeBuscarCompras_(usuario) {
+  return !!usuario.email && usuario.email === correoDelLector_();
+}
+
+function accionBuscarCompras_(usuario) {
+  if (!puedeBuscarCompras_(usuario)) {
+    throw errorApp_('datos_invalidos', 'Solo la cuenta que recibe los avisos puede iniciar la búsqueda.');
+  }
+  var paso = crearRegistroLector_();
+  return paso('busqueda_manual', function () {
+    return leerCorreosDeBancosNucleo_(null, paso, true);
+  });
+}
+
+function leerCorreosDeBancosNucleo_(extras, paso, manual) {
   // Fuera del candado del lector: registrar, editar y borrar toman el suyo.
-  try { pasarDebitosAEfectivoUnaVez_(); } catch (e) { console.warn('FinFamily débitos: no se pudieron pasar a efectivo: ' + e); }
-  try { corregirFechasDeLaAppUnaVez_(); } catch (e) { console.warn('FinFamily fechas: no se pudieron corregir: ' + e); }
+  if (!manual) {
+    try { paso('preparar.debitos', pasarDebitosAEfectivoUnaVez_); } catch (e) { /* El paso ya registró el fallo. */ }
+    try { paso('preparar.fechas', corregirFechasDeLaAppUnaVez_); } catch (e) { /* El paso ya registró el fallo. */ }
+  }
   var candado = LockService.getScriptLock();
-  if (!candado.tryLock(20000)) {
+  if (!paso('consumos.bloqueo', function () { return candado.tryLock(manual ? 1500 : 20000); })) {
     console.warn('FinFamily lector: el script estaba ocupado; se intentará en la próxima pasada.');
     return { revisados: 0, agregados: 0, motivo: 'ocupado' };
   }
   try {
-    try { repararHuellasUnaVez_(); } catch (e) { console.warn('FinFamily huellas: no se pudo reparar: ' + e); }
-    var etiqueta = etiquetaLeido_();
-    var hilos = GmailApp.search(consultaGmail_(), 0, 100);
+    if (!manual) {
+      try { paso('preparar.huellas', repararHuellasUnaVez_); } catch (e) { /* El paso ya registró el fallo. */ }
+    }
+    var etiqueta = manual ? null : paso('consumos.preparar_etiqueta', etiquetaLeido_);
+    var hilos = paso('consumos.buscar', function () { return GmailApp.search(consultaGmail_(), 0, manual ? 35 : 100); });
     var releer = []; // hilos de Yape/Lemon de la pasada única: se leen aunque ya tengan la etiqueta
     var props = PropertiesService.getScriptProperties();
-    var primeraVezBilleteras = !props.getProperty(PROPIEDAD_BILLETERAS);
+    var primeraVezBilleteras = !manual && !props.getProperty(PROPIEDAD_BILLETERAS);
     if (primeraVezBilleteras) {
       var diaDelMes = Number(String(hoyServidor_()).slice(8, 10)) || DIAS_CORREOS;
-      releer = GmailApp.search(consultaBilleteras_(Math.max(DIAS_CORREOS, diaDelMes)), 0, 100);
+      releer = paso('consumos.buscar_billeteras', function () {
+        return GmailApp.search(consultaBilleteras_(Math.max(DIAS_CORREOS, diaDelMes)), 0, 100);
+      });
       var vistos = {};
       hilos = hilos.concat(releer).filter(function (h, i, todos) {
         var clave = h.getId ? String(h.getId()) : null;
@@ -3270,14 +3343,16 @@ function leerCorreosDeBancosNucleo_(extras) {
       return { revisados: 0, agregados: 0 };
     }
 
-    var datosTarjetas = leerDatosTarjetas_();
-    var hoja = hojaPorConfirmar_(true);
+    var datosTarjetas = paso('consumos.leer_configuracion', leerDatosTarjetas_);
+    var catalogo = leerCatalogo_();
+    var hoja = paso('consumos.abrir_pendientes', function () { return hojaPorConfirmar_(true); });
     if (primeraVezBilleteras) {
-      var borradas = borrarPendientesDeBilleteras_(hoja);
+      var borradas = paso('preparar.pendientes_billeteras', function () { return borrarPendientesDeBilleteras_(hoja); });
       if (borradas) console.log('FinFamily lector: se vuelven a leer ' + borradas + ' movimiento(s) de Yape/Lemon.');
     }
     var existentes = {};
-    leerPendientes(hoja.getDataRange().getValues()).forEach(function (p) { existentes[p.id] = true; });
+    var pendientes = paso('consumos.leer_pendientes', function () { return leerPendientes(hoja.getDataRange().getValues()); });
+    pendientes.forEach(function (p) { existentes[p.id] = true; });
 
     var revisados = 0, agregados = 0;
     var nuevas = [];
@@ -3285,25 +3360,29 @@ function leerCorreosDeBancosNucleo_(extras) {
     // (En la pasada única de Yape y Lemon la ventana va desde el día 1 del mes.)
     var diasVentana = primeraVezBilleteras ? Math.max(DIAS_CORREOS, Number(String(hoyServidor_()).slice(8, 10)) || DIAS_CORREOS) : DIAS_CORREOS;
     var desde = new Date(parsearFecha(hoyServidor_()).getTime() - diasVentana * 86400000);
-    hilos.forEach(function (hilo) {
+    hilos.forEach(function (hilo, indiceHilo) {
+      var avanceHilo = { hilo: indiceHilo + 1 };
       try {
-        hilo.getMessages().forEach(function (mensaje) {
+        var mensajes = paso('consumos.abrir_hilo', function () { return hilo.getMessages(); }, avanceHilo);
+        mensajes.forEach(function (mensaje, indiceMensaje) {
           try {
             var id = String(mensaje.getId());
             if (existentes[id]) return; // ya está en "Por confirmar" (pendiente, confirmado o descartado)
             var fechaCorreo = mensaje.getDate();
             if (fechaCorreo && fechaCorreo.getTime && fechaCorreo.getTime() < desde.getTime()) return;
             revisados++;
-            var cuerpoCorreo = mensaje.getPlainBody();
+            var cuerpoCorreo = paso('consumos.leer_cuerpo', function () { return mensaje.getPlainBody(); },
+              { hilo: indiceHilo + 1, mensaje: indiceMensaje + 1 });
             var consumo = extraerConsumoDeCorreo({
               remitente: mensaje.getFrom(), asunto: mensaje.getSubject(),
               cuerpo: cuerpoCorreo, fechaISO: fechaISO(fechaCorreo)
             });
             if (!consumo) return;
             var esBilletera = consumo.banco === 'YAPE' || consumo.banco === 'LEMON';
+            if (manual && esBilletera) return;
             var t = esBilletera ? { tarjeta: consumo.banco, responsable: consumo.titular || '' }
               : consumo.debito ? { tarjeta: 'DEBITO_BCP', responsable: consumo.titular || '' }
-              : tarjetaDeConsumo(consumo.banco, consumo.ultimos4, datosTarjetas, leerCatalogo_());
+              : tarjetaDeConsumo(consumo.banco, consumo.ultimos4, datosTarjetas, catalogo);
             t.responsable = nombreUsuarioDeTitular_(t.responsable);
             // Sin titular claro (p. ej. la TC BCP, o un aviso reenviado desde el Gmail de la otra persona):
             // el nombre del saludo, solo si es uno de los usuarios.
@@ -3321,19 +3400,21 @@ function leerCorreosDeBancosNucleo_(extras) {
             if (consumo.moneda === 'PEN' && extras) extras.push({ id: 'c:' + id, monto: consumo.monto, fecha: consumo.fecha,
               texto: normalizar(String(consumo.comercio || '') + ' ' + String(mensaje.getSubject() || '')) });
           } catch (errMensaje) {
-            console.warn('FinFamily lector: no se pudo leer un correo: ' + errMensaje);
+            console.warn('FinFamily lector: no se pudo leer un correo.');
           }
         });
-        hilo.addLabel(etiqueta);
+        if (etiqueta) paso('consumos.etiquetar_hilo', function () { hilo.addLabel(etiqueta); }, avanceHilo);
       } catch (errHilo) {
-        console.warn('FinFamily lector: no se pudo procesar un hilo: ' + errHilo);
+        console.warn('FinFamily lector: no se pudo procesar un hilo.');
       }
     });
 
     if (nuevas.length) {
-      var filaInicio = hoja.getLastRow() + 1;
-      hoja.getRange(filaInicio, 1, nuevas.length, COLUMNAS_POR_CONFIRMAR.length).setValues(nuevas);
-      SpreadsheetApp.flush();
+      paso('consumos.escribir_pendientes', function () {
+        var filaInicio = hoja.getLastRow() + 1;
+        hoja.getRange(filaInicio, 1, nuevas.length, COLUMNAS_POR_CONFIRMAR.length).setValues(nuevas);
+      }, { filas: nuevas.length });
+      paso('consumos.aplicar_cambios', function () { SpreadsheetApp.flush(); }, { filas: nuevas.length });
     }
     if (primeraVezBilleteras) props.setProperty(PROPIEDAD_BILLETERAS, new Date().toISOString());
     console.log('FinFamily lector: ' + revisados + ' correo(s) revisados, ' + agregados + ' consumo(s) nuevo(s) por confirmar.');
@@ -3362,10 +3443,10 @@ function buscarPendiente_(id) {
 }
 
 /** Escribe el Estado de una fila de "Por confirmar" (con candado y buscando la fila de nuevo por su Id). */
-function cambiarEstadoPendiente_(id, estadoNuevo) {
+function cambiarEstadoPendiente_(id, estadoNuevo, conCandado) {
   var hoja = hojaPorConfirmar_(false);
   if (!hoja) throw errorApp_('datos_invalidos', 'Ese consumo ya no está en la bandeja "Por confirmar".');
-  var candado = tomarCandado_();
+  var candado = conCandado ? null : tomarCandado_();
   try {
     var valores = valoresPorConfirmar_(hoja);
     var lista = leerPendientes(valores);
@@ -3379,7 +3460,7 @@ function cambiarEstadoPendiente_(id, estadoNuevo) {
     SpreadsheetApp.flush();
     return p;
   } finally {
-    candado.releaseLock();
+    if (candado) candado.releaseLock();
   }
 }
 
@@ -3408,8 +3489,19 @@ function tarjetaHeredadaDelLector_(p, idMedio) {
 function accionConfirmarPendiente_(usuario, datos) {
   validarIdCliente_(datos.idCliente);
   var id = validarIdPendiente_(datos.id);
+  var candado = tomarCandado_();
+  var registro;
+  try { registro = confirmarPendienteConCandado_(usuario, datos, id); }
+  finally { candado.releaseLock(); }
+  if (registro.gasto) { avisarGastoGrande_(registro.gasto); avisarSobrante_(registro.gasto); }
+  if (registro.salida.confirmado) revisarAntojosSiToca_(datos.concepto);
+  return registro.salida;
+}
+
+function confirmarPendienteConCandado_(usuario, datos, id) {
   var p = buscarPendiente_(id);
-  if (normalizar(p.estado) === 'confirmado') return { confirmado: false, yaEstaba: true };
+  if (normalizar(p.estado) === 'confirmado') return { salida: { confirmado: false, yaEstaba: true } };
+  if (normalizar(p.estado) === 'descartado') throw errorApp_('datos_invalidos', 'La compra se descartó. Vuelve a cargar la bandeja.');
   if (p.moneda === 'USD') {
     throw errorApp_('datos_invalidos', 'Ese consumo está en dólares (US$ ' + p.monto.toFixed(2) +
       '). Regístralo a mano con el monto en soles que te cobró el banco.');
@@ -3435,34 +3527,35 @@ function accionConfirmarPendiente_(usuario, datos) {
     });
   } catch (err) { delCorreo = 0; }
   var r = registrarGasto_({
-    idCliente: datos.idCliente, monto: p.monto, medio: medio, concepto: datos.concepto,
+    idCliente: 'correo-' + hashHex_(id).slice(0, 48), monto: p.monto, medio: medio, concepto: datos.concepto,
     descripcion: descripcion, nota: datos.nota, fecha: fecha, confirmarDuplicado: datos.confirmarDuplicado,
     tarjeta: tarjeta, origen: datos.origen, buscarParecidos: true, parecidosDelCorreo: delCorreo,
     cuotas: datos.cuotas, montoCuota: datos.montoCuota
-  }, responsable);
+  }, responsable, true);
   if (!r.guardado && !r.duplicadoId) {
     // Parece repetido: la app pregunta y vuelve a llamar con confirmarDuplicado = true.
-    return { confirmado: false, posibleDuplicado: true, coincidencia: r.coincidencia };
+    return { salida: { confirmado: false, posibleDuplicado: true, coincidencia: r.coincidencia } };
   }
-  cambiarEstadoPendiente_(id, 'Confirmado');
-  if (r.guardado) { avisarGastoGrande_(r.gasto); avisarSobrante_(r.gasto); }
+  cambiarEstadoPendiente_(id, 'Confirmado', true);
   var salida = { confirmado: true, hoja: r.hoja, fila: r.fila };
-  revisarAntojosSiToca_(datos.concepto);
   // La tarjeta se informa solo si la pidió la app o si quedó como prestada (lo demás responde igual que antes).
   var pedida = !(datos.tarjeta === undefined || datos.tarjeta === null || datos.tarjeta === '');
   if (r.tarjeta && (pedida || r.prestada)) { salida.tarjeta = r.tarjeta; salida.prestada = r.prestada === true; }
   if (r.origen) salida.origen = r.origen;
   if (r.cuotas) { salida.cuotas = r.cuotas; salida.montoCuota = r.montoCuota; }
-  return salida;
+  return { salida: salida, gasto: r.guardado ? r.gasto : null };
 }
 
 /** Acción 'descartarPendiente': marca la fila como 'Descartado' (no se registra nada). */
 function accionDescartarPendiente_(usuario, datos) {
   var id = validarIdPendiente_(datos.id);
-  var p = buscarPendiente_(id);
-  if (normalizar(p.estado) === 'confirmado') return { descartado: false, yaEstaba: true };
-  cambiarEstadoPendiente_(id, 'Descartado');
-  return { descartado: true };
+  var candado = tomarCandado_();
+  try {
+    var p = buscarPendiente_(id);
+    if (normalizar(p.estado) === 'confirmado') return { descartado: false, yaEstaba: true };
+    cambiarEstadoPendiente_(id, 'Descartado', true);
+    return { descartado: true };
+  } finally { candado.releaseLock(); }
 }
 
 // ---------------------------------------------------------------------------
