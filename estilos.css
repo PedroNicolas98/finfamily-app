@@ -3293,7 +3293,7 @@ button.aviso-pend { width: 100%; font: inherit; text-align: left; cursor: pointe
 .opcion.origen[aria-pressed="true"] { background: var(--marca-suave); border-color: var(--accion); color: var(--marca-tinta); }
 .pend-origen { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 38px; padding: 0 12px; border-radius: 10px; border: 1px dashed var(--borde-fuerte); background: transparent; font: inherit; font-size: 0.84rem; color: var(--tinta); cursor: pointer; }
 .pend-origen.activo { border-style: solid; border-color: var(--accion); background: var(--marca-suave); }
-.de-donde { font-style: normal; margin-left: 6px; padding: 1px 7px; border-radius: 99px; background: var(--marca-suave); color: var(--marca-tinta); font-size: 0.7rem; font-weight: 650; white-space: nowrap; }
+.de-donde { font-style: normal; margin-right: 6px; padding: 1px 7px; border-radius: 99px; background: var(--marca-suave); color: var(--marca-tinta); font-size: 0.7rem; font-weight: 650; white-space: nowrap; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
