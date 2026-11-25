@@ -227,7 +227,7 @@ test('mapearColumnas: hoja TC (con tildes y mayúsculas distintas)', () => {
   assert.deepEqual(c, {
     responsable: 0, mes: 1, fecha: 2, concepto: 3, descripcion: 4, monto: 5,
     fechaPago: 6, fechaVencimiento: 7, estado: 8, nota: 9, medio: -1,
-    idForm: 10, huella: 11
+    idForm: 10, huella: 11, tipo: -1
   });
 });
 
@@ -238,7 +238,7 @@ test('mapearColumnas: hoja Gastos Hormiga (Medio de Pago, sin fechas de tarjeta)
   assert.deepEqual(c, {
     responsable: 0, mes: 1, fecha: 2, concepto: 3, descripcion: 4, monto: 5,
     fechaPago: -1, fechaVencimiento: -1, estado: 7, nota: 8, medio: 6,
-    idForm: 9, huella: 10
+    idForm: 9, huella: 10, tipo: -1
   });
 });
 
@@ -1443,4 +1443,37 @@ test('1.27.0: el registro de pagos se poda a 8 días y a 100 ids', () => {
   const r = L.podarPagosFijos({ ids, meses: {} }, '2026-11-14');
   assert.ok(!('m:viejo' in r.ids));
   assert.equal(Object.keys(r.ids).length, 100);
+});
+
+test('1.29.0: «Tipo de gasto» (lista desplegable del Sheets) dice de dónde sale el gasto y de quién es lo personal', () => {
+  assert.equal(L.mapearColumnas(['Responsable', 'Monto', '_ID_FORM', '_HUELLA_FORM', 'Tipo de gasto']).tipo, 4);
+  assert.equal(L.tipoDeOrigen(''), 'Compartido');
+  assert.equal(L.tipoDeOrigen('P:PersonaA'), 'Personal - PersonaA');
+  assert.equal(L.tipoDeOrigen('A:Ahorro Viaje'), 'Ahorro - Ahorro Viaje');
+  assert.equal(L.origenDeTipo('Compartido'), '');
+  assert.equal(L.origenDeTipo('Personal - PersonaB'), 'P:PersonaB');
+  assert.equal(L.origenDeTipo('personal – PersonaB'), 'P:PersonaB', 'sin importar mayúsculas ni el tipo de guion');
+  assert.equal(L.origenDeTipo('Ahorro - Ahorro Casa'), 'A:Ahorro Casa');
+  assert.equal(L.origenDeTipo('Personal'), null, 'la fórmula vieja no decía de quién: se mira el _id_form');
+  assert.equal(L.origenDeTipo(''), null);
+  assert.equal(L.origenDeTipo('Otra cosa'), null);
+  // Va y vuelve.
+  ['', 'P:PersonaA', 'A:Ahorro Viaje'].forEach((o) => assert.equal(L.origenDeTipo(L.tipoDeOrigen(o)), o));
+});
+
+test('1.29.0: la fila manda con «Tipo de gasto»; si no dice nada que se entienda, con el sufijo |OR: de _id_form', () => {
+  const cols = L.mapearColumnas(['Responsable', 'Monto', '_ID_FORM', '_HUELLA_FORM', 'Tipo de gasto']);
+  const idOR = 'APP:x|OR:P%3APersonaA';
+  assert.equal(L.origenDeFila(['', 1, idOR, '', 'Compartido'], cols), '', 'el desplegable lo pasó a compartido');
+  assert.equal(L.origenDeFila(['', 1, 'APP:x', '', 'Personal - PersonaB'], cols), 'P:PersonaB', 'puesto a mano en el Sheets');
+  assert.equal(L.origenDeFila(['', 1, idOR, '', 'Personal'], cols), 'P:PersonaA', 'texto viejo sin nombre: vale el _id_form');
+  assert.equal(L.origenDeFila(['', 1, idOR, '', ''], cols), 'P:PersonaA');
+  const sinTipo = L.mapearColumnas(['Responsable', 'Monto', '_ID_FORM']);
+  assert.equal(L.origenDeFila(['', 1, idOR], sinTipo), 'P:PersonaA', 'hojas sin la columna siguen igual');
+  // construirFila anota el tipo junto con el sufijo.
+  const fila = L.construirFila(cols, 5, { idCliente: 'a', monto: 10, concepto: 'X', descripcion: 'Y', fecha: '2026-11-05', origen: 'P:PersonaB' }, 'PersonaA', 'TC IBK', { pago: '2026-11-30', vence: '2026-12-15' }, []);
+  assert.equal(fila[4], 'Personal - PersonaB');
+  assert.equal(fila[2], 'APP:a|OR:P%3APersonaB');
+  const comun = L.construirFila(cols, 5, { idCliente: 'b', monto: 10, concepto: 'X', descripcion: 'Y', fecha: '2026-11-05' }, 'PersonaA', 'TC IBK', { pago: '2026-11-30', vence: '2026-12-15' }, []);
+  assert.equal(comun[4], 'Compartido');
 });

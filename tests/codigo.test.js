@@ -384,13 +384,13 @@ test('version: informa 1.7.1 y la lista de acciones; inicio y config traen el ca
     new HojaFalsa('Configuración', [['Conceptos de Gasto', 'Responsable'], ['Limpieza', 'PersonaB']])]) });
   const r = m.llamar('version', {});
   assert.equal(r.ok, true);
-  assert.equal(r.datos.version, '1.28.0');
+  assert.equal(r.datos.version, '1.29.0');
   for (const a of ['desmarcarPagado', 'editarPresupuesto', 'ahorros', 'version', 'marcarPagado', 'inicio',
     'pendientes', 'confirmarPendiente', 'descartarPendiente', 'ajustesAvisos', 'guardarAjustesAvisos', 'datosTarjetas', 'guardarDatosTarjeta']) {
     assert.ok(r.datos.acciones.includes(a), 'falta la acción ' + a);
   }
-  assert.equal(m.llamar('inicio', {}).datos.version, '1.28.0');
-  assert.equal(m.llamar('config', {}).datos.version, '1.28.0');
+  assert.equal(m.llamar('inicio', {}).datos.version, '1.29.0');
+  assert.equal(m.llamar('config', {}).datos.version, '1.29.0');
 });
 
 test('la lista ACCIONES coincide con las acciones que atiende doPost', () => {
@@ -2089,7 +2089,7 @@ test('config: un ícono guardado para un concepto que ya no existe en Configurac
   assert.deepEqual(m.llamar('config', {}).datos.iconos, { Supermercado: 'carrito' });
   const danado = motorCompleto({ propiedades: { FINFAMILY_ICONOS: '{roto' } });
   assert.deepEqual(danado.llamar('config', {}).datos.iconos, {});
-  assert.equal(danado.llamar('version', {}).datos.version, '1.28.0');
+  assert.equal(danado.llamar('version', {}).datos.version, '1.29.0');
   assert.ok(danado.llamar('version', {}).datos.acciones.includes('guardarIconoConcepto'));
 });
 
@@ -2327,7 +2327,7 @@ test('gasto grande con tarjeta prestada: el correo dice quién gastó; versión 
   const m = motorCompleto();
   m.llamar('registrar', Object.assign({}, GASTO_PRESTADO, { monto: 450, descripcion: 'Saga Falabella' }));
   assert.equal(m.correos[0].subject, 'FinFamily: PersonaA registró S/ 450 en Saga Falabella (TC Interbank)');
-  assert.equal(m.llamar('version', {}).datos.version, '1.28.0');
+  assert.equal(m.llamar('version', {}).datos.version, '1.29.0');
 });
 
 // ===========================================================================
@@ -2607,7 +2607,7 @@ test('bolsas con un solo usuario (N = 1): todo el saldo de los meses anteriores 
 test('versión 1.7.0: la acción bolsas está en la lista y presupuesto no cambió', () => {
   const m = motorBolsas();
   const v = m.llamar('version', {}).datos;
-  assert.equal(v.version, '1.28.0');
+  assert.equal(v.version, '1.29.0');
   assert.ok(v.acciones.includes('bolsas'));
   const p = m.llamar('presupuesto', { mes: '2026-11' }).datos;
   assert.equal(p.totales.saldo, 985.57);
@@ -3768,4 +3768,57 @@ test('1.27.0: una relectura que falla no se repite en cada pasada ni toca el reg
   m.contexto.leerCorreosDeBancos();
   assert.ok(m.propiedades.FINFAMILY_PAGOS_HISTORIA_V2, 'se anota aunque haya fallado');
   assert.equal(m.propiedades.FINFAMILY_PAGOS_FIJOS, viejo, 'el registro viejo sigue ahí');
+});
+
+// ---------- 1.29.0: columna «Tipo de gasto» (lista desplegable del Sheets) ----------
+
+function hojaTcConTipo(nombre, filas) {
+  const ancho = ENC_TC.length + 1;
+  const titulo = new Array(ancho).fill('');
+  titulo[0] = 'TARJETA SINTÉTICA';
+  return new HojaFalsa(nombre, [titulo, ENC_TC.concat(['Tipo de gasto'])].concat(filas));
+}
+const COL_TIPO = 12; // índice (base 0) de «Tipo de gasto» en esas hojas
+
+function motorConTipo() {
+  const hojas = [hojaTc('TC SIP', []), hojaTcConTipo('TC IBK', []), hojaTc('TC BCP', []), hojaTc('TC Ripley', []),
+    hojaHormigaConId(), presupuestoBolsas(), hojaConfig()];
+  return crearMotor({ hojas, hoy: '2026-11-06' });
+}
+
+test('1.29.0: registrar anota «Tipo de gasto» (Compartido, Personal - X o Ahorro - Y) y editarGasto lo cambia junto con el origen', () => {
+  const m = motorConTipo();
+  m.llamar('registrar', Object.assign({}, GASTO_119, { origen: 'P:PersonaA' }));
+  const ibk = hojaDe(m, 'TC IBK');
+  assert.equal(ibk.valores[2][COL_TIPO], 'Personal - PersonaA');
+  assert.equal(ibk.valores[2][COL_ID_FORM], 'APP:' + ID + OR_PERSONA_A);
+  m.llamar('registrar', Object.assign({}, GASTO, { idCliente: 'prueba-0002', monto: 12, descripcion: 'Otro pedido' }));
+  assert.equal(ibk.valores[3][COL_TIPO], 'Compartido');
+  m.llamar('registrar', Object.assign({}, GASTO, { idCliente: 'prueba-0003', monto: 13, descripcion: 'Tercer pedido', origen: 'A:Ahorro Viaje' }));
+  assert.equal(ibk.valores[4][COL_TIPO], 'Ahorro - Ahorro Viaje');
+  // Editar el origen cambia las dos cosas.
+  const base = { idCliente: ID, hoja: 'TC IBK', fila: 3, verificar: { monto: 119, descripcion: 'Pedido de prueba' } };
+  m.llamar('editarGasto', Object.assign({}, base, { origen: 'P:PersonaB' }));
+  assert.equal(ibk.valores[2][COL_TIPO], 'Personal - PersonaB');
+  assert.equal(ibk.valores[2][COL_ID_FORM], 'APP:' + ID + OR_PERSONA_B);
+  m.llamar('editarGasto', Object.assign({}, base, { origen: '' }));
+  assert.equal(ibk.valores[2][COL_TIPO], 'Compartido');
+  // Otros cambios no tocan «Tipo de gasto».
+  const antes = ibk.escrituras.length;
+  m.llamar('editarGasto', Object.assign({}, base, { cambios: { nota: 'ok' } }));
+  assert.ok(!ibk.escrituras.slice(antes).some((e) => e.col === COL_TIPO + 1));
+});
+
+test('1.29.0: lo que se elige en el desplegable del Sheets (sin tocar _id_form) lo ve la app como el origen del consumo', () => {
+  const m = motorConTipo();
+  m.llamar('registrar', GASTO);                       // fondo común
+  const ibk = hojaDe(m, 'TC IBK');
+  const consumo = () => m.llamar('tarjetas', {}).datos.tarjetas.find((t) => t.id === 'IBK_P').estados[0].consumos[0];
+  assert.equal(consumo().origen, '');
+  ibk.valores[2][COL_TIPO] = 'Personal - PersonaB';   // lo cambian a mano en el Sheets
+  assert.equal(consumo().origen, 'P:PersonaB');
+  ibk.valores[2][COL_TIPO] = 'Ahorro - Ahorro Casa';
+  assert.equal(consumo().origen, 'A:Ahorro Casa');
+  ibk.valores[2][COL_TIPO] = 'Compartido';
+  assert.equal(consumo().origen, '');
 });

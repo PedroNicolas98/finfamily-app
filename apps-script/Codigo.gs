@@ -26,7 +26,7 @@
  *   FINFAMILY_ICONOS               ícono elegido para cada tipo de gasto (motor 1.5.1).
  */
 
-var VERSION = '1.28.0';
+var VERSION = '1.29.0';
 var ZONA_HORARIA = 'America/Lima';
 var DIAS_AVISO = 3;
 var SEGUNDOS_CACHE_TOKEN = 300;
@@ -1248,7 +1248,7 @@ function moverGastoDeHoja_(datos, cambios, nombreHoja, medio, idTarjeta) {
   var f = h.valores[datos.fila - 1];
   var partes = partesIdForm(cols.idForm === -1 ? '' : f[cols.idForm]);
   var idCliente = partes.base.indexOf('APP:') === 0 ? partes.base.slice(4) : Utilities.getUuid();
-  var origen = cambios.origen !== undefined && cambios.origen !== null ? cambios.origen : (partes.origen || '');
+  var origen = cambios.origen !== undefined && cambios.origen !== null ? cambios.origen : origenDeFila(f, cols);
   var responsable = String(f[cols.responsable] || '').trim();
   var r = registrarGasto_({
     idCliente: idCliente,
@@ -1389,6 +1389,7 @@ function accionEditarGasto_(usuario, datos) {
         escribir(cols.idForm, armarIdForm(partes.base, sufijo, origenFinal));
       }
     }
+    if (cambiaOrigen && cols.tipo !== -1) escribir(cols.tipo, tipoDeOrigen(origenFinal)); // la lista «Tipo de gasto»
     if (nuevo.fecha !== undefined) {
       escribir(cols.fecha, fechaParaHoja_(nuevo.fecha));
       escribir(cols.mes, nombreMes(nuevo.fecha));
@@ -1495,7 +1496,7 @@ function accionPasarACuotas_(usuario, datos) {
       if (yaEstan['APP:' + idK]) continue;
       var nueva = construirFila(cols, anchoFila, {
         idCliente: idK, monto: montos[k], concepto: concepto, descripcion: descripcionDeCuota(desc, k + 1, n),
-        nota: nota, fecha: fecha, tarjetaExplicita: partes.tarjeta, origen: partes.origen
+        nota: nota, fecha: fecha, tarjetaExplicita: partes.tarjeta, origen: origenDeFila(f, cols)
       }, responsable, nombreHoja, calcularCiclo(idCiclo, fecha, catalogo, k + corrimiento), catalogo);
       if (cols.huella !== -1 && nueva[cols.huella]) nueva[cols.huella] = hashHex_(String(nueva[cols.huella]));
       [cols.fecha, cols.fechaPago, cols.fechaVencimiento].forEach(function (col) {

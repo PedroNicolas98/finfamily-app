@@ -342,7 +342,7 @@ function mapearColumnas(filaEncabezado) {
   var cols = {
     responsable: -1, mes: -1, fecha: -1, concepto: -1, descripcion: -1, monto: -1,
     fechaPago: -1, fechaVencimiento: -1, estado: -1, nota: -1, medio: -1,
-    idForm: -1, huella: -1
+    idForm: -1, huella: -1, tipo: -1
   };
   var fila = filaEncabezado || [];
   for (var j = 0; j < fila.length; j++) {
@@ -362,6 +362,7 @@ function mapearColumnas(filaEncabezado) {
     else if (n.indexOf('medio') === 0) clave = 'medio';
     else if (n === '_id_form') clave = 'idForm';
     else if (n === '_huella_form') clave = 'huella';
+    else if (n === 'tipo de gasto') clave = 'tipo';
     if (clave && cols[clave] === -1) cols[clave] = j;
   }
   return cols;
@@ -634,6 +635,39 @@ function partesOrigen(origen) {
 }
 
 /**
+ * Texto de la columna «Tipo de gasto» (la lista desplegable del Sheets) para un origen:
+ * '' -> 'Compartido'; 'P:Ana' -> 'Personal - Ana'; 'A:Ahorro Viaje' -> 'Ahorro - Ahorro Viaje'. (motor 1.29.0)
+ */
+function tipoDeOrigen(origen) {
+  var o = partesOrigen(origen);
+  if (o.tipo === 'P') return 'Personal - ' + o.nombre;
+  if (o.tipo === 'A') return 'Ahorro - ' + o.nombre;
+  return 'Compartido';
+}
+
+/**
+ * Lo contrario: el origen ('' | 'P:<persona>' | 'A:<ahorro>') que dice la celda «Tipo de gasto», o null si no
+ * dice nada que se entienda (vacía, o «Personal» sin el nombre, como la fórmula vieja). 'Compartido' = fondo común.
+ */
+function origenDeTipo(tipo) {
+  var t = (tipo === null || tipo === undefined) ? '' : String(tipo).trim();
+  if (!t) return null;
+  if (normalizar(t) === 'compartido') return '';
+  var m = t.match(/^(personal|ahorro)\s*[-–—]\s*(\S[\s\S]*)$/i);
+  if (!m) return null;
+  return (normalizar(m[1]) === 'personal' ? 'P:' : 'A:') + m[2].trim();
+}
+
+/** Origen de una fila de la hoja: manda «Tipo de gasto» si dice algo; si no, el sufijo |OR: de _id_form. */
+function origenDeFila(fila, cols) {
+  var f = fila || [];
+  var c = cols || {};
+  var deTipo = c.tipo >= 0 ? origenDeTipo(f[c.tipo]) : null;
+  if (deTipo !== null) return deTipo;
+  return c.idForm >= 0 ? partesIdForm(f[c.idForm]).origen : '';
+}
+
+/**
  * Mes ('YYYY-MM') en que cuenta un gasto: en hojas de tarjeta, el de su Fecha de pago
  * (así lo suma la hoja del presupuesto) o, si no tiene, el de su Fecha; en Gastos Hormiga, el de su Fecha.
  */
@@ -704,7 +738,7 @@ function leerConsumos(valores2D, hoja, catalogo) {
       huella: texto_(celda_(f, cols.huella)),
       tarjeta: tarjetaFila,
       prestada: esPrestada(tarjetaFila, responsable, catalogo),
-      origen: partesIdForm(idFormFila).origen,
+      origen: origenDeFila(f, cols),
       deTarjeta: normalizar(hoja) !== 'gastos hormiga'
     });
   }
@@ -1657,6 +1691,7 @@ function construirFila(columnas, anchoFila, datos, usuarioNombre, hoja, ciclo, c
   poner(cols.estado, esHormiga ? 'Pagado' : 'Pendiente');
   poner(cols.nota, neutralizarTexto(d.nota || ''));
   poner(cols.idForm, armarIdForm('APP:' + (d.idCliente || ''), d.tarjetaExplicita, d.origen));
+  poner(cols.tipo, tipoDeOrigen(d.origen)); // la lista desplegable «Tipo de gasto» (si la hoja la tiene)
   poner(cols.huella, firmaGasto({ fecha: fechaTexto, monto: monto, descripcion: d.descripcion }));
   return fila;
 }
@@ -3248,6 +3283,9 @@ function textoSobranteNoAlcanza(aviso) {
 if (typeof module !== 'undefined') {
   module.exports = {
     partesOrigen: partesOrigen,
+    tipoDeOrigen: tipoDeOrigen,
+    origenDeTipo: origenDeTipo,
+    origenDeFila: origenDeFila,
     mesDeGasto: mesDeGasto,
     saldosPorMes: saldosPorMes,
     retirosPorMeta: retirosPorMeta,
