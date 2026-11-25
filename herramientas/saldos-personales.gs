@@ -56,3 +56,11 @@ function quitarSaldosPersonales() {
   var h = SpreadsheetApp.getActive().getSheetByName('PRESUPUESTO FAMILIAR');
   h.getRange('A34:R40').clear();
 }
+
+/**
+ * Paso único 2 (motor 1.29.0): «Tipo de gasto» pasa de fórmula a lista desplegable en las 5 hojas de gastos
+ * (Compartido / Personal - <persona> / Ahorro - <línea>), con el valor que ya tenía cada fila, y las filas 34, 37 y 38
+ * del presupuesto leen esa columna. Solo convierte una hoja si su encabezado todavía tiene la fórmula; antes de cambiar
+ * algo comprueba que cada fila queda igual que antes. Debe correr ANTES de instalar el motor 1.29.0 (si no, el motor
+ * escribiría encima de la fórmula). Ya se ejecutó el 2026-11-25; no hace falta repetirlo.
+ */
