@@ -64,3 +64,14 @@ function quitarSaldosPersonales() {
  * algo comprueba que cada fila queda igual que antes. Debe correr ANTES de instalar el motor 1.29.0 (si no, el motor
  * escribiría encima de la fórmula). Ya se ejecutó el 2026-11-25; no hace falta repetirlo.
  */
+
+/**
+ * Paso único 3 (ya ejecutado el 2026-11-25): filas 42 a 45 del presupuesto = lo personal pagado con Yape, Plin, débito
+ * o efectivo (hoja Gastos Hormiga, por la fecha del gasto) y «EN MANO» de cada persona: lo ahorrado de los meses
+ * anteriores menos sus TC personales (cuentan desde el mes siguiente al de pago) y menos ese gasto personal. Es la misma
+ * cuenta que hace la app; los meses que aún no llegan quedan en blanco. Fórmulas (B..D y F..Q; E y R suman en 42 y 43):
+ *   42/43: =SUMIFS('Gastos Hormiga'!$F$3:$F,'Gastos Hormiga'!$C$3:$C,">="&B$2,'Gastos Hormiga'!$C$3:$C,"<="&EOMONTH(B$2,0),
+ *            'Gastos Hormiga'!$L$3:$L,"Personal - <persona>")
+ *   44/45: =IF(B$2>EOMONTH(TODAY(),0),"",SUMPRODUCT(($B$2:$Q$2<B$2)*$B$36:$Q$36)-SUMPRODUCT(($B$2:$Q$2<B$2)*$B$37:$Q$37)
+ *            -SUMPRODUCT(($B$2:$Q$2<=B$2)*$B$42:$Q$42))     (38 y 43 para la segunda persona)
+ */
