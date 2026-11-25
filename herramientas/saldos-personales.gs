@@ -75,3 +75,10 @@ function quitarSaldosPersonales() {
  *   44/45: =IF(B$2>EOMONTH(TODAY(),0),"",SUMPRODUCT(($B$2:$Q$2<B$2)*$B$36:$Q$36)-SUMPRODUCT(($B$2:$Q$2<B$2)*$B$37:$Q$37)
  *            -SUMPRODUCT(($B$2:$Q$2<=B$2)*$B$42:$Q$42))     (38 y 43 para la segunda persona)
  */
+
+/**
+ * Paso único 4 (ya ejecutado el 2026-11-25, a pedido del usuario: en el Excel solo importa lo que le queda a cada uno a fin de mes):
+ * se borraron las filas 42 a 45 (Yape/débito y EN MANO), se ocultaron las filas 34 a 38 (cuentas intermedias; siguen calculando)
+ * y las columnas técnicas _ID_FORM y _HUELLA_FORM de las 5 hojas de gastos y el Id de «Por confirmar». Quedan visibles
+ * SALDO INDIVIDUAL y las filas QUEDA REAL de cada persona (39 y 40).
+ */
