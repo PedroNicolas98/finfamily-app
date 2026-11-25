@@ -104,6 +104,11 @@ incluyas en código, pruebas, ejemplos ni commits. El motor usa la zona horaria 
   Las empresas de cada línea viven en `FINFAMILY_FIJOS` (`palabras`); si no hay, `palabrasDeFijo` usa un valor por nombre.
 - **Apartados** (`apartadosDeLineas`): líneas con la cuenta entre paréntesis («Alimentación (BCP-DEB-PE)») que guardan lo que
   no se gasta; ajuste manual en `FINFAMILY_APARTADOS`. Renombrar o quitar una línea migra estas claves (`migrarClaveLinea_`).
+- **Filas de saldos personales en el presupuesto** (2026-11-25, `herramientas/saldos-personales.gs`, paso único que se pega en el
+  proyecto de Apps Script y se ejecuta): filas 34 a 40 de «PRESUPUESTO FAMILIAR» = TC con sobrante o ahorro, SALDO COMÚN
+  (saldo + esas TC), saldo común por persona, TC personal de cada una y QUEDA REAL de cada una. Leen `_ID_FORM` (`|OR:`)
+  de las hojas TC. No cambian las líneas TC existentes (el motor sigue sumando `fuera` por su cuenta: no tocar las filas 8 a 11
+  sin cambiar también `calcularBolsas`, o se contaría doble).
 - Otros: `FINFAMILY_META_ANUAL` (meta de ahorro por año), `FINFAMILY_RECORDATORIO_ANOTAR`.
 - Al pegar el motor en el editor de Apps Script, comprueba que el archivo abierto sea el correcto antes de reemplazarlo
   (si un clic falla, queda abierto otro archivo) y guarda con el botón de la barra.
